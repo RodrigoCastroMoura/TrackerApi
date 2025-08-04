@@ -130,22 +130,13 @@ class UserList(Resource):
                      'default': 10,
                      'description': 'Items per page'
                  },
-                 'company_id': {
-                     'type': 'string',
-                     'required': True,
-                     'description': 'Company ID (required)'
-                 },
                  'email': {
                      'type': 'string',
                      'description': 'Filter by email (case-insensitive)'
                  },
-                 'cpf': {
+                 'document': {
                      'type': 'string',
-                     'description': 'Filter by CPF'
-                 },
-                 'matricula': {
-                     'type': 'string',
-                     'description': 'Filter by matricula'
+                     'description': 'Filter by Document'
                  }
              },
              responses={
@@ -167,31 +158,7 @@ class UserList(Resource):
         Admin users can see users from any company, while regular users can only see users from their own company.
         """
         try:
-            company_id = request.args.get('company_id')
-            if not company_id:
-                logger.warning("Missing required company_id parameter")
-                return {'message': 'Parâmetro company_id é obrigatório'}, 400
-
-            if not ObjectId.is_valid(company_id):
-                logger.warning(f"Invalid company_id format: {company_id}")
-                return {'message': 'ID da empresa inválido'}, 400
-
-            try:
-                company = Company.objects.get(id=company_id)
-            except DoesNotExist:
-                logger.warning(f"Company not found: {company_id}")
-                return {'message': 'Empresa não encontrada'}, 404
-
-            if current_user.role != 'admin' and str(
-                    current_user.company_id.id) != company_id:
-                logger.warning(
-                    f"User {current_user.email} attempted to access users from different company"
-                )
-                return {
-                    'message':
-                    'Não autorizado a acessar usuários de outra empresa'
-                }, 403
-
+           
             try:
                 page = max(1, int(request.args.get('page', 1)))
                 per_page = max(1,
@@ -200,7 +167,7 @@ class UserList(Resource):
                 logger.warning("Invalid pagination parameters provided")
                 return {'message': 'Parâmetros de paginação inválidos'}, 400
 
-            query = {'company_id': company.id, 'role': 'user', 'visible': True}
+            query = { 'role': 'user', 'visible': True}
 
             email = request.args.get('email')
             if email:
@@ -267,28 +234,17 @@ class UserList(Resource):
                 return {'message': 'Dados não fornecidos'}, 400
 
             required_fields = [
-                'name', 'email', 'cpf', 'password', 'role', 'company_id'
+                'name', 'email', 'cpf', 'password', 'role'
             ]
             for field in required_fields:
                 if field not in data or not data[field]:
                     return {'message': f'Campo {field} é obrigatório'}, 400
 
-            # Validate company_id
-            if not ObjectId.is_valid(data['company_id']):
-                return {'message': 'ID da empresa inválido'}, 400
+            
 
-            try:
-                company = Company.objects.get(id=data['company_id'])
-            except DoesNotExist:
-                return {'message': 'Empresa não encontrada'}, 404
-
+           
             # Verify company access and role permissions
             if current_user.role != 'admin':
-                if str(current_user.company_id.id) != data['company_id']:
-                    return {
-                        'message':
-                        'Não autorizado a criar usuário em outra empresa'
-                    }, 403
                 if data['role'] == 'admin':
                     return {
                         'message':
@@ -308,7 +264,6 @@ class UserList(Resource):
                             cpf=cpf,
                             phone=data.get('phone'),
                             role='user',
-                            company_id=company,
                             created_by=current_user,
                             updated_by=current_user)
                 user.set_password(data['password'])

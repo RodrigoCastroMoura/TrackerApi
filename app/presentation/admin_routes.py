@@ -1,7 +1,7 @@
 
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import User, Company
+from app.domain.models import User
 from app.presentation.auth_routes import token_required, require_permission
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging

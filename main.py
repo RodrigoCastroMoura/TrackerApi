@@ -8,7 +8,7 @@ from app.presentation.user_routes import api as user_ns
 from app.presentation.admin_routes import api as admin_ns
 from app.presentation.permission_routes import api as permission_ns
 from app.presentation.link_token_routes import api as link_token_ns
-from app.domain.models import Company, User, Department, Category, Document, Permission, DocumentType
+from app.domain.models import User, Permission
 from config import Config
 import os
 import logging

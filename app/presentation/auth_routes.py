@@ -51,7 +51,6 @@ def create_token(user, token_type='access', resource_id=None):
         'email': user.email,
         'role': user.role,
         'permissions': permissions,
-        'company_id': str(user.company_id.id),
         'exp': expires,
         'iat': now,
         'type': token_type,
@@ -229,7 +228,6 @@ class Login(Resource):
                         'email': user.email,
                         'role': user.role,
                         'permissions': [p.name for p in user.permissions] if user.permissions else [],
-                        'company_id': str(user.company_id.id)
                     }
                 }, 200
 

@@ -43,19 +43,6 @@ class Permission(BaseDocument):
         })
         return base_dict
 
-
-class Company(BaseDocument):
-    name = StringField(required=True, max_length=100, unique=True)
-    meta = {'collection': 'companies'}
-
-    def to_dict(self):
-        base_dict = super(Company, self).to_dict()
-        base_dict.update({
-            'name': self.name
-        })
-        return base_dict
-
-
 class User(BaseDocument):
     name = StringField(required=True, max_length=100)
     document = StringField(required=True, unique=True, max_length=25)
@@ -69,7 +56,6 @@ class User(BaseDocument):
     visible = BooleanField(default=True)  # Campo para exclusão lógica
     password_changed = BooleanField(default=False)  # Indica se o usuário já trocou a senha inicial
     permissions = ListField(ReferenceField(Permission))
-    company_id = ReferenceField('Company', required=True)
     meta = {'collection': 'users'}
 
     def set_password(self, password):
@@ -96,47 +82,6 @@ class User(BaseDocument):
             'phone': self.phone,
             'role': self.role,
             'status': self.status,
-            'permissions': [p.to_dict() for p in self.permissions] if self.permissions else [],
-            'company_id': str(self.company_id.id) if self.company_id else None
-        })
-        return base_dict
-
-
-class Document(BaseDocument):
-    name = StringField(required=True, max_length=100)
-    titulo = StringField(required=True, max_length=200)
-    url = StringField(required=True)
-    user_id = ReferenceField(User, required=False)
-    status = StringField(required=True, choices=['active', 'inactive'], default='active')
-    visible = BooleanField(default=True)
-    meta = {
-        'collection': 'documents',
-        'indexes': [
-            {'fields': ['titulo']},  # For text search
-            {'fields': ['name']}     # For text search
-        ]
-    }
-
-    def to_dict(self):
-        base_dict = super(Document, self).to_dict()
-        user_details = {
-            'user_id': str(self.user_id.id),
-            'user_name': self.user_id.name,
-            'user_matricula': self.user_id.matricula,
-            'user_cpf': self.user_id.cpf
-        } if self.user_id else {
-            'user_id': None,
-            'user_name': None,
-            'user_matricula': None,
-            'user_cpf': None
-        }
-
-        base_dict.update({
-            'name': self.name,
-            'titulo': self.titulo,
-            'url': self.url,
-            **user_details,
-            'status': self.status,
-            'visible': self.visible,
+            'permissions': [p.to_dict() for p in self.permissions] if self.permissions else []
         })
         return base_dict

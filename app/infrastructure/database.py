@@ -1,13 +1,10 @@
-from mongoengine import connect, Document, StringField, DateTimeField, ReferenceField, IntField
+from mongoengine import connect
 import logging
 from pymongo.errors import ServerSelectionTimeoutError, ConnectionFailure
 import time
 from config import Config
 
-
-
 logger = logging.getLogger(__name__)
-
 
 # Initialize MongoDB connection at module level
 try:

@@ -43,13 +43,23 @@ class Permission(BaseDocument):
         })
         return base_dict
 
+    class Company(BaseDocument):
     name = StringField(required=True, max_length=100, unique=True)
     meta = {'collection': 'companies'}
+
+    def to_dict(self):
+        base_dict = super(Company, self).to_dict()
+        base_dict.update({
+            'name': self.name
+        })
+        return base_dict
 
 
 class User(BaseDocument):
     name = StringField(required=True, max_length=100)
     document = StringField(required=True, unique=True, max_length=25)
+    matricula = StringField(unique=True, max_length=20)
+    cpf = StringField(required=True, unique=True, max_length=11)
     email = StringField(required=True, unique=True, max_length=120)
     phone = StringField(max_length=15)
     password_hash = StringField(required=True, max_length=256)
@@ -58,6 +68,7 @@ class User(BaseDocument):
     visible = BooleanField(default=True)  # Campo para exclusão lógica
     password_changed = BooleanField(default=False)  # Indica se o usuário já trocou a senha inicial
     permissions = ListField(ReferenceField(Permission))
+    company_id = ReferenceField('Company', required=True)
     meta = {'collection': 'users'}
 
     def set_password(self, password):
@@ -77,6 +88,9 @@ class User(BaseDocument):
         base_dict = super(User, self).to_dict()
         base_dict.update({
             'name': self.name,
+            'document': self.document,
+            'matricula': self.matricula,
+            'cpf': self.cpf,
             'email': self.email,
             'phone': self.phone,
             'role': self.role,
@@ -87,9 +101,11 @@ class User(BaseDocument):
         return base_dict
 
 
+    class Document(BaseDocument):
     name = StringField(required=True, max_length=100)
     titulo = StringField(required=True, max_length=200)
     url = StringField(required=True)
+    user_id = ReferenceField(User, required=False)
     status = StringField(required=True, choices=['active', 'inactive'], default='active')
     visible = BooleanField(default=True)
     meta = {

@@ -44,8 +44,9 @@ class Permission(BaseDocument):
         return base_dict
 
     class Company(BaseDocument):
-    name = StringField(required=True, max_length=100, unique=True)
-    meta = {'collection': 'companies'}
+        
+        name = StringField(required=True, max_length=100, unique=True)
+        
 
     def to_dict(self):
         base_dict = super(Company, self).to_dict()

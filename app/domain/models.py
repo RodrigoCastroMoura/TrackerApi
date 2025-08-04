@@ -43,10 +43,10 @@ class Permission(BaseDocument):
         })
         return base_dict
 
-    class Company(BaseDocument):
-        
-        name = StringField(required=True, max_length=100, unique=True)
-        
+
+class Company(BaseDocument):
+    name = StringField(required=True, max_length=100, unique=True)
+    meta = {'collection': 'companies'}
 
     def to_dict(self):
         base_dict = super(Company, self).to_dict()
@@ -102,7 +102,7 @@ class User(BaseDocument):
         return base_dict
 
 
-    class Document(BaseDocument):
+class Document(BaseDocument):
     name = StringField(required=True, max_length=100)
     titulo = StringField(required=True, max_length=200)
     url = StringField(required=True)

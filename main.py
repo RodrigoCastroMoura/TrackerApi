@@ -5,9 +5,10 @@ from flask_limiter.util import get_remote_address
 from app.infrastructure.database import init_app
 from app.presentation.auth_routes import api as auth_ns, limiter
 from app.presentation.user_routes import api as user_ns
-from app.presentation.admin_routes import api as admin_ns
 from app.presentation.permission_routes import api as permission_ns
 from app.presentation.link_token_routes import api as link_token_ns
+from app.presentation.vehicle_routes import api as vehicle_ns
+from app.presentation.customer_routes import api as customer_ns
 from app.domain.models import User, Permission
 from config import Config
 import os
@@ -53,13 +54,8 @@ def create_default_permissions():
     try:
         # Define resources
         resources = {
-            'document': 'Document',
-            'category': 'Category',
-            'department': 'Department',
-            'user': 'User',
-            'company': 'Company',
-            'documentType': 'DocumentType',
-            'admin': 'Admin'
+            'vehicle': 'Vehicle',
+            'user': 'User'
         }
 
         # Define simplified actions
@@ -149,7 +145,8 @@ def create_app():
         api.add_namespace(auth_ns, path='/api/auth')
         api.add_namespace(user_ns, path='/api/users')
         api.add_namespace(permission_ns, path='/api/permissions')
-        api.add_namespace(admin_ns, path='/api/admin')
+        api.add_namespace(vehicle_ns, path='/api/vehicles')
+        api.add_namespace(customer_ns, path='/api/customers')
         api.add_namespace(link_token_ns, path='/api/links')
 
         return app

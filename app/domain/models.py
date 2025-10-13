@@ -2,6 +2,7 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from mongoengine import *
 from bson.objectid import ObjectId
+from typing import Optional
 
 class BaseDocument(Document):
     meta = {'abstract': True}
@@ -47,7 +48,6 @@ class User(BaseDocument):
     name = StringField(required=True, max_length=100)
     document = StringField(required=True, unique=True, max_length=25)
     matricula = StringField(unique=True, max_length=20)
-    cpf = StringField(required=True, unique=True, max_length=11)
     email = StringField(required=True, unique=True, max_length=120)
     phone = StringField(max_length=15)
     password_hash = StringField(required=True, max_length=256)
@@ -85,3 +85,150 @@ class User(BaseDocument):
             'permissions': [p.to_dict() for p in self.permissions] if self.permissions else []
         })
         return base_dict
+
+class Vehicle(BaseDocument):
+    """Vehicle information model - estrutura conforme solicitado"""
+    # Campo obrigatório
+    IMEI = StringField(required=True, max_length=50)
+    dsplaca = StringField(max_length=10)  # Placa do veículo
+    dsmodelo = StringField(max_length=100)  # Modelo do veículo
+    dsmarca = StringField(max_length=100)  # Marca do veículo
+    ano = IntField()  # Ano do veículo
+    comandobloqueo = BooleanField(default=None)  # True = bloquear, False = desbloquear, None = sem comando
+    bloqueado = BooleanField(default=False)  # Status atual de bloqueio
+    comandotrocarip = BooleanField(default=None)  # True = comando para trocar IP pendente
+    ignicao = BooleanField(default=False)  # Status da ignição
+    bateriavoltagem = FloatField()  # Voltagem atual da bateria
+    bateriabaixa = BooleanField(default=False)  # True se bateria estiver baixa
+    ultimoalertabateria = DateTimeField()  # Timestamp do último alerta
+    status = StringField(choices=['active', 'inactive'], default='active')
+    visible = BooleanField(default=True)  # Campo para exclusão lógica
+
+    meta = {
+        'collection': 'vehicles',
+        'indexes': [
+            # Use explicit names to avoid conflicts
+            {'fields': ['IMEI'], 'unique': True, 'name': 'idx_vehicle_imei_unique'},
+            {'fields': ['dsplaca'], 'unique': True, 'name': 'idx_vehicle_placa_unique', 'sparse': True},
+        ]
+    }
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        base_dict = super(Vehicle, self).to_dict()
+
+        base_dict.update({
+            'IMEI': self.IMEI,
+            'dsplaca': self.dsplaca,
+            'dsmodelo': self.dsmodelo,
+            'ano': self.ano,
+            'dsmarca': self.dsmarca,
+            'comandobloqueo': self.comandobloqueo,
+            'bloqueado': self.bloqueado,
+            'comandotrocarip': self.comandotrocarip,
+            'ignicao': self.ignicao,
+            'bateriavoltagem': self.bateriavoltagem,
+            'bateriabaixa': self.bateriabaixa,
+            'ultimoalertabateria': self.ultimoalertabateria.isoformat() if self.ultimoalertabateria else None,
+            'status': self.status,
+            'visible': self.visible
+        })
+        return base_dict
+    
+class VehicleData(BaseDocument):
+    """Vehicle tracking data model - apenas dados de localização"""
+
+    imei = StringField(required=True, max_length=50)
+    longitude = StringField(max_length=20)  # Mantido como string conforme original
+    latitude = StringField(max_length=20)   # Mantido como string conforme original
+    altitude = StringField(max_length=20)   # Mantido como string conforme original
+    timestamp = DateTimeField()  # Data do servidor
+    deviceTimestamp = DateTimeField()  # Data do dispositivo convertida para datetime
+    mensagem_raw = StringField()  # Mensagem original recebida
+    
+    meta = {
+        'collection': 'vehicle_data',
+        'indexes': [
+          
+            'timestamp',
+            'deviceTimestamp',  # Índice composto para consultas eficientes
+        ]
+    }
+
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        base_dict = super(VehicleData, self).to_dict()
+        base_dict.update({
+            'imei': self.imei,
+            'longitude': self.longitude,
+            'latitude': self.latitude,
+            'altitude': self.altitude,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+            'deviceTimestamp': self.deviceTimestamp.isoformat() if self.deviceTimestamp else None,
+            'mensagem_raw': self.mensagem_raw,
+        })
+        return base_dict
+
+class Customer(BaseDocument):
+    # Dados básicos
+    name = StringField(required=True)
+    email = StringField(required=True, unique=True)
+    cpf = StringField(required=True, unique=True)
+    phone = StringField(required=True)
+    birth_date = StringField(required=True)  # DD/MM/AAAA
+    
+    # Endereço
+    street = StringField(required=True)
+    number = StringField(required=True)
+    complement = StringField()
+    district = StringField(required=True)
+    city = StringField(required=True)
+    state = StringField(required=True)  # SP, RJ, etc.
+    postal_code = StringField(required=True)
+    
+    # Configurações de pagamento
+    monthly_amount = FloatField(default=29.90)
+    auto_debit = BooleanField(default=False)
+    
+    # Dados do cartão (se cadastrado)
+    card_token = StringField()  # Token do PagSeguro
+    card_brand = StringField()
+    card_last_digits = StringField()
+    
+    # Status
+    status = StringField(choices=['active', 'inactive'], default='active')
+    visible = BooleanField(default=True)
+    
+    meta = {
+        'collection': 'customers',
+        'indexes': [
+            {'fields': ['email'], 'unique': True},
+            {'fields': ['cpf'], 'unique': True},
+        ]
+    }
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        base_dict = super(Customer, self).to_dict()
+        base_dict.update({
+            'name': self.name,
+            'email': self.email,
+            'cpf': self.cpf,
+            'phone': self.phone,
+            'birth_date': self.birth_date,
+            'street': self.street,
+            'number': self.number,
+            'complement': self.complement,
+            'district': self.district,
+            'city': self.city,
+            'state': self.state,
+            'postal_code': self.postal_code,
+            'monthly_amount': self.monthly_amount,
+            'auto_debit': self.auto_debit,
+            'card_brand': self.card_brand,
+            'card_last_digits': self.card_last_digits,
+            'status': self.status,
+            'visible': self.visible
+        })
+        return base_dict
+   

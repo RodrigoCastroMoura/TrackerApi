@@ -158,10 +158,6 @@ def token_required(f):
                     logger.warning(f"Inactive user attempted to access: {current_user.email}")
                     return {'message': 'Usuário inativo', 'error': 'inactive_user'}, 401
 
-                if str(current_user.company_id.id) != data['company_id']:
-                    logger.warning("Token company_id mismatch with current user")
-                    return {'message': 'Token inválido', 'error': 'company_mismatch'}, 401
-
                 if current_user.email != data['email']:
                     logger.warning("Token email mismatch with current user")
                     return {'message': 'Token inválido', 'error': 'email_mismatch'}, 401
@@ -205,7 +201,7 @@ class Login(Resource):
 
             user = User.objects(email=identifier).first()
             if not user:
-                user = User.objects(cpf=identifier).first()
+                user = User.objects(document=identifier).first()
 
             if user and user.check_password(password):
                 # Check if user is active

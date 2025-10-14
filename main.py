@@ -2,6 +2,7 @@ from flask import Flask
 from flask_restx import Api
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from flask_cors import CORS
 from app.infrastructure.database import init_app
 from app.presentation.auth_routes import api as auth_ns, limiter
 from app.presentation.user_routes import api as user_ns
@@ -110,6 +111,14 @@ def create_app():
             logger.error("Failed to verify MongoDB connection")
             return None
 
+        # Initialize CORS
+        CORS(app, 
+             origins=Config.CORS_ORIGINS,
+             supports_credentials=True,
+             allow_headers=['Content-Type', 'Authorization'],
+             methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'])
+        logger.info(f"CORS enabled for origins: {Config.CORS_ORIGINS}")
+
         # Initialize database
         init_app(app)
 
@@ -138,8 +147,13 @@ def create_app():
                   authorizations=authorizations,
                   security='Bearer Auth')
 
-        # Initialize limiter
+        # Initialize limiter with storage URL from config
         limiter.init_app(app)
+        if Config.RATELIMIT_STORAGE_URL.startswith('memory://'):
+            logger.warning("⚠️  Rate limiting using in-memory storage - not recommended for production!")
+            logger.warning("   Set RATELIMIT_STORAGE_URL environment variable to use Redis/Memcached")
+        else:
+            logger.info(f"Rate limiting configured with: {Config.RATELIMIT_STORAGE_URL}")
 
         # Add namespaces
         api.add_namespace(auth_ns, path='/api/auth')

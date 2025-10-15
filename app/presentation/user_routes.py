@@ -89,7 +89,9 @@ user_update_model = api.model(
         'password':
         fields.String(description='User password (optional for updates)'),
         'role':
-        fields.String(description='User role', enum=['admin', 'user'])
+        fields.String(description='User role', enum=['admin', 'user']),
+        'permissions':
+        fields.List(fields.String, description='List of permission IDs to assign to user')
     })
 
 status_toggle_model = api.model(

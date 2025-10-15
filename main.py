@@ -11,7 +11,6 @@ from app.presentation.link_token_routes import api as link_token_ns
 from app.presentation.vehicle_routes import api as vehicle_ns
 from app.presentation.customer_routes import api as customer_ns
 from app.presentation.tracking_routes import api as tracking_ns
-from app.presentation.alert_routes import api as alert_ns
 from app.presentation.report_routes import api as report_ns
 from app.domain.models import User, Permission
 from config import Config
@@ -166,7 +165,6 @@ def create_app():
         api.add_namespace(customer_ns, path='/api/customers')
         api.add_namespace(link_token_ns, path='/api/links')
         api.add_namespace(tracking_ns, path='/api/tracking')
-        api.add_namespace(alert_ns, path='/api/alerts')
         api.add_namespace(report_ns, path='/api/reports')
 
         return app

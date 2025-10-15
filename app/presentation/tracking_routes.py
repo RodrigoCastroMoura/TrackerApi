@@ -151,7 +151,7 @@ class VehicleTrackingList(Resource):
             result_vehicles = []
             for vehicle in vehicles:
                 # Get last location from VehicleData
-                last_location = VehicleData.objects(imei=vehicle.IMEI).order_by('-deviceTimestamp').first()
+                last_location = VehicleData.objects(imei=vehicle.IMEI).order_by('-timestamp').first()
                 
                 vehicle_data = {
                     'id': str(vehicle.id),

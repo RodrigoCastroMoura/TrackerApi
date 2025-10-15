@@ -167,7 +167,10 @@ class UserList(Resource):
                 logger.warning("Invalid pagination parameters provided")
                 return {'message': 'Parâmetros de paginação inválidos'}, 400
 
+            # Build query with multi-tenant isolation
             query = { 'role': 'user', 'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
 
             email = request.args.get('email')
             if email:
@@ -316,13 +319,12 @@ class UserResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do usuário inválido'}, 400
 
-            user = User.objects.get(id=id, role='user')
-
-            if current_user.role != 'admin' and str(
-                    current_user.company_id.id) != str(user.company_id.id):
-                return {
-                    'message': 'Não autorizado a acessar este usuário'
-                }, 403
+            # Build query with multi-tenant isolation
+            query = {'id': id, 'role': 'user'}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
+            
+            user = User.objects.get(**query)
 
             return user.to_dict(), 200
 
@@ -356,13 +358,12 @@ class UserResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do usuário inválido'}, 400
 
-            user = User.objects.get(id=id, role='user')
-
-            if current_user.role != 'admin' and str(
-                    current_user.company_id.id) != str(user.company_id.id):
-                return {
-                    'message': 'Não autorizado a atualizar este usuário'
-                }, 403
+            # Build query with multi-tenant isolation
+            query = {'id': id, 'role': 'user'}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
+            
+            user = User.objects.get(**query)
 
             data = request.get_json()
             if not data:

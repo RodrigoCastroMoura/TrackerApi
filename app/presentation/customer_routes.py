@@ -117,8 +117,10 @@ class CustomerList(Resource):
             page = max(1, int(request.args.get('page', 1)))
             per_page = max(1, min(100, int(request.args.get('per_page', 10))))
             
-            # Build query
+            # Build query with multi-tenant isolation (admins can see all companies)
             query = {'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
             
             # Filters
             if request.args.get('email'):
@@ -250,7 +252,12 @@ class CustomerResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do cliente inválido'}, 400
             
-            customer = Customer.objects.get(id=id, visible=True)
+            # Build query with multi-tenant isolation (admins can see all companies)
+            query = {'id': id, 'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
+            
+            customer = Customer.objects.get(**query)
             return customer.to_dict(), 200
             
         except DoesNotExist:
@@ -269,7 +276,12 @@ class CustomerResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do cliente inválido'}, 400
             
-            customer = Customer.objects.get(id=id, visible=True)
+            # Build query with multi-tenant isolation (admins can see all companies)
+            query = {'id': id, 'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
+            
+            customer = Customer.objects.get(**query)
             data = request.get_json()
             
             # Update fields

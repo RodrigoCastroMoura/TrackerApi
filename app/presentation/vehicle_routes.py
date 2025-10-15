@@ -81,8 +81,8 @@ class VehicleList(Resource):
             page = max(1, int(request.args.get('page', 1)))
             per_page = max(1, min(100, int(request.args.get('per_page', 10))))
             
-            # Build query
-            query = {'visible': True}
+            # Build query - filter by company (multi-tenancy)
+            query = {'visible': True, 'company_id': current_user.company_id}
             
             # Filters
             if request.args.get('placa'):
@@ -138,6 +138,22 @@ class VehicleList(Resource):
                     return {'message': 'Formato de placa inválido'}, 400
                 data['dsplaca'] = placa
             
+            # Validate customer_id belongs to the same company (multi-tenancy security)
+            customer = None
+            if data.get('customer_id'):
+                if not ObjectId.is_valid(data['customer_id']):
+                    return {'message': 'customer_id inválido'}, 400
+                
+                from app.domain.models import Customer
+                try:
+                    customer = Customer.objects.get(
+                        id=data['customer_id'],
+                        company_id=current_user.company_id,
+                        visible=True
+                    )
+                except DoesNotExist:
+                    return {'message': 'Cliente não encontrado ou não pertence à sua empresa'}, 403
+            
             try:
                 vehicle = Vehicle(
                     IMEI=data['IMEI'],
@@ -145,6 +161,8 @@ class VehicleList(Resource):
                     dsmodelo=data.get('dsmodelo'),
                     dsmarca=data.get('dsmarca'),
                     ano=data.get('ano'),
+                    company_id=current_user.company_id,  # Multi-tenancy
+                    customer_id=customer,
                     created_by=current_user,
                     updated_by=current_user
                 )
@@ -185,7 +203,7 @@ class VehicleResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True)
+            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             return vehicle.to_dict(), 200
             
         except DoesNotExist:
@@ -204,8 +222,24 @@ class VehicleResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True)
+            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             data = request.get_json()
+            
+            # Validate customer_id belongs to the same company (multi-tenancy security)
+            if 'customer_id' in data and data['customer_id']:
+                if not ObjectId.is_valid(data['customer_id']):
+                    return {'message': 'customer_id inválido'}, 400
+                
+                from app.domain.models import Customer
+                try:
+                    customer = Customer.objects.get(
+                        id=data['customer_id'],
+                        company_id=current_user.company_id,
+                        visible=True
+                    )
+                    vehicle.customer_id = customer
+                except DoesNotExist:
+                    return {'message': 'Cliente não encontrado ou não pertence à sua empresa'}, 403
             
             # Update fields
             if 'dsplaca' in data:
@@ -252,7 +286,7 @@ class VehicleResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True)
+            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             vehicle.visible = False
             vehicle.status = 'inactive'
             vehicle.updated_by = current_user
@@ -280,7 +314,7 @@ class VehicleBlock(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, status='active')
+            vehicle = Vehicle.objects.get(id=id, visible=True, status='active', company_id=current_user.company_id)
             data = request.get_json()
             
             if 'comando' not in data:
@@ -329,7 +363,7 @@ class VehicleLocation(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True)
+            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             
             # Build query for vehicle data
             query = {'imei': vehicle.IMEI}
@@ -373,7 +407,7 @@ class VehicleByIMEI(Resource):
     def get(self, current_user, imei):
         """Buscar veículo por IMEI"""
         try:
-            vehicle = Vehicle.objects.get(IMEI=imei, visible=True)
+            vehicle = Vehicle.objects.get(IMEI=imei, visible=True, company_id=current_user.company_id)
             return vehicle.to_dict(), 200
             
         except DoesNotExist:

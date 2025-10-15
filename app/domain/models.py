@@ -27,6 +27,34 @@ class BaseDocument(Document):
             'updated_by': str(self.updated_by.id) if self.updated_by else None
         }
 
+class Company(BaseDocument):
+    """Company model for multi-tenancy"""
+    name = StringField(required=True, max_length=200)
+    cnpj = StringField(unique=True, max_length=18)  # CNPJ da empresa
+    email = StringField(max_length=120)
+    phone = StringField(max_length=15)
+    status = StringField(choices=['active', 'inactive'], default='active')
+    visible = BooleanField(default=True)
+    
+    meta = {
+        'collection': 'companies',
+        'indexes': [
+            {'fields': ['cnpj'], 'unique': True, 'sparse': True},
+        ]
+    }
+    
+    def to_dict(self):
+        base_dict = super(Company, self).to_dict()
+        base_dict.update({
+            'name': self.name,
+            'cnpj': self.cnpj,
+            'email': self.email,
+            'phone': self.phone,
+            'status': self.status,
+            'visible': self.visible
+        })
+        return base_dict
+
 class Permission(BaseDocument):
     name = StringField(required=True, unique=True)
     description = StringField(required=True)
@@ -48,10 +76,12 @@ class User(BaseDocument):
     name = StringField(required=True, max_length=100)
     document = StringField(required=True, unique=True, max_length=25)
     matricula = StringField(unique=True, max_length=20)
+    cpf = StringField(max_length=14)  # CPF do usuário
     email = StringField(required=True, unique=True, max_length=120)
     phone = StringField(max_length=15)
     password_hash = StringField(required=True, max_length=256)
     role = StringField(required=True, choices=['admin', 'user'])
+    company_id = ReferenceField('Company', required=True)  # Multi-tenancy
     status = StringField(required=True, choices=['active', 'inactive'], default='active')
     visible = BooleanField(default=True)  # Campo para exclusão lógica
     password_changed = BooleanField(default=False)  # Indica se o usuário já trocou a senha inicial
@@ -81,6 +111,7 @@ class User(BaseDocument):
             'email': self.email,
             'phone': self.phone,
             'role': self.role,
+            'company_id': str(self.company_id.id) if self.company_id else None,
             'status': self.status,
             'permissions': [p.to_dict() for p in self.permissions] if self.permissions else []
         })
@@ -94,6 +125,8 @@ class Vehicle(BaseDocument):
     dsmodelo = StringField(max_length=100)  # Modelo do veículo
     dsmarca = StringField(max_length=100)  # Marca do veículo
     ano = IntField()  # Ano do veículo
+    customer_id = ReferenceField('Customer')  # Cliente associado ao veículo
+    company_id = ReferenceField('Company', required=True)  # Multi-tenancy
     comandobloqueo = BooleanField(default=None)  # True = bloquear, False = desbloquear, None = sem comando
     bloqueado = BooleanField(default=False)  # Status atual de bloqueio
     comandotrocarip = BooleanField(default=None)  # True = comando para trocar IP pendente
@@ -123,6 +156,8 @@ class Vehicle(BaseDocument):
             'dsmodelo': self.dsmodelo,
             'ano': self.ano,
             'dsmarca': self.dsmarca,
+            'customer_id': str(self.customer_id.id) if self.customer_id else None,
+            'company_id': str(self.company_id.id) if self.company_id else None,
             'comandobloqueo': self.comandobloqueo,
             'bloqueado': self.bloqueado,
             'comandotrocarip': self.comandotrocarip,
@@ -176,6 +211,7 @@ class Customer(BaseDocument):
     cpf = StringField(required=True, unique=True)
     phone = StringField(required=True)
     birth_date = StringField(required=True)  # DD/MM/AAAA
+    company_id = ReferenceField('Company', required=True)  # Multi-tenancy
     
     # Endereço
     street = StringField(required=True)
@@ -216,6 +252,7 @@ class Customer(BaseDocument):
             'cpf': self.cpf,
             'phone': self.phone,
             'birth_date': self.birth_date,
+            'company_id': str(self.company_id.id) if self.company_id else None,
             'street': self.street,
             'number': self.number,
             'complement': self.complement,
@@ -231,4 +268,46 @@ class Customer(BaseDocument):
             'visible': self.visible
         })
         return base_dict
-   
+
+class Alert(BaseDocument):
+    """Alert model for vehicle tracking alerts"""
+    vehicle_id = ReferenceField('Vehicle', required=True)
+    company_id = ReferenceField('Company', required=True)  # Multi-tenancy
+    type = StringField(required=True, choices=[
+        'speed_limit',     # Excesso de velocidade
+        'geofence',        # Cerca eletrônica
+        'ignition',        # Ignição ligada/desligada
+        'low_battery',     # Bateria baixa do rastreador
+        'offline',         # Rastreador offline
+        'panic_button'     # Botão de pânico
+    ])
+    condition = DictField()  # Configuração da condição (ex: {"max_speed": 80})
+    actions = ListField(StringField(choices=['email', 'sms', 'notification']))
+    recipients = ListField(StringField())  # Lista de emails ou telefones
+    active = BooleanField(default=True)
+    visible = BooleanField(default=True)
+    
+    meta = {
+        'collection': 'alerts',
+        'indexes': [
+            'vehicle_id',
+            'company_id',
+            'type'
+        ]
+    }
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        base_dict = super(Alert, self).to_dict()
+        base_dict.update({
+            'vehicle_id': str(self.vehicle_id.id) if self.vehicle_id else None,
+            'vehicle_plate': self.vehicle_id.dsplaca if self.vehicle_id else None,
+            'company_id': str(self.company_id.id) if self.company_id else None,
+            'type': self.type,
+            'condition': self.condition,
+            'actions': self.actions,
+            'recipients': self.recipients,
+            'active': self.active,
+            'visible': self.visible
+        })
+        return base_dict

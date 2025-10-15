@@ -1,10 +1,17 @@
-# DocSmart API
+# Sistema de Rastreamento Veicular - API
 
 ## Overview
 
-DocSmart is a document management REST API built with Flask that implements Clean Architecture principles. The system provides user authentication, company/department organization, document categorization, and Firebase-based document storage with role-based access control.
+Sistema completo de rastreamento veicular multi-tenant construído com Flask que implementa princípios de Clean Architecture. O sistema fornece autenticação de usuários, gestão multi-empresa (multi-tenancy), rastreamento GPS em tempo real, alertas configuráveis e relatórios detalhados com controle de acesso baseado em funções.
 
-The application follows a layered architecture with clear separation between domain models, application services, infrastructure concerns, and presentation (API routes). It uses MongoDB for data persistence and Firebase Cloud Storage for file storage.
+A aplicação segue uma arquitetura em camadas com clara separação entre modelos de domínio, serviços de aplicação, infraestrutura e apresentação (rotas API). Utiliza MongoDB para persistência de dados e Firebase Cloud Storage para armazenamento de arquivos.
+
+### Multi-Tenancy
+O sistema implementa isolamento de dados por empresa (company_id):
+- Cada usuário pertence a uma empresa
+- Veículos e clientes são segregados por empresa
+- Alertas e relatórios respeitam o isolamento por empresa
+- Técnicos (usuários com role='user') têm acesso apenas aos dados de sua empresa
 
 ## User Preferences
 
@@ -43,8 +50,10 @@ Preferred communication style: Simple, everyday language.
   - Automatic retry for writes and reads
 - **Data Models**: 
   - BaseDocument abstract class with audit fields (created_at, created_by, updated_at, updated_by)
-  - User, Permission, Customer, Vehicle models
+  - Company, User, Permission, Customer, Vehicle, Alert models
+  - VehicleData: Dados de localização GPS e telemetria
   - Token management models (TokenBlacklist, UsedLinkToken)
+- **Multi-Tenancy**: Isolamento de dados por company_id em todos os recursos principais
 - **Indexing**: Automatic index creation with TTL indexes for token expiration
 
 ### File Storage
@@ -62,15 +71,17 @@ Preferred communication style: Simple, everyday language.
 ### Domain Models
 
 **Core Entities**:
-- **User**: Authentication, roles, permissions, company association, signature/rubric storage
-- **Permission**: Resource-type and action-type based authorization
-- **Customer**: Customer management with address, CPF, email validation
-- **Vehicle**: GPS tracking data with IMEI-based identification, lock/unlock commands
+- **Company**: Empresa para multi-tenancy (CNPJ, nome, contato)
+- **User**: Autenticação, roles (admin/user como técnico), permissions, company association
+- **Permission**: Autorização baseada em resource-type e action-type (read/write/update/delete)
+- **Customer**: Gestão de clientes com endereço, CPF, validação de email, company association
+- **Vehicle**: Rastreamento GPS com identificação por IMEI, comandos de bloqueio/desbloqueio, company association
+- **Alert**: Sistema de alertas configuráveis por veículo (velocidade, cerca eletrônica, ignição, bateria, offline, pânico)
 
 **Supporting Models**:
-- **TokenBlacklist**: Revoked JWT tokens with TTL expiration
-- **UsedLinkToken**: Single-use link tokens for email actions
-- **VehicleData**: GPS positioning and telemetry data
+- **TokenBlacklist**: JWT tokens revogados com expiração TTL
+- **UsedLinkToken**: Tokens de link de uso único para ações por email
+- **VehicleData**: Dados de posicionamento GPS e telemetria (latitude, longitude, altitude, timestamps)
 
 ### Security & Production Readiness
 
@@ -92,18 +103,42 @@ Preferred communication style: Simple, everyday language.
 ### API Structure
 
 **Main Endpoints**:
-- `/api/auth` - Authentication (login, logout, token refresh)
-- `/api/users` - User management (CRUD with permission checks)
-- `/api/permissions` - Permission management (admin only)
-- `/api/links` - Link token validation and processing
-- `/api/customers` - Customer management
-- `/api/vehicles` - Vehicle tracking and management
+- `/api/auth` - Autenticação (login, logout, refresh token, recuperação de senha)
+- `/api/users` - Gestão de usuários/técnicos (CRUD com verificação de permissões)
+- `/api/permissions` - Gestão de permissões (admin only)
+- `/api/links` - Validação e processamento de tokens de link
+- `/api/customers` - Gestão de clientes (multi-tenant)
+- `/api/vehicles` - Gestão de veículos (multi-tenant com comandos de bloqueio)
+
+**Novos Endpoints de Rastreamento**:
+- `/api/tracking/vehicles` - Lista veículos com última localização conhecida para mapa
+- `/api/tracking/vehicles/:id/location` - Localização atual de veículo específico
+- `/api/tracking/vehicles/:id/history` - Histórico de localizações com filtros de data
+- `/api/tracking/vehicles/:id/route` - Rota/trajeto otimizado para desenhar no mapa
+
+**Endpoints de Alertas**:
+- `/api/alerts` - CRUD completo de alertas
+  - GET: Lista alertas da empresa
+  - POST: Cria novo alerta
+  - PUT /:id: Atualiza alerta
+  - DELETE /:id: Remove alerta (soft delete)
+  - POST /:id/toggle: Ativa/desativa alerta
+- **Tipos de Alerta**: speed_limit, geofence, ignition, low_battery, offline, panic_button
+
+**Endpoints de Relatórios**:
+- `/api/reports/vehicles/:id` - Relatório detalhado de uso do veículo
+  - Query params: start_date, end_date, type (summary/detailed/stops/trips)
+  - Retorna: distância total, tempo, velocidades, viagens, paradas
+- `/api/reports/summary` - Resumo consolidado de todos veículos da empresa
 
 **API Features**:
 - Decorator-based authentication (`@token_required`)
 - Decorator-based authorization (`@require_permission`)
+- Multi-tenancy enforcement automático por company_id
 - Consistent error handling and logging
-- Input validation with regex patterns (email, CPF, CEP, etc.)
+- Input validation with regex patterns (email, CPF, CEP, placas, etc.)
+- Paginação em endpoints de listagem
+- Filtros por status, cliente, período de tempo
 
 ### Configuration Management
 - Environment-based configuration via `config.py`

@@ -76,6 +76,26 @@ user_model = api.model(
                       description='User ID who last updated this user')
     })
 
+user_create_model = api.model(
+    'UserCreate', {
+        'name':
+        fields.String(required=True, description='User full name'),
+        'matricula':
+        fields.String(description='User matricula (unique)'),
+        'email':
+        fields.String(required=True, description='User email address (unique)'),
+        'cpf':
+        fields.String(required=True, description='User CPF (unique, 11 digits)'),
+        'phone':
+        fields.String(description='User phone number'),
+        'password':
+        fields.String(required=True, description='User password'),
+        'role':
+        fields.String(required=True, description='User role', enum=['admin', 'user']),
+        'permissions':
+        fields.List(fields.String, description='List of permission IDs to assign to user')
+    })
+
 user_update_model = api.model(
     'UserUpdate', {
         'name':
@@ -222,7 +242,7 @@ class UserList(Resource):
                  409: 'Email ou CPF já cadastrado',
                  500: 'Erro interno do servidor'
              })
-    @api.expect(user_model)
+    @api.expect(user_create_model)
     @token_required
     @require_permission('user', 'write')
     def post(self, current_user):

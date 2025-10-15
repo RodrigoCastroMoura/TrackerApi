@@ -34,19 +34,23 @@ name = "DocSmart API"
 author = "agent"
 
 [workflows.workflow.metadata]
-outputType = "console"
+outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "gunicorn -c gunicorn_config.py wsgi:app"
-waitForPort = 8000
+args = "PORT=5000 gunicorn -c gunicorn_config.py wsgi:app"
+waitForPort = 5000
 
 [[ports]]
 localPort = 8000
 externalPort = 8000
 
 [[ports]]
-localPort = 35719
+localPort = 34727
+externalPort = 80
+
+[[ports]]
+localPort = 5000
 externalPort = 80
 
 [agent]

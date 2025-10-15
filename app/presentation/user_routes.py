@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import User
+from app.domain.models import User, Permission
 from app.presentation.auth_routes import token_required, require_permission
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging
@@ -274,6 +274,20 @@ class UserList(Resource):
                             created_by=current_user,
                             updated_by=current_user)
                 user.set_password(data['password'])
+                
+                # Process permissions if provided
+                if 'permissions' in data and data['permissions']:
+                    permissions = []
+                    for perm_id in data['permissions']:
+                        if not ObjectId.is_valid(perm_id):
+                            return {'message': f'ID de permissão inválido: {perm_id}'}, 400
+                        try:
+                            permission = Permission.objects.get(id=perm_id)
+                            permissions.append(permission)
+                        except DoesNotExist:
+                            return {'message': f'Permissão não encontrada: {perm_id}'}, 404
+                    user.permissions = permissions
+                
                 user.save()
                 return user.to_dict(), 201
 

@@ -259,11 +259,13 @@ class UserList(Resource):
             # Create user
             try:
                 user = User(name=data['name'],
-                            matricula=data['matricula'],
+                            document=data.get('document', data['email'].split('@')[0]),
+                            matricula=data.get('matricula'),
                             email=data['email'].lower(),
                             cpf=cpf,
                             phone=data.get('phone'),
-                            role='user',
+                            role=data['role'],
+                            company_id=current_user.company_id,
                             created_by=current_user,
                             updated_by=current_user)
                 user.set_password(data['password'])

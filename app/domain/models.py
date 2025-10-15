@@ -75,7 +75,7 @@ class Permission(BaseDocument):
 class User(BaseDocument):
     name = StringField(required=True, max_length=100)
     document = StringField(required=True, unique=True, max_length=25)
-    matricula = StringField(unique=True, max_length=20)
+    matricula = StringField(unique=True, max_length=20, sparse=True)
     cpf = StringField(max_length=14)  # CPF do usuário
     email = StringField(required=True, unique=True, max_length=120)
     phone = StringField(max_length=15)

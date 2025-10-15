@@ -218,6 +218,7 @@ class CustomerList(Resource):
                     postal_code=postal_code,
                     monthly_amount=data.get('monthly_amount', 29.90),
                     auto_debit=data.get('auto_debit', False),
+                    company_id=current_user.company_id,
                     created_by=current_user,
                     updated_by=current_user
                 )

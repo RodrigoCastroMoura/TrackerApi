@@ -2,7 +2,7 @@
 
 ## Overview
 
-Sistema completo de rastreamento veicular multi-tenant construído com Flask que implementa princípios de Clean Architecture. O sistema fornece autenticação de usuários, gestão multi-empresa (multi-tenancy), rastreamento GPS em tempo real, alertas configuráveis e relatórios detalhados com controle de acesso baseado em funções.
+Sistema completo de rastreamento veicular multi-tenant construído com Flask que implementa princípios de Clean Architecture. O sistema fornece autenticação de usuários, gestão multi-empresa (multi-tenancy), rastreamento GPS em tempo real e relatórios detalhados com controle de acesso baseado em funções.
 
 A aplicação segue uma arquitetura em camadas com clara separação entre modelos de domínio, serviços de aplicação, infraestrutura e apresentação (rotas API). Utiliza MongoDB para persistência de dados e Firebase Cloud Storage para armazenamento de arquivos.
 
@@ -10,7 +10,7 @@ A aplicação segue uma arquitetura em camadas com clara separação entre model
 O sistema implementa isolamento de dados por empresa (company_id):
 - Cada usuário pertence a uma empresa
 - Veículos e clientes são segregados por empresa
-- Alertas e relatórios respeitam o isolamento por empresa
+- Relatórios respeitam o isolamento por empresa
 - Técnicos (usuários com role='user') têm acesso apenas aos dados de sua empresa
 
 ## User Preferences
@@ -50,7 +50,7 @@ Preferred communication style: Simple, everyday language.
   - Automatic retry for writes and reads
 - **Data Models**: 
   - BaseDocument abstract class with audit fields (created_at, created_by, updated_at, updated_by)
-  - Company, User, Permission, Customer, Vehicle, Alert models
+  - Company, User, Permission, Customer, Vehicle models
   - VehicleData: Dados de localização GPS e telemetria
   - Token management models (TokenBlacklist, UsedLinkToken)
 - **Multi-Tenancy**: Isolamento de dados por company_id em todos os recursos principais
@@ -76,7 +76,6 @@ Preferred communication style: Simple, everyday language.
 - **Permission**: Autorização baseada em resource-type e action-type (read/write/update/delete)
 - **Customer**: Gestão de clientes com endereço, CPF, validação de email, company association
 - **Vehicle**: Rastreamento GPS com identificação por IMEI, comandos de bloqueio/desbloqueio, company association
-- **Alert**: Sistema de alertas configuráveis por veículo (velocidade, cerca eletrônica, ignição, bateria, offline, pânico)
 
 **Supporting Models**:
 - **TokenBlacklist**: JWT tokens revogados com expiração TTL
@@ -110,20 +109,11 @@ Preferred communication style: Simple, everyday language.
 - `/api/customers` - Gestão de clientes (multi-tenant)
 - `/api/vehicles` - Gestão de veículos (multi-tenant com comandos de bloqueio)
 
-**Novos Endpoints de Rastreamento**:
+**Endpoints de Rastreamento**:
 - `/api/tracking/vehicles` - Lista veículos com última localização conhecida para mapa
 - `/api/tracking/vehicles/:id/location` - Localização atual de veículo específico
 - `/api/tracking/vehicles/:id/history` - Histórico de localizações com filtros de data
 - `/api/tracking/vehicles/:id/route` - Rota/trajeto otimizado para desenhar no mapa
-
-**Endpoints de Alertas**:
-- `/api/alerts` - CRUD completo de alertas
-  - GET: Lista alertas da empresa
-  - POST: Cria novo alerta
-  - PUT /:id: Atualiza alerta
-  - DELETE /:id: Remove alerta (soft delete)
-  - POST /:id/toggle: Ativa/desativa alerta
-- **Tipos de Alerta**: speed_limit, geofence, ignition, low_battery, offline, panic_button
 
 **Endpoints de Relatórios**:
 - `/api/reports/vehicles/:id` - Relatório detalhado de uso do veículo

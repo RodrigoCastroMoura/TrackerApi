@@ -145,7 +145,7 @@ def create_app():
         api = Api(app,
                   title='Sistema de Rastreamento Veicular - API',
                   version='2.0',
-                  description='API completa para gerenciamento de rastreamento veicular multi-tenant com alertas e relatórios.',
+                  description='API completa para gerenciamento de rastreamento veicular multi-tenant com relatórios.',
                   authorizations=authorizations,
                   security='Bearer Auth')
 

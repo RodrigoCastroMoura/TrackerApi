@@ -414,6 +414,23 @@ class UserResource(Resource):
             if 'password' in data and data['password']:
                 user.set_password(data['password'])
 
+            # Process permissions if provided
+            if 'permissions' in data:
+                if data['permissions']:
+                    permissions = []
+                    for perm_id in data['permissions']:
+                        if not ObjectId.is_valid(perm_id):
+                            return {'message': f'ID de permissão inválido: {perm_id}'}, 400
+                        try:
+                            permission = Permission.objects.get(id=perm_id)
+                            permissions.append(permission)
+                        except DoesNotExist:
+                            return {'message': f'Permissão não encontrada: {perm_id}'}, 404
+                    user.permissions = permissions
+                else:
+                    # If permissions is an empty list, clear all permissions
+                    user.permissions = []
+
             user.role = 'user'
 
             user.updated_by = current_user

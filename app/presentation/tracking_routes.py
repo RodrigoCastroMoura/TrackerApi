@@ -2,6 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Vehicle, VehicleData, Company
 from app.presentation.auth_routes import token_required, require_permission
+from app.infrastructure.geocoding_service import get_geocoding_service
 from mongoengine.errors import DoesNotExist
 import logging
 from bson.objectid import ObjectId
@@ -147,6 +148,9 @@ class VehicleTrackingList(Resource):
             vehicles = Vehicle.objects(**query).order_by('-created_at').skip(
                 (page - 1) * per_page).limit(per_page)
             
+            # Get geocoding service
+            geocoding = get_geocoding_service()
+            
             # Get last location for each vehicle
             result_vehicles = []
             for vehicle in vehicles:
@@ -164,10 +168,18 @@ class VehicleTrackingList(Resource):
                 }
                 
                 if last_location:
+                    lat = float(last_location.latitude) if last_location.latitude else 0.0
+                    lng = float(last_location.longitude) if last_location.longitude else 0.0
+                    
+                    # Get address from coordinates using Nominatim
+                    address = 'N/A'
+                    if lat != 0.0 and lng != 0.0:
+                        address = geocoding.get_address_or_fallback(lat, lng)
+                    
                     vehicle_data['location'] = {
-                        'lat': float(last_location.latitude) if last_location.latitude else 0.0,
-                        'lng': float(last_location.longitude) if last_location.longitude else 0.0,
-                        'address': 'N/A',  # Would require geocoding service
+                        'lat': lat,
+                        'lng': lng,
+                        'address': address,
                         'speed': 0.0,  # Not stored in current model
                         'heading': 0.0,  # Not stored in current model
                         'timestamp': last_location.deviceTimestamp
@@ -211,13 +223,24 @@ class VehicleCurrentLocation(Resource):
             if not last_location:
                 return {'message': 'Nenhuma localização encontrada para este veículo'}, 404
             
+            # Get geocoding service
+            geocoding = get_geocoding_service()
+            
+            lat = float(last_location.latitude) if last_location.latitude else 0.0
+            lng = float(last_location.longitude) if last_location.longitude else 0.0
+            
+            # Get address from coordinates using Nominatim
+            address = 'N/A'
+            if lat != 0.0 and lng != 0.0:
+                address = geocoding.get_address_or_fallback(lat, lng)
+            
             response = {
                 'vehicle_id': str(vehicle.id),
                 'plate': vehicle.dsplaca or 'N/A',
                 'location': {
-                    'lat': float(last_location.latitude) if last_location.latitude else 0.0,
-                    'lng': float(last_location.longitude) if last_location.longitude else 0.0,
-                    'address': 'N/A',  # Would require geocoding service
+                    'lat': lat,
+                    'lng': lng,
+                    'address': address,
                     'speed': 0.0,
                     'heading': 0.0,
                     'altitude': float(last_location.altitude) if last_location.altitude else 0.0,
@@ -363,6 +386,9 @@ class VehicleRoute(Resource):
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
             
+            # Get geocoding service
+            geocoding = get_geocoding_service()
+            
             # Get location history
             locations_data = VehicleData.objects(
                 imei=vehicle.IMEI,
@@ -385,10 +411,13 @@ class VehicleRoute(Resource):
                     # Detect stops (simplified - same location for > 5 min)
                     if prev_loc and abs(lat - prev_loc[0]) < 0.001 and abs(lng - prev_loc[1]) < 0.001:
                         if prev_time and (loc.deviceTimestamp - prev_time).total_seconds() > 300:
+                            # Get address for the stop location using Nominatim
+                            address = geocoding.get_address_or_fallback(lat, lng)
+                            
                             stops.append({
                                 'lat': lat,
                                 'lng': lng,
-                                'address': 'N/A',
+                                'address': address,
                                 'arrival': prev_time,
                                 'departure': loc.deviceTimestamp,
                                 'duration': int((loc.deviceTimestamp - prev_time).total_seconds())

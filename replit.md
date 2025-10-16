@@ -109,11 +109,11 @@ Preferred communication style: Simple, everyday language.
 - `/api/customers` - Gestão de clientes (multi-tenant)
 - `/api/vehicles` - Gestão de veículos (multi-tenant com comandos de bloqueio)
 
-**Endpoints de Rastreamento**:
-- `/api/tracking/vehicles` - Lista veículos com última localização conhecida para mapa
-- `/api/tracking/vehicles/:id/location` - Localização atual de veículo específico
+**Endpoints de Rastreamento** (com geocodificação Nominatim):
+- `/api/tracking/vehicles` - Lista veículos com última localização conhecida e endereço
+- `/api/tracking/vehicles/:id/location` - Localização atual de veículo com endereço real
 - `/api/tracking/vehicles/:id/history` - Histórico de localizações com filtros de data
-- `/api/tracking/vehicles/:id/route` - Rota/trajeto otimizado para desenhar no mapa
+- `/api/tracking/vehicles/:id/route` - Rota/trajeto com endereços nas paradas detectadas
 
 **Endpoints de Relatórios**:
 - `/api/reports/vehicles/:id` - Relatório detalhado de uso do veículo
@@ -169,6 +169,18 @@ Preferred communication style: Simple, everyday language.
   - Requires credentials via environment variables
   - Used for password recovery and document notifications
 
+### Geocoding Service
+- **Nominatim (OpenStreetMap)**: Reverse geocoding for GPS coordinates
+  - Free service for converting coordinates to addresses
+  - Implemented via geopy library (geopy 2.4.1)
+  - Features:
+    - Rate limiting (1 request/second per Nominatim policy)
+    - LRU cache (1000 entries) for frequently requested locations
+    - Graceful fallback to coordinates when service unavailable
+    - Portuguese language support
+  - Used in vehicle tracking endpoints to provide human-readable addresses
+  - Implementation: `app/infrastructure/geocoding_service.py`
+
 ### Python Packages
 - **Core Framework**: Flask 3.0.0, flask-restx 1.3.0
 - **Database**: mongoengine 0.27.0, pymongo 4.6.0
@@ -179,6 +191,7 @@ Preferred communication style: Simple, everyday language.
 - **CORS**: flask-cors 4.0.0
 - **Email**: Flask-Mail 0.9.1
 - **Production Server**: gunicorn 21.2.0
+- **Geocoding**: geopy 2.4.1 (Nominatim reverse geocoding)
 - **Document Processing**: PyMuPDF, PyPDF2, pytesseract, opencv-python, Pillow
 - **Utilities**: python-dotenv 1.0.0, numpy
 

@@ -321,10 +321,10 @@ class VehicleBlock(Resource):
                 return {'message': 'Comando não especificado'}, 400
             
             if data['comando'] == 'bloquear':
-                vehicle.comandobloqueo = True
+                vehicle.comandobloqueo = False
                 message = 'Comando de bloqueio enviado'
             else:
-                vehicle.comandobloqueo = False
+                vehicle.comandobloqueo = True
                 message = 'Comando de desbloqueio enviado'
             
             vehicle.updated_by = current_user

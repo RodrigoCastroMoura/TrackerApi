@@ -1,7 +1,7 @@
 import logging
 from flask import request, jsonify
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import User, Permission
+from app.domain.models import User, Customer
 from functools import wraps
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -41,10 +41,15 @@ def create_token(user, token_type='access', resource_id=None):
 
     if token_type == 'access':
         expires = now + datetime.timedelta(hours=1)
+        permissions = [p.name for p in user.permissions] if user.permissions else []
     else:
-        expires = now + datetime.timedelta(days=7)
+        if token_type == 'customer':
+            expires = now + datetime.timedelta(hours=1)
+        else:
+            expires = now + datetime.timedelta(days=7)
+        permissions = []
 
-    permissions = [p.name for p in user.permissions] if user.permissions else []
+    
 
     payload = {
         'user_id': str(user.id),
@@ -232,6 +237,64 @@ class Login(Resource):
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
             return {'message': 'Erro ao realizar login'}, 500
+
+
+@api.route('/customer/login')
+class LoginCustomer(Resource):
+    @api.doc('login')
+    @api.expect(login_model)
+    @limiter.limit("5 per minute")
+    def post(self):
+        try:
+            data = request.get_json()
+            if not data:
+                return {'message': 'Dados não fornecidos'}, 400
+
+            identifier = data.get('identifier')
+            password = data.get('password')
+
+            if not identifier or not password:
+                return {'message': 'Identificador e senha são obrigatórios'}, 400
+
+            customer = Customer.objects(email=identifier).first()
+            if not customer:
+                customer = Customer.objects(document=identifier).first()
+            if not customer:
+                customer = Customer.objects(phone=identifier).first()
+
+            if customer and customer.check_password(password):
+                # Check if user is active
+                if customer.status != 'active':
+                    logger.warning(f"Login attempt by inactive user: {customer.document}")
+                    return {'message': 'Usuário inativo'}, 401
+
+                access_token = create_token(customer, 'customer')
+                refresh_token = create_token(customer, 'refresh')
+
+                return {
+                    'access_token': access_token,
+                    'refresh_token': refresh_token,
+                    'token_type': 'Bearer',
+                    'expires_in': 3600,
+                    'requires_password_change': not customer.password_changed,
+                    'user': {
+                        'id': str(customer.id),
+                        'name': customer.name,
+                        'email': customer.email,
+                        'role': customer.role,
+                        'document': customer.document,
+                        'phone': customer.phone
+                    }
+                }, 200
+
+            return {'message': 'Credenciais inválidas'}, 401
+
+        except Exception as e:
+            logger.error(f"Login error: {str(e)}")
+            return {'message': 'Erro ao realizar login'}, 500
+
+
+
 
 @api.route('/refresh')
 class TokenRefresh(Resource):

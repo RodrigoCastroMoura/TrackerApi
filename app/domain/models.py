@@ -208,7 +208,7 @@ class Customer(BaseDocument):
     # Dados básicos
     name = StringField(required=True)
     email = StringField(required=True, unique=True)
-    cpf = StringField(required=True, unique=True)
+    document = StringField(required=True, unique=True)
     phone = StringField(required=True)
     birth_date = StringField(required=True)  # DD/MM/AAAA
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
@@ -234,14 +234,32 @@ class Customer(BaseDocument):
     # Status
     status = StringField(choices=['active', 'inactive'], default='active')
     visible = BooleanField(default=True)
+
+    #password
+    role = StringField(required=True, choices=['customer'], default='customer')
+    password_hash = StringField(required=True, max_length=256)
+    password_changed = BooleanField(default=False)  # Indica se o cliente já trocou a senha inicial
     
     meta = {
         'collection': 'customers',
         'indexes': [
             {'fields': ['email'], 'unique': True},
-            {'fields': ['cpf'], 'unique': True},
+            {'fields': ['document'], 'document': True},
         ]
     }
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def has_permission(self, resource_type, action_type):
+        """Check if user has a specific permission"""
+        if self.role == 'admin':
+            return True
+        return any(p.resource_type == resource_type and p.action_type == action_type 
+                  for p in self.permissions)
     
     def to_dict(self):
         """Convert to dictionary for API responses"""
@@ -249,7 +267,7 @@ class Customer(BaseDocument):
         base_dict.update({
             'name': self.name,
             'email': self.email,
-            'cpf': self.cpf,
+            'document': self.document,
             'phone': self.phone,
             'birth_date': self.birth_date,
             'company_id': str(self.company_id.id) if self.company_id else None,
@@ -265,7 +283,9 @@ class Customer(BaseDocument):
             'card_brand': self.card_brand,
             'card_last_digits': self.card_last_digits,
             'status': self.status,
-            'visible': self.visible
+            'visible': self.visible,
+            'password': self.password_hash,
+            'password_changed': self.password_changed
         })
         return base_dict
 

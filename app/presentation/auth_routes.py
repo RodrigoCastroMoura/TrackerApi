@@ -45,12 +45,10 @@ def create_token(user, token_type='access', resource_id=None):
     else:
         if token_type == 'customer':
             expires = now + datetime.timedelta(hours=1)
-            permissions = ["vehicle_read",
-            "vehicle_write",
-            "vehicle_update",]
+            permissions = ["vehicle_read", "vehicle_write", "vehicle_update"]
         else:
             expires = now + datetime.timedelta(days=7)
-        permissions = []
+            permissions = []
 
     
 
@@ -96,7 +94,10 @@ def require_permission(resource_type, action_type):
             if not current_user:
                 return {'message': 'Usuário não autenticado'}, 401
 
-            current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
+            if current_user.role == 'customer':
+                current_permissions = ["vehicle_read", "vehicle_write", "vehicle_update"]
+            else:
+                current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
 
             if permission_name not in current_permissions:
                 return {
@@ -154,13 +155,15 @@ def token_required(f):
                 logger.warning(f"Invalid token: {str(e)}")
                 return {'message': 'Token inválido', 'error': 'invalid_token'}, 401
 
-            if data.get('type') not in ['access', 'document_signature']:
+            if data.get('type') not in ['access', 'customer', 'document_signature']:
                 logger.warning(f"Invalid token type: {data.get('type')}")
                 return {'message': 'Tipo de token inválido', 'error': 'invalid_token_type'}, 401
-
+            
+            current_user = User.objects(id=data['user_id']).first()
+            if not current_user:
+                current_user = Customer.objects(id=data['user_id']).first()
+                
             try:
-                current_user = User.objects.get(id=data['user_id'])
-
                 # Check if user is active
                 if current_user.status != 'active':
                     logger.warning(f"Inactive user attempted to access: {current_user.email}")

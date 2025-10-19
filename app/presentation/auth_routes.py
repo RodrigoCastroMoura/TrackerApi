@@ -50,8 +50,6 @@ def create_token(user, token_type='access', resource_id=None):
             expires = now + datetime.timedelta(days=7)
             permissions = []
 
-    
-
     payload = {
         'user_id': str(user.id),
         'email': user.email,

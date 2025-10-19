@@ -45,6 +45,9 @@ def create_token(user, token_type='access', resource_id=None):
     else:
         if token_type == 'customer':
             expires = now + datetime.timedelta(hours=1)
+            permissions = ["vehicle_read",
+            "vehicle_write",
+            "vehicle_update",]
         else:
             expires = now + datetime.timedelta(days=7)
         permissions = []

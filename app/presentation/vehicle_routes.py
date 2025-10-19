@@ -67,6 +67,7 @@ class VehicleList(Resource):
              params={
                  'page': {'type': 'integer', 'default': 1},
                  'per_page': {'type': 'integer', 'default': 10},
+                 'customer_id': {'type': 'string', 'description': 'Filtrar por ID do cliente'},
                  'placa': {'type': 'string', 'description': 'Filtrar por placa'},
                  'imei': {'type': 'string', 'description': 'Filtrar por IMEI'},
                  'status': {'type': 'string', 'enum': ['active', 'inactive']},
@@ -85,6 +86,12 @@ class VehicleList(Resource):
             query = {'visible': True, 'company_id': current_user.company_id}
             
             # Filters
+            if request.args.get('customer_id'):
+                if ObjectId.is_valid(request.args.get('customer_id')):
+                    query['customer_id'] = ObjectId(request.args.get('customer_id'))
+                else:
+                    return {'message': 'customer_id inválido'}, 400
+
             if request.args.get('placa'):
                 query['dsplaca'] = {'$regex': request.args.get('placa'), '$options': 'i'}
             

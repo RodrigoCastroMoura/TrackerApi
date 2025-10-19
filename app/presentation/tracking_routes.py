@@ -31,7 +31,8 @@ tracker_info_model = api.model('TrackerInfo', {
 
 vehicle_tracking_model = api.model('VehicleTracking', {
     'id': fields.String(readonly=True),
-    'plate': fields.String(description='Placa do veículo'),
+    'dsplaca': fields.String(description='Placa do veículo'),
+    'dsmodelo': fields.String(description='Modelo do veículo'),
     'customer_id': fields.String(description='ID do cliente'),
     'customer_name': fields.String(description='Nome do cliente'),
     'location': fields.Nested(location_model),
@@ -159,7 +160,8 @@ class VehicleTrackingList(Resource):
                 
                 vehicle_data = {
                     'id': str(vehicle.id),
-                    'plate': vehicle.dsplaca or 'N/A',
+                    'dsplaca': vehicle.dsplaca or 'N/A',
+                    'dsmodelo': vehicle.dsmodelo or 'N/A',
                     'customer_id': str(vehicle.customer_id.id) if vehicle.customer_id else None,
                     'customer_name': vehicle.customer_id.name if vehicle.customer_id else 'N/A',
                     'status': 'blocked' if vehicle.bloqueado else vehicle.status,

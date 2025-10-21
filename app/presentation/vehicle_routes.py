@@ -321,17 +321,24 @@ class VehicleBlock(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, status='active', company_id=current_user.company_id)
+             # Build query - filter by company (multi-tenancy)
+            query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
+
+            if current_user.role != 'admin':
+                query['customer_id'] = current_user.customer_id
+
+            vehicle = Vehicle.objects.get(**query)
+
             data = request.get_json()
             
             if 'comando' not in data:
                 return {'message': 'Comando não especificado'}, 400
             
             if data['comando'] == 'bloquear':
-                vehicle.comandobloqueo = True
+                vehicle.comandobloqueo = False
                 message = 'Comando de bloqueio enviado'
             else:
-                vehicle.comandobloqueo = False
+                vehicle.comandobloqueo = True
                 message = 'Comando de desbloqueio enviado'
             
             vehicle.updated_by = current_user.id

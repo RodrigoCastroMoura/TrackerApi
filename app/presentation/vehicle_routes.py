@@ -328,13 +328,14 @@ class VehicleBlock(Resource):
                 return {'message': 'Comando não especificado'}, 400
             
             if data['comando'] == 'bloquear':
-                vehicle.comandobloqueo = False
+                vehicle.comandobloqueo = True
                 message = 'Comando de bloqueio enviado'
             else:
-                vehicle.comandobloqueo = True
+                vehicle.comandobloqueo = False
                 message = 'Comando de desbloqueio enviado'
             
-            vehicle.updated_by = current_user
+            vehicle.updated_by = current_user.id
+
             vehicle.save()
             
             logger.info(f"Block command sent to vehicle {vehicle.IMEI}: {data['comando']}")

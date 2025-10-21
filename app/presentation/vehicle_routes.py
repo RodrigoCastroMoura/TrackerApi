@@ -325,7 +325,7 @@ class VehicleBlock(Resource):
             query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
 
             if current_user.role != 'admin':
-                query['customer_id'] = current_user.customer_id
+                query['customer_id'] = current_user.id
 
             vehicle = Vehicle.objects.get(**query)
 

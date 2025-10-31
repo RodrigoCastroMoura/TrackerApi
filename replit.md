@@ -16,15 +16,11 @@ O sistema implementa isolamento de dados por empresa (company_id):
 ## Recent Changes
 
 ### Customer Authentication Endpoints (October 31, 2025)
-Implementados novos endpoints para customers acessarem seus próprios dados:
+Implementados novos endpoints de autenticação para customers:
 - ✅ `/api/auth/customer/login` - Login específico para clientes
-- ✅ `/api/auth/customer/profile` (GET/PUT) - Gerenciamento do perfil do cliente
-- ✅ `/api/auth/customer/vehicles` - Listagem de veículos do cliente
-- ✅ `/api/auth/customer/vehicles/:id` - Detalhes de veículo específico
 - ✅ `/api/auth/refresh` - Atualizado para suportar refresh token de customers
 - ✅ `/api/auth/password/change` - Funciona para users e customers
 - ✅ Correção de segurança: Customer.to_dict() não expõe mais hash de senha
-- ✅ Isolamento de dados: Customers só acessam seus próprios veículos e perfil
 
 ## User Preferences
 
@@ -118,11 +114,10 @@ Preferred communication style: Simple, everyday language.
 - `/api/auth` - Autenticação (login, logout, refresh token, recuperação de senha)
   - `/api/auth/login` - Login para usuários (admin/user)
   - `/api/auth/customer/login` - Login para clientes (customers)
-  - `/api/auth/customer/profile` - GET/PUT perfil do cliente autenticado
-  - `/api/auth/customer/vehicles` - GET veículos do cliente autenticado
-  - `/api/auth/customer/vehicles/:id` - GET detalhes de veículo específico do cliente
   - `/api/auth/refresh` - Refresh token (suporta users e customers)
   - `/api/auth/password/change` - Trocar senha (autenticado)
+  - `/api/auth/password/recover` - Recuperação de senha por email
+  - `/api/auth/logout` - Encerrar sessão e invalidar token
 - `/api/users` - Gestão de usuários/técnicos (CRUD com verificação de permissões)
 - `/api/permissions` - Gestão de permissões (admin only)
 - `/api/links` - Validação e processamento de tokens de link

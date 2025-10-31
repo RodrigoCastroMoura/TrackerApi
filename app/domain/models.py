@@ -284,7 +284,7 @@ class Customer(BaseDocument):
             'card_last_digits': self.card_last_digits,
             'status': self.status,
             'visible': self.visible,
-            'password': self.password_hash,
+            'role': self.role,
             'password_changed': self.password_changed
         })
         return base_dict

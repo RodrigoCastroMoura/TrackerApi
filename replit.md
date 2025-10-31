@@ -13,6 +13,19 @@ O sistema implementa isolamento de dados por empresa (company_id):
 - Relatórios respeitam o isolamento por empresa
 - Técnicos (usuários com role='user') têm acesso apenas aos dados de sua empresa
 
+## Recent Changes
+
+### Customer Authentication Endpoints (October 31, 2025)
+Implementados novos endpoints para customers acessarem seus próprios dados:
+- ✅ `/api/auth/customer/login` - Login específico para clientes
+- ✅ `/api/auth/customer/profile` (GET/PUT) - Gerenciamento do perfil do cliente
+- ✅ `/api/auth/customer/vehicles` - Listagem de veículos do cliente
+- ✅ `/api/auth/customer/vehicles/:id` - Detalhes de veículo específico
+- ✅ `/api/auth/refresh` - Atualizado para suportar refresh token de customers
+- ✅ `/api/auth/password/change` - Funciona para users e customers
+- ✅ Correção de segurança: Customer.to_dict() não expõe mais hash de senha
+- ✅ Isolamento de dados: Customers só acessam seus próprios veículos e perfil
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -103,10 +116,17 @@ Preferred communication style: Simple, everyday language.
 
 **Main Endpoints**:
 - `/api/auth` - Autenticação (login, logout, refresh token, recuperação de senha)
+  - `/api/auth/login` - Login para usuários (admin/user)
+  - `/api/auth/customer/login` - Login para clientes (customers)
+  - `/api/auth/customer/profile` - GET/PUT perfil do cliente autenticado
+  - `/api/auth/customer/vehicles` - GET veículos do cliente autenticado
+  - `/api/auth/customer/vehicles/:id` - GET detalhes de veículo específico do cliente
+  - `/api/auth/refresh` - Refresh token (suporta users e customers)
+  - `/api/auth/password/change` - Trocar senha (autenticado)
 - `/api/users` - Gestão de usuários/técnicos (CRUD com verificação de permissões)
 - `/api/permissions` - Gestão de permissões (admin only)
 - `/api/links` - Validação e processamento de tokens de link
-- `/api/customers` - Gestão de clientes (multi-tenant)
+- `/api/customers` - Gestão de clientes (multi-tenant, admin/user only)
 - `/api/vehicles` - Gestão de veículos (multi-tenant com comandos de bloqueio)
 
 **Endpoints de Rastreamento** (com geocodificação Nominatim):

@@ -499,6 +499,167 @@ class Logout(Resource):
             logger.error(f"Logout error: {str(e)}")
             return {'message': 'Erro ao realizar logout'}, 500
 
+@api.route('/customer/logout')
+class CustomerLogout(Resource):
+    @api.doc('customer_logout')
+    @token_required
+    def post(self, current_user):
+        """Logout de cliente"""
+        try:
+            if current_user.role != 'customer':
+                return {'message': 'Acesso negado - Apenas clientes podem usar este endpoint'}, 403
+
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                return {'message': 'Token não fornecido'}, 401
+
+            token = auth_header.split(' ')[1]
+
+            blacklist_entry = TokenBlacklist(token=token)
+            blacklist_entry.save()
+
+            logger.info(f"Cliente {current_user.email} realizou logout com sucesso")
+            return {'message': 'Logout realizado com sucesso'}, 200
+
+        except Exception as e:
+            logger.error(f"Customer logout error: {str(e)}")
+            return {'message': 'Erro ao realizar logout'}, 500
+
+@api.route('/customer/password/change')
+class CustomerPasswordChange(Resource):
+    @api.doc('customer_password_change')
+    @token_required
+    def post(self, current_user):
+        """Mudança de senha para cliente autenticado"""
+        try:
+            if current_user.role != 'customer':
+                return {'message': 'Acesso negado - Apenas clientes podem usar este endpoint'}, 403
+
+            data = request.get_json()
+            if not data or 'current_password' not in data or 'new_password' not in data:
+                return {'message': 'Senha atual e nova senha são obrigatórias'}, 400
+
+            if not current_user.check_password(data['current_password']):
+                return {'message': 'Senha atual incorreta'}, 401
+
+            new_password = data['new_password']
+            if len(new_password) < 6:
+                return {'message': 'A nova senha deve ter no mínimo 6 caracteres'}, 400
+
+            current_user.set_password(new_password)
+            current_user.password_changed = True
+            current_user.save()
+
+            logger.info(f"Cliente {current_user.email} alterou senha com sucesso")
+            return {'message': 'Senha alterada com sucesso'}, 200
+
+        except Exception as e:
+            logger.error(f"Customer password change error: {str(e)}")
+            return {'message': 'Erro ao alterar senha'}, 500
+
+@api.route('/customer/password/recover')
+class CustomerPasswordRecover(Resource):
+    @api.doc('customer_password_recover')
+    @limiter.limit("3 per hour")
+    def post(self):
+        """Solicitar recuperação de senha para cliente"""
+        try:
+            data = request.get_json()
+            if not data or 'identifier' not in data:
+                return {'message': 'Identificador é obrigatório'}, 400
+
+            identifier = data.get('identifier')
+
+            customer = Customer.objects(email=identifier).first()
+            if not customer:
+                customer = Customer.objects(document=identifier).first()
+            if not customer:
+                customer = Customer.objects(phone=identifier).first()
+
+            if not customer:
+                return {'message': 'Cliente não encontrado'}, 404
+
+            if customer.status != 'active':
+                return {'message': 'Cliente inativo'}, 401
+
+            recovery_token = create_token(customer, 'recovery')
+
+            from app.infrastructure.email_service import EmailService
+            if EmailService.send_password_recovery_email(customer.email, recovery_token):
+                logger.info(f"Email de recuperação enviado para cliente: {customer.email}")
+                return {'message': 'Email de recuperação enviado com sucesso'}, 200
+            else:
+                logger.error(f"Falha ao enviar email de recuperação para: {customer.email}")
+                return {'message': 'Erro ao enviar email de recuperação'}, 500
+
+        except Exception as e:
+            logger.error(f"Customer password recovery error: {str(e)}")
+            return {'message': 'Erro ao processar recuperação de senha'}, 500
+
+@api.route('/customer/password/reset')
+class CustomerPasswordReset(Resource):
+    @api.doc('customer_password_reset')
+    def post(self):
+        """Resetar senha de cliente usando token de recuperação"""
+        try:
+            data = request.get_json()
+            if not data or 'token' not in data or 'new_password' not in data:
+                return {'message': 'Token e nova senha são obrigatórios'}, 400
+
+            token = data['token']
+            
+            from app.application.link_token_service import UsedLinkToken
+            if UsedLinkToken.objects(token=token).first():
+                logger.warning(f"Tentativa de usar token de recuperação já utilizado")
+                return {'message': 'Token já utilizado anteriormente'}, 401
+                
+            try:
+                token_data = jwt.decode(
+                    token,
+                    Config.SECRET_KEY,
+                    algorithms=["HS256"]
+                )
+
+                if token_data.get('type') != 'recovery':
+                    return {'message': 'Token inválido'}, 401
+
+                customer = Customer.objects.get(id=token_data['user_id'])
+                
+                if customer.role != 'customer':
+                    return {'message': 'Token inválido para cliente'}, 401
+                
+                new_password = data['new_password']
+                if len(new_password) < 6:
+                    return {'message': 'A nova senha deve ter no mínimo 6 caracteres'}, 400
+
+                from app.application.link_token_service import UsedLinkToken
+                from datetime import datetime
+                expires_at = datetime.fromtimestamp(token_data['exp'])
+                used_token = UsedLinkToken(
+                    token=token,
+                    expires_at=expires_at
+                )
+                used_token.save()
+                logger.info(f"Token de recuperação marcado como utilizado para cliente")
+                
+                customer.set_password(new_password)
+                customer.password_changed = True
+                customer.save()
+
+                logger.info(f"Senha resetada com sucesso para cliente: {customer.email}")
+                return {'message': 'Senha alterada com sucesso'}, 200
+
+            except jwt.ExpiredSignatureError:
+                return {'message': 'Token expirado'}, 401
+            except jwt.InvalidTokenError:
+                return {'message': 'Token inválido'}, 401
+            except DoesNotExist:
+                return {'message': 'Cliente não encontrado'}, 404
+
+        except Exception as e:
+            logger.error(f"Customer password reset error: {str(e)}")
+            return {'message': 'Erro ao resetar senha'}, 500
+
 def cleanup_blacklist():
     try:
         expired_date = datetime.datetime.utcnow() - datetime.timedelta(days=7)

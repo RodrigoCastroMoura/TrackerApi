@@ -527,23 +527,11 @@ class CustomerStats(Resource):
             total_customers = Customer.objects(visible=True).count()
             active_customers = Customer.objects(visible=True, status='active').count()
             inactive_customers = Customer.objects(visible=True, status='inactive').count()
-            auto_debit_customers = Customer.objects(visible=True, status='active', auto_debit=True).count()
-            
-            # Calculate total monthly revenue
-            pipeline = [
-                {'$match': {'visible': True, 'status': 'active'}},
-                {'$group': {'_id': None, 'total': {'$sum': '$monthly_amount'}}}
-            ]
-            result = list(Customer.objects.aggregate(pipeline))
-            total_monthly_revenue = result[0]['total'] if result else 0
             
             return {
                 'total_customers': total_customers,
                 'active_customers': active_customers,
-                'inactive_customers': inactive_customers,
-                'auto_debit_customers': auto_debit_customers,
-                'total_monthly_revenue': total_monthly_revenue,
-                'average_monthly_amount': total_monthly_revenue / active_customers if active_customers > 0 else 0
+                'inactive_customers': inactive_customers
             }, 200
             
         except Exception as e:

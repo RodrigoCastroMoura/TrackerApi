@@ -23,11 +23,6 @@ def validate_cpf(cpf):
     cpf_clean = re.sub(r'\D', '', cpf)
     return cpf_clean if len(cpf_clean) == 11 else None
 
-def validate_date(date_str):
-    """Valida formato de data DD/MM/AAAA"""
-    date_pattern = r'^\d{2}/\d{2}/\d{4}$'
-    return re.match(date_pattern, date_str) is not None
-
 def validate_state(state):
     """Valida sigla de estado"""
     state_pattern = r'^[A-Z]{2}$'
@@ -96,12 +91,11 @@ class CustomerList(Resource):
                  'page': {'type': 'integer', 'default': 1},
                  'per_page': {'type': 'integer', 'default': 10},
                  'email': {'type': 'string', 'description': 'Filtrar por email'},
-                 'cpf': {'type': 'string', 'description': 'Filtrar por CPF'},
+                 'document': {'type': 'string', 'description': 'Filtrar por CPF'},
                  'name': {'type': 'string', 'description': 'Filtrar por nome (parcial)'},
                  'city': {'type': 'string', 'description': 'Filtrar por cidade'},
                  'state': {'type': 'string', 'description': 'Filtrar por estado'},
-                 'status': {'type': 'string', 'enum': ['active', 'inactive']},
-                 'auto_debit': {'type': 'boolean', 'description': 'Filtrar por débito automático'}
+                 'status': {'type': 'string', 'enum': ['active', 'inactive']}
              })
     @api.marshal_with(pagination_model)
     @token_required
@@ -121,10 +115,10 @@ class CustomerList(Resource):
             if request.args.get('email'):
                 query['email'] = {'$regex': request.args.get('email'), '$options': 'i'}
             
-            if request.args.get('cpf'):
-                cpf = validate_cpf(request.args.get('cpf'))
-                if cpf:
-                    query['cpf'] = cpf
+            if request.args.get('document'):
+                document = validate_cpf(request.args.get('document'))
+                if document:
+                    query['document'] = document
             
             if request.args.get('name'):
                 query['name'] = {'$regex': request.args.get('name'), '$options': 'i'}
@@ -137,9 +131,6 @@ class CustomerList(Resource):
             
             if request.args.get('status'):
                 query['status'] = request.args.get('status')
-            
-            if request.args.get('auto_debit') is not None:
-                query['auto_debit'] = request.args.get('auto_debit').lower() == 'true'
             
             # Execute query
             total = Customer.objects(**query).count()
@@ -297,11 +288,6 @@ class CustomerResource(Resource):
             if 'phone' in data:
                 customer.phone = data['phone']
             
-            if 'birth_date' in data:
-                if not validate_date(data['birth_date']):
-                    return {'message': 'Formato de data inválido. Use DD/MM/AAAA'}, 400
-                customer.birth_date = data['birth_date']
-            
             # Address fields
             if 'street' in data:
                 customer.street = data['street']
@@ -328,13 +314,6 @@ class CustomerResource(Resource):
                 if not postal_code:
                     return {'message': 'CEP inválido - deve ter 8 dígitos'}, 400
                 customer.postal_code = postal_code
-            
-            # Payment fields
-            if 'monthly_amount' in data:
-                customer.monthly_amount = data['monthly_amount']
-            
-            if 'auto_debit' in data:
-                customer.auto_debit = data['auto_debit']
             
             if 'status' in data:
                 customer.status = data['status']
@@ -438,7 +417,6 @@ class CustomerPaymentCard(Resource):
             customer.card_token = None
             customer.card_brand = None
             customer.card_last_digits = None
-            customer.auto_debit = False  # Disable auto debit when removing card
             customer.updated_by = current_user
             customer.save()
             
@@ -488,10 +466,10 @@ class CustomerSearch(Resource):
                 'name': {'$regex': re.escape(search_term), '$options': 'i'}
             })
             
-            # Search by CPF (remove non-digits)
-            cpf_cleaned = re.sub(r'\D', '', search_term)
-            if cpf_cleaned:
-                search_conditions.append({'cpf': cpf_cleaned})
+            # Search by document (remove non-digits)
+            document_cleaned = re.sub(r'\D', '', search_term)
+            if document_cleaned:
+                search_conditions.append({'document': document_cleaned})
             
             # Build query
             query = Customer.objects(visible=True).filter(__raw__={'$or': search_conditions})
@@ -512,29 +490,29 @@ class CustomerSearch(Resource):
             logger.error(f"Error searching customers: {str(e)}")
             return {'message': 'Erro ao buscar clientes'}, 500
 
-@api.route('/by-cpf/<cpf>')
-@api.param('cpf', 'Customer CPF')
-class CustomerByCPF(Resource):
+@api.route('/by-document/<document>')
+@api.param('document', 'Customer CPF')
+class CustomerByDocument(Resource):
     
-    @api.doc('get_customer_by_cpf')
+    @api.doc('get_customer_by_document')
     @api.marshal_with(customer_model)
     @token_required
     @require_permission('customer', 'read')
-    def get(self, current_user, cpf):
+    def get(self, current_user, document):
         """Buscar cliente por CPF"""
         try:
-            # Clean CPF (remove non-digits)
-            cpf_cleaned = validate_cpf(cpf)
-            if not cpf_cleaned:
+            # Clean document (remove non-digits)
+            document_cleaned = validate_cpf(document)
+            if not document_cleaned:
                 return {'message': 'CPF inválido - deve ter 11 dígitos'}, 400
             
-            customer = Customer.objects.get(cpf=cpf_cleaned, visible=True)
+            customer = Customer.objects.get(document=document_cleaned, visible=True)
             return customer.to_dict(), 200
             
         except DoesNotExist:
             return {'message': 'Cliente não encontrado'}, 404
         except Exception as e:
-            logger.error(f"Error getting customer by CPF: {str(e)}")
+            logger.error(f"Error getting customer by document: {str(e)}")
             return {'message': 'Erro ao buscar cliente'}, 500
 
 @api.route('/stats')

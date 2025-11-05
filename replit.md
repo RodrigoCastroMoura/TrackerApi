@@ -15,6 +15,14 @@ O sistema implementa isolamento de dados por empresa (company_id):
 
 ## Recent Changes
 
+### Customer Model Simplification (November 5, 2025)
+Simplificado o modelo Customer e seus endpoints:
+- ✅ Removidos campos desnecessários: `birth_date`, `monthly_amount`, `auto_debit`
+- ✅ Adicionado campo `password` obrigatório no endpoint POST de criação
+- ✅ Campo `status` é gerado automaticamente como 'active' na criação
+- ✅ Atualizado endpoint de estatísticas para remover dependências de campos removidos
+- ✅ Consistência no uso do campo `document` (CPF) em todos os endpoints
+
 ### Customer Authentication Endpoints Expansion (November 5, 2025)
 Adicionados endpoints completos de autenticação para customers:
 - ✅ `/api/auth/customer/logout` - Logout específico para clientes

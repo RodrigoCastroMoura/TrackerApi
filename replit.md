@@ -15,6 +15,13 @@ O sistema implementa isolamento de dados por empresa (company_id):
 
 ## Recent Changes
 
+### Customer Authentication Endpoints Expansion (November 5, 2025)
+Adicionados endpoints completos de autenticação para customers:
+- ✅ `/api/auth/customer/logout` - Logout específico para clientes
+- ✅ `/api/auth/customer/password/change` - Mudança de senha para clientes autenticados
+- ✅ `/api/auth/customer/password/recover` - Recuperação de senha por email para clientes
+- ✅ `/api/auth/customer/password/reset` - Reset de senha usando token de recuperação para clientes
+
 ### Customer Authentication Endpoints (October 31, 2025)
 Implementados novos endpoints de autenticação para customers:
 - ✅ `/api/auth/customer/login` - Login específico para clientes
@@ -113,11 +120,17 @@ Preferred communication style: Simple, everyday language.
 **Main Endpoints**:
 - `/api/auth` - Autenticação (login, logout, refresh token, recuperação de senha)
   - `/api/auth/login` - Login para usuários (admin/user)
-  - `/api/auth/customer/login` - Login para clientes (customers)
+  - `/api/auth/logout` - Encerrar sessão e invalidar token (users)
+  - `/api/auth/password/change` - Trocar senha (users autenticados)
+  - `/api/auth/password/recover` - Recuperação de senha por email (users)
+  - `/api/auth/password/reset` - Reset de senha usando token de recuperação (users)
   - `/api/auth/refresh` - Refresh token (suporta users e customers)
-  - `/api/auth/password/change` - Trocar senha (autenticado)
-  - `/api/auth/password/recover` - Recuperação de senha por email
-  - `/api/auth/logout` - Encerrar sessão e invalidar token
+  - **Customer Endpoints:**
+    - `/api/auth/customer/login` - Login específico para clientes
+    - `/api/auth/customer/logout` - Logout específico para clientes
+    - `/api/auth/customer/password/change` - Trocar senha (customers autenticados)
+    - `/api/auth/customer/password/recover` - Recuperação de senha por email (customers)
+    - `/api/auth/customer/password/reset` - Reset de senha usando token de recuperação (customers)
 - `/api/users` - Gestão de usuários/técnicos (CRUD com verificação de permissões)
 - `/api/permissions` - Gestão de permissões (admin only)
 - `/api/links` - Validação e processamento de tokens de link

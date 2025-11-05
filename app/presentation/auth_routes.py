@@ -192,6 +192,89 @@ def token_required(f):
 
     return decorated
 
+def customer_token_required(f):
+    """Decorator specifically for customer authentication - only allows customers"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try:
+            auth_header = request.headers.get('Authorization', '').strip()
+
+            if not auth_header:
+                logger.warning("No Authorization header provided")
+                return {'message': 'Token não fornecido', 'error': 'missing_token'}, 401
+
+            if ' ' not in auth_header:
+                token = auth_header
+            else:
+                parts = auth_header.split(' ')
+                if len(parts) != 2 or parts[0].lower() != 'bearer':
+                    logger.warning(f"Invalid Authorization header format: {auth_header}")
+                    return {'message': 'Formato do token inválido', 'error': 'invalid_format'}, 401
+                token = parts[1]
+
+            if not validate_token_format(token):
+                logger.warning("Invalid token format")
+                return {'message': 'Formato do token inválido', 'error': 'invalid_format'}, 401
+
+            if TokenBlacklist.objects(token=token).first():
+                logger.warning(f"Token found in blacklist")
+                return {'message': 'Token revogado', 'error': 'revoked_token'}, 401
+
+            secret_key = Config.SECRET_KEY
+            if not secret_key:
+                logger.error("FLASK_SECRET_KEY not configured")
+                return {'message': 'Erro de configuração do servidor', 'error': 'server_config'}, 500
+
+            try:
+                data = jwt.decode(
+                    token,
+                    secret_key,
+                    algorithms=["HS256"]
+                )
+            except jwt.ExpiredSignatureError:
+                logger.warning("Token has expired")
+                return {'message': 'Token expirado', 'error': 'token_expired'}, 401
+            except jwt.InvalidTokenError as e:
+                logger.warning(f"Invalid token: {str(e)}")
+                return {'message': 'Token inválido', 'error': 'invalid_token'}, 401
+
+            if data.get('type') not in ['access', 'customer']:
+                logger.warning(f"Invalid token type: {data.get('type')}")
+                return {'message': 'Tipo de token inválido', 'error': 'invalid_token_type'}, 401
+            
+            if data.get('role') != 'customer':
+                logger.warning(f"Non-customer token used on customer endpoint")
+                return {'message': 'Acesso negado. Apenas clientes podem acessar este recurso', 'error': 'not_customer'}, 403
+            
+            try:
+                current_customer = Customer.objects(id=data['user_id']).first()
+                
+                if not current_customer:
+                    logger.warning(f"Customer not found for ID: {data['user_id']}")
+                    return {'message': 'Cliente não encontrado', 'error': 'customer_not_found'}, 404
+                
+                if current_customer.status != 'active':
+                    logger.warning(f"Inactive customer attempted to access: {current_customer.email}")
+                    return {'message': 'Cliente inativo', 'error': 'inactive_customer'}, 401
+
+                if current_customer.email != data['email']:
+                    logger.warning("Token email mismatch with current customer")
+                    return {'message': 'Token inválido', 'error': 'email_mismatch'}, 401
+
+                if len(args) > 0 and isinstance(args[0], Resource):
+                    return f(args[0], current_customer=current_customer, *args[1:], **kwargs)
+                return f(current_customer, *args, **kwargs)
+
+            except DoesNotExist:
+                logger.warning(f"Customer not found for ID: {data['user_id']}")
+                return {'message': 'Cliente não encontrado', 'error': 'customer_not_found'}, 404
+
+        except Exception as e:
+            logger.error(f"Unexpected error in customer token validation: {str(e)}")
+            return {'message': 'Erro na validação do token', 'error': 'validation_error'}, 500
+
+    return decorated
+
 @api.route('/login')
 class Login(Resource):
     @api.doc('login')

@@ -281,3 +281,137 @@ class Customer(BaseDocument):
         })
         return base_dict
 
+class Subscription(BaseDocument):
+    """Subscription model for monthly recurring payments"""
+    customer_id = ReferenceField('Customer', required=True)
+    company_id = ReferenceField('Company', required=True)  # Multi-tenancy
+    
+    # Stripe data
+    stripe_subscription_id = StringField(unique=True, sparse=True)
+    stripe_customer_id = StringField()
+    stripe_price_id = StringField()  # Stripe Price ID for the plan
+    
+    # Subscription details
+    plan_name = StringField(required=True)  # Nome do plano
+    amount = FloatField(required=True)  # Valor mensal em reais
+    currency = StringField(default='BRL')
+    billing_cycle = StringField(choices=['monthly', 'yearly'], default='monthly')
+    
+    # Status and dates
+    status = StringField(
+        choices=['active', 'canceled', 'past_due', 'unpaid', 'incomplete'],
+        default='incomplete'
+    )
+    current_period_start = DateTimeField()
+    current_period_end = DateTimeField()
+    cancel_at_period_end = BooleanField(default=False)
+    canceled_at = DateTimeField()
+    
+    # Card info (for display only)
+    card_brand = StringField()
+    card_last_digits = StringField()
+    
+    visible = BooleanField(default=True)
+    
+    meta = {
+        'collection': 'subscriptions',
+        'indexes': [
+            {'fields': ['customer_id']},
+            {'fields': ['stripe_subscription_id'], 'unique': True, 'sparse': True},
+            {'fields': ['company_id']},
+            {'fields': ['status']},
+        ]
+    }
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        base_dict = super(Subscription, self).to_dict()
+        base_dict.update({
+            'customer_id': str(self.customer_id.id) if self.customer_id else None,
+            'company_id': str(self.company_id.id) if self.company_id else None,
+            'stripe_subscription_id': self.stripe_subscription_id,
+            'plan_name': self.plan_name,
+            'amount': self.amount,
+            'currency': self.currency,
+            'billing_cycle': self.billing_cycle,
+            'status': self.status,
+            'current_period_start': self.current_period_start.isoformat() if self.current_period_start else None,
+            'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,
+            'cancel_at_period_end': self.cancel_at_period_end,
+            'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
+            'card_brand': self.card_brand,
+            'card_last_digits': self.card_last_digits,
+        })
+        return base_dict
+
+class Payment(BaseDocument):
+    """Payment history model for tracking all transactions"""
+    customer_id = ReferenceField('Customer', required=True)
+    subscription_id = ReferenceField('Subscription')
+    company_id = ReferenceField('Company', required=True)  # Multi-tenancy
+    
+    # Stripe data
+    stripe_payment_intent_id = StringField(unique=True, sparse=True)
+    stripe_charge_id = StringField()
+    stripe_invoice_id = StringField()
+    
+    # Payment details
+    amount = FloatField(required=True)
+    currency = StringField(default='BRL')
+    description = StringField()
+    
+    # Status
+    status = StringField(
+        choices=['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded'],
+        default='pending'
+    )
+    failure_message = StringField()  # Error message if payment failed
+    
+    # Dates
+    payment_date = DateTimeField()
+    refunded_at = DateTimeField()
+    
+    # Card info (for display only)
+    card_brand = StringField()
+    card_last_digits = StringField()
+    
+    # Metadata
+    payment_method = StringField(default='credit_card')
+    receipt_url = StringField()
+    
+    visible = BooleanField(default=True)
+    
+    meta = {
+        'collection': 'payments',
+        'indexes': [
+            {'fields': ['customer_id']},
+            {'fields': ['subscription_id']},
+            {'fields': ['company_id']},
+            {'fields': ['stripe_payment_intent_id'], 'unique': True, 'sparse': True},
+            {'fields': ['status']},
+            {'fields': ['-payment_date']},  # Descending order for recent first
+        ]
+    }
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        base_dict = super(Payment, self).to_dict()
+        base_dict.update({
+            'customer_id': str(self.customer_id.id) if self.customer_id else None,
+            'subscription_id': str(self.subscription_id.id) if self.subscription_id else None,
+            'company_id': str(self.company_id.id) if self.company_id else None,
+            'stripe_payment_intent_id': self.stripe_payment_intent_id,
+            'amount': self.amount,
+            'currency': self.currency,
+            'description': self.description,
+            'status': self.status,
+            'failure_message': self.failure_message,
+            'payment_date': self.payment_date.isoformat() if self.payment_date else None,
+            'refunded_at': self.refunded_at.isoformat() if self.refunded_at else None,
+            'card_brand': self.card_brand,
+            'card_last_digits': self.card_last_digits,
+            'payment_method': self.payment_method,
+            'receipt_url': self.receipt_url,
+        })
+        return base_dict
+

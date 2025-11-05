@@ -210,7 +210,6 @@ class Customer(BaseDocument):
     email = StringField(required=True, unique=True)
     document = StringField(required=True, unique=True)
     phone = StringField(required=True)
-    birth_date = StringField(required=True)  # DD/MM/AAAA
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
     
     # Endereço
@@ -222,10 +221,6 @@ class Customer(BaseDocument):
     state = StringField(required=True)  # SP, RJ, etc.
     postal_code = StringField(required=True)
     
-    # Configurações de pagamento
-    monthly_amount = FloatField(default=29.90)
-    auto_debit = BooleanField(default=False)
-    
     # Dados do cartão (se cadastrado)
     card_token = StringField()  # Token do PagSeguro
     card_brand = StringField()
@@ -235,7 +230,7 @@ class Customer(BaseDocument):
     status = StringField(choices=['active', 'inactive'], default='active')
     visible = BooleanField(default=True)
 
-    #password
+    # Password
     role = StringField(required=True, choices=['customer'], default='customer')
     password_hash = StringField(required=True, max_length=256)
     password_changed = BooleanField(default=False)  # Indica se o cliente já trocou a senha inicial
@@ -244,7 +239,7 @@ class Customer(BaseDocument):
         'collection': 'customers',
         'indexes': [
             {'fields': ['email'], 'unique': True},
-            {'fields': ['document'], 'document': True},
+            {'fields': ['document'], 'unique': True},
         ]
     }
 
@@ -269,7 +264,6 @@ class Customer(BaseDocument):
             'email': self.email,
             'document': self.document,
             'phone': self.phone,
-            'birth_date': self.birth_date,
             'company_id': str(self.company_id.id) if self.company_id else None,
             'street': self.street,
             'number': self.number,
@@ -278,8 +272,6 @@ class Customer(BaseDocument):
             'city': self.city,
             'state': self.state,
             'postal_code': self.postal_code,
-            'monthly_amount': self.monthly_amount,
-            'auto_debit': self.auto_debit,
             'card_brand': self.card_brand,
             'card_last_digits': self.card_last_digits,
             'status': self.status,

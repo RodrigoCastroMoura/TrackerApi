@@ -43,9 +43,9 @@ customer_model = api.model('Customer', {
     'id': fields.String(readonly=True, description='Customer unique identifier'),
     'name': fields.String(required=True, description='Nome completo do cliente'),
     'email': fields.String(required=True, description='Email do cliente'),
-    'cpf': fields.String(required=True, description='CPF do cliente (11 dígitos)'),
+    'document': fields.String(required=True, description='CPF do cliente (11 dígitos)'),
     'phone': fields.String(required=True, description='Telefone do cliente'),
-    'birth_date': fields.String(required=True, description='Data de nascimento (DD/MM/AAAA)'),
+    'password': fields.String(required=True, description='Senha do cliente (mínimo 6 caracteres)'),
     'street': fields.String(required=True, description='Rua/Logradouro'),
     'number': fields.String(required=True, description='Número'),
     'complement': fields.String(description='Complemento'),
@@ -53,11 +53,9 @@ customer_model = api.model('Customer', {
     'city': fields.String(required=True, description='Cidade'),
     'state': fields.String(required=True, description='Estado (sigla)'),
     'postal_code': fields.String(required=True, description='CEP'),
-    'monthly_amount': fields.Float(description='Valor mensal', default=29.90),
-    'auto_debit': fields.Boolean(description='Débito automático ativo', default=False),
     'card_brand': fields.String(readonly=True, description='Bandeira do cartão'),
     'card_last_digits': fields.String(readonly=True, description='Últimos 4 dígitos do cartão'),
-    'status': fields.String(description='Status do cliente', enum=['active', 'inactive'], default='active'),
+    'status': fields.String(readonly=True, description='Status do cliente (gerado automaticamente como active)'),
     'created_at': fields.DateTime(readonly=True),
     'updated_at': fields.DateTime(readonly=True)
 })
@@ -66,7 +64,6 @@ customer_update_model = api.model('CustomerUpdate', {
     'name': fields.String(description='Nome completo do cliente'),
     'email': fields.String(description='Email do cliente'),
     'phone': fields.String(description='Telefone do cliente'),
-    'birth_date': fields.String(description='Data de nascimento (DD/MM/AAAA)'),
     'street': fields.String(description='Rua/Logradouro'),
     'number': fields.String(description='Número'),
     'complement': fields.String(description='Complemento'),
@@ -74,8 +71,6 @@ customer_update_model = api.model('CustomerUpdate', {
     'city': fields.String(description='Cidade'),
     'state': fields.String(description='Estado (sigla)'),
     'postal_code': fields.String(description='CEP'),
-    'monthly_amount': fields.Float(description='Valor mensal'),
-    'auto_debit': fields.Boolean(description='Débito automático ativo'),
     'status': fields.String(description='Status do cliente', enum=['active', 'inactive'])
 })
 
@@ -176,24 +171,25 @@ class CustomerList(Resource):
                 return {'message': 'Dados não fornecidos'}, 400
             
             # Validate required fields
-            required_fields = ['name', 'email', 'cpf', 'phone', 'birth_date', 
+            required_fields = ['name', 'email', 'document', 'phone', 'password',
                              'street', 'number', 'district', 'city', 'state', 'postal_code']
             for field in required_fields:
                 if field not in data or not data[field]:
                     return {'message': f'Campo {field} é obrigatório'}, 400
             
-            # Validate CPF
-            cpf = validate_cpf(data['cpf'])
-            if not cpf:
+            # Validate document (CPF)
+            document = validate_cpf(data['document'])
+            if not document:
                 return {'message': 'CPF inválido - deve ter 11 dígitos'}, 400
             
             # Validate email format
             if not validate_email(data['email']):
                 return {'message': 'Formato de email inválido'}, 400
             
-            # Validate birth date format (DD/MM/AAAA)
-            if not validate_date(data['birth_date']):
-                return {'message': 'Formato de data inválido. Use DD/MM/AAAA'}, 400
+            # Validate password
+            password = data['password']
+            if len(password) < 6:
+                return {'message': 'A senha deve ter no mínimo 6 caracteres'}, 400
             
             # Validate state (2 letters)
             if not validate_state(data['state']):
@@ -208,9 +204,8 @@ class CustomerList(Resource):
                 customer = Customer(
                     name=data['name'],
                     email=data['email'].lower(),
-                    cpf=cpf,
+                    document=document,
                     phone=data['phone'],
-                    birth_date=data['birth_date'],
                     street=data['street'],
                     number=data['number'],
                     complement=data.get('complement'),
@@ -218,19 +213,21 @@ class CustomerList(Resource):
                     city=data['city'],
                     state=data['state'].upper(),
                     postal_code=postal_code,
-                    monthly_amount=data.get('monthly_amount', 29.90),
-                    auto_debit=data.get('auto_debit', False),
+                    status='active',  # Status gerado automaticamente como active
                     company_id=current_user.company_id,
                     created_by=current_user,
                     updated_by=current_user
                 )
+                customer.set_password(password)  # Hash da senha
                 customer.save()
+                
+                logger.info(f"Cliente criado com sucesso: {customer.email}")
                 return customer.to_dict(), 201
                 
             except NotUniqueError as e:
                 if 'email' in str(e):
                     return {'message': 'Email já cadastrado'}, 409
-                if 'cpf' in str(e):
+                if 'document' in str(e):
                     return {'message': 'CPF já cadastrado'}, 409
                 return {'message': 'Erro de duplicação'}, 409
                 

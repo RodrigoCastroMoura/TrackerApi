@@ -286,10 +286,10 @@ class Subscription(BaseDocument):
     customer_id = ReferenceField('Customer', required=True)
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
     
-    # Stripe data
-    stripe_subscription_id = StringField(unique=True, sparse=True)
-    stripe_customer_id = StringField()
-    stripe_price_id = StringField()  # Stripe Price ID for the plan
+    # Mercado Pago data
+    mp_subscription_id = StringField(unique=True, sparse=True)
+    mp_payer_id = StringField()  # Mercado Pago customer/payer ID
+    mp_preapproval_plan_id = StringField()  # Preapproval plan ID
     
     # Subscription details
     plan_name = StringField(required=True)  # Nome do plano
@@ -317,7 +317,7 @@ class Subscription(BaseDocument):
         'collection': 'subscriptions',
         'indexes': [
             {'fields': ['customer_id']},
-            {'fields': ['stripe_subscription_id'], 'unique': True, 'sparse': True},
+            {'fields': ['mp_subscription_id'], 'unique': True, 'sparse': True},
             {'fields': ['company_id']},
             {'fields': ['status']},
         ]
@@ -329,7 +329,7 @@ class Subscription(BaseDocument):
         base_dict.update({
             'customer_id': str(self.customer_id.id) if self.customer_id else None,
             'company_id': str(self.company_id.id) if self.company_id else None,
-            'stripe_subscription_id': self.stripe_subscription_id,
+            'mp_subscription_id': self.mp_subscription_id,
             'plan_name': self.plan_name,
             'amount': self.amount,
             'currency': self.currency,
@@ -350,10 +350,9 @@ class Payment(BaseDocument):
     subscription_id = ReferenceField('Subscription')
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
     
-    # Stripe data
-    stripe_payment_intent_id = StringField(unique=True, sparse=True)
-    stripe_charge_id = StringField()
-    stripe_invoice_id = StringField()
+    # Mercado Pago data
+    mp_payment_id = StringField(unique=True, sparse=True)
+    mp_transaction_id = StringField()
     
     # Payment details
     amount = FloatField(required=True)
@@ -387,7 +386,7 @@ class Payment(BaseDocument):
             {'fields': ['customer_id']},
             {'fields': ['subscription_id']},
             {'fields': ['company_id']},
-            {'fields': ['stripe_payment_intent_id'], 'unique': True, 'sparse': True},
+            {'fields': ['mp_payment_id'], 'unique': True, 'sparse': True},
             {'fields': ['status']},
             {'fields': ['-payment_date']},  # Descending order for recent first
         ]
@@ -400,7 +399,7 @@ class Payment(BaseDocument):
             'customer_id': str(self.customer_id.id) if self.customer_id else None,
             'subscription_id': str(self.subscription_id.id) if self.subscription_id else None,
             'company_id': str(self.company_id.id) if self.company_id else None,
-            'stripe_payment_intent_id': self.stripe_payment_intent_id,
+            'mp_payment_id': self.mp_payment_id,
             'amount': self.amount,
             'currency': self.currency,
             'description': self.description,

@@ -20,3 +20,4 @@ pytesseract
 bson
 requests
 stripe
+mercadopago

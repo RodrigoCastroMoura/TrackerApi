@@ -1,177 +1,131 @@
 from flask import request
 from flask_restx import Namespace, Resource
 from app.domain.models import Subscription, Payment, Customer
-from app.infrastructure.stripe_service import StripeService
+from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
-api = Namespace('webhooks', description='Webhooks de integração com serviços externos')
+api = Namespace('webhooks', description='Webhooks de integração - Mercado Pago')
 
-@api.route('/stripe')
-class StripeWebhook(Resource):
+@api.route('/mercadopago')
+class MercadoPagoWebhook(Resource):
     
-    @api.doc('stripe_webhook', description='Webhook do Stripe para processar eventos de pagamento')
+    @api.doc('mercadopago_webhook', description='Webhook do Mercado Pago para processar notificações de pagamento')
     def post(self):
-        """Processar eventos do Stripe (subscription.created, invoice.paid, etc.)"""
+        """Processar notificações do Mercado Pago (payment, subscription)"""
         try:
-            payload = request.data
-            signature = request.headers.get('Stripe-Signature')
+            data = request.get_json() or {}
             
-            if not signature:
-                logger.warning("No Stripe signature in webhook request")
-                return {'message': 'Signature não fornecida'}, 400
+            # Mercado Pago sends notifications about different events
+            topic = data.get('topic') or data.get('type')
+            resource_id = data.get('id') or data.get('data', {}).get('id')
             
-            event = StripeService.construct_webhook_event(payload, signature)
+            logger.info(f"Received Mercado Pago webhook - Topic: {topic}, ID: {resource_id}")
             
-            if not event:
-                logger.error("Failed to verify webhook event")
-                return {'message': 'Erro ao verificar webhook'}, 400
+            if not topic or not resource_id:
+                logger.warning("Webhook missing topic or resource ID")
+                return {'message': 'Invalid webhook data'}, 400
             
-            logger.info(f"Processing Stripe webhook event: {event.type}")
-            
-            if event.type == 'checkout.session.completed':
-                session = event.data.object
+            # Process payment notification
+            if topic in ['payment', 'merchant_order']:
+                payment_info = MercadoPagoService.get_payment_info(str(resource_id))
                 
-                if session.mode == 'subscription':
-                    stripe_subscription_id = session.subscription
-                    
-                    subscription = Subscription.objects(
-                        stripe_customer_id=session.customer
-                    ).order_by('-created_at').first()
-                    
-                    if subscription:
-                        subscription.stripe_subscription_id = stripe_subscription_id
-                        subscription.status = 'active'
-                        
-                        stripe_sub_data = StripeService.get_subscription(stripe_subscription_id)
-                        if stripe_sub_data:
-                            subscription.current_period_start = stripe_sub_data['current_period_start']
-                            subscription.current_period_end = stripe_sub_data['current_period_end']
-                        
-                        if session.payment_method_details:
-                            pm_details = StripeService.get_payment_method_details(
-                                session.payment_method
-                            )
-                            if pm_details:
-                                subscription.card_brand = pm_details['brand']
-                                subscription.card_last_digits = pm_details['last4']
-                                
-                                customer = subscription.customer_id
-                                customer.card_brand = pm_details['brand']
-                                customer.card_last_digits = pm_details['last4']
-                                customer.save()
-                        
-                        subscription.save()
-                        logger.info(f"Subscription activated: {subscription.id}")
+                if not payment_info:
+                    logger.error(f"Failed to get payment info for ID: {resource_id}")
+                    return {'message': 'Payment not found'}, 404
                 
-                elif session.mode == 'setup':
-                    customer = Customer.objects(card_token=session.customer).first()
-                    if customer and session.setup_intent:
-                        pm_id = session.setup_intent.payment_method
-                        if pm_id:
-                            pm_details = StripeService.get_payment_method_details(pm_id)
-                            if pm_details:
-                                customer.card_brand = pm_details['brand']
-                                customer.card_last_digits = pm_details['last4']
-                                customer.save()
-                                logger.info(f"Card updated for customer: {customer.email}")
-            
-            elif event.type == 'invoice.payment_succeeded':
-                invoice = event.data.object
+                # Find customer by email
+                payer_email = payment_info.get('payer_email')
+                if not payer_email:
+                    logger.warning("No payer email in payment info")
+                    return {'message': 'No payer email'}, 400
                 
+                customer = Customer.objects(email=payer_email, visible=True).first()
+                if not customer:
+                    logger.warning(f"Customer not found for email: {payer_email}")
+                    return {'message': 'Customer not found'}, 404
+                
+                # Find or create subscription
                 subscription = Subscription.objects(
-                    stripe_subscription_id=invoice.subscription
-                ).first()
+                    customer_id=customer.id,
+                    visible=True
+                ).order_by('-created_at').first()
                 
-                if subscription:
+                if not subscription:
+                    logger.warning(f"No subscription found for customer: {customer.email}")
+                    return {'message': 'Subscription not found'}, 404
+                
+                # Map Mercado Pago status to our status
+                mp_status = payment_info['status']
+                if mp_status == 'approved':
+                    payment_status = 'succeeded'
+                    subscription_status = 'active'
+                elif mp_status in ['pending', 'in_process']:
+                    payment_status = 'processing'
+                    subscription_status = 'active' if subscription.status == 'active' else 'pending'
+                elif mp_status in ['rejected', 'cancelled']:
+                    payment_status = 'failed'
+                    subscription_status = subscription.status
+                elif mp_status == 'refunded':
+                    payment_status = 'refunded'
+                    subscription_status = subscription.status
+                else:
+                    payment_status = 'pending'
+                    subscription_status = subscription.status
+                
+                # Update subscription
+                if subscription.status != subscription_status:
+                    subscription.status = subscription_status
+                    
+                    if subscription_status == 'active' and not subscription.current_period_start:
+                        subscription.current_period_start = datetime.utcnow()
+                        subscription.current_period_end = datetime.utcnow() + timedelta(days=30)
+                    
+                    if payment_info.get('card_info'):
+                        card_info = payment_info['card_info']
+                        subscription.card_last_digits = card_info.get('last_four_digits')
+                        customer.card_last_digits = card_info.get('last_four_digits')
+                        customer.save()
+                    
+                    subscription.save()
+                
+                # Check if payment already exists
+                existing_payment = Payment.objects(mp_payment_id=str(payment_info['id'])).first()
+                
+                if not existing_payment:
+                    # Create payment record
                     payment = Payment(
-                        customer_id=subscription.customer_id,
-                        subscription_id=subscription,
-                        company_id=subscription.company_id,
-                        stripe_payment_intent_id=invoice.payment_intent,
-                        stripe_charge_id=invoice.charge,
-                        stripe_invoice_id=invoice.id,
-                        amount=invoice.amount_paid / 100,
-                        currency=invoice.currency.upper(),
-                        description=f"Pagamento de assinatura - {subscription.plan_name}",
-                        status='succeeded',
-                        payment_date=datetime.fromtimestamp(invoice.status_transitions.paid_at),
-                        card_brand=subscription.card_brand,
-                        card_last_digits=subscription.card_last_digits,
-                        receipt_url=invoice.hosted_invoice_url,
+                        customer_id=customer,
+                        subscription_id=subscription if subscription else None,
+                        company_id=customer.company_id,
+                        mp_payment_id=str(payment_info['id']),
+                        amount=payment_info['transaction_amount'],
+                        currency=payment_info['currency_id'],
+                        description=f"Pagamento de assinatura - {subscription.plan_name if subscription else 'N/A'}",
+                        status=payment_status,
+                        payment_date=datetime.fromisoformat(payment_info['date_created'].replace('Z', '+00:00')) if payment_info.get('date_created') else datetime.utcnow(),
+                        card_last_digits=payment_info.get('card_info', {}).get('last_four_digits') if payment_info.get('card_info') else None,
+                        payment_method=payment_info.get('payment_method_id', 'mercadopago'),
                         created_by=None,
                         updated_by=None
                     )
+                    
+                    if mp_status in ['rejected', 'cancelled']:
+                        payment.failure_message = payment_info.get('status_detail', 'Pagamento rejeitado')
+                    
                     payment.save()
-                    logger.info(f"Payment recorded: {payment.id} for subscription {subscription.id}")
-            
-            elif event.type == 'invoice.payment_failed':
-                invoice = event.data.object
-                
-                subscription = Subscription.objects(
-                    stripe_subscription_id=invoice.subscription
-                ).first()
-                
-                if subscription:
-                    subscription.status = 'past_due'
-                    subscription.save()
-                    
-                    payment = Payment(
-                        customer_id=subscription.customer_id,
-                        subscription_id=subscription,
-                        company_id=subscription.company_id,
-                        stripe_payment_intent_id=invoice.payment_intent,
-                        stripe_invoice_id=invoice.id,
-                        amount=invoice.amount_due / 100,
-                        currency=invoice.currency.upper(),
-                        description=f"Tentativa de pagamento - {subscription.plan_name}",
-                        status='failed',
-                        failure_message=invoice.last_finalization_error.message if invoice.last_finalization_error else 'Pagamento falhou',
-                        payment_date=datetime.utcnow(),
-                        card_brand=subscription.card_brand,
-                        card_last_digits=subscription.card_last_digits,
-                        created_by=None,
-                        updated_by=None
-                    )
-                    payment.save()
-                    logger.warning(f"Payment failed for subscription {subscription.id}")
-            
-            elif event.type == 'customer.subscription.deleted':
-                stripe_subscription = event.data.object
-                
-                subscription = Subscription.objects(
-                    stripe_subscription_id=stripe_subscription.id
-                ).first()
-                
-                if subscription:
-                    subscription.status = 'canceled'
-                    subscription.canceled_at = datetime.fromtimestamp(stripe_subscription.canceled_at)
-                    subscription.save()
-                    logger.info(f"Subscription canceled: {subscription.id}")
-            
-            elif event.type == 'customer.subscription.updated':
-                stripe_subscription = event.data.object
-                
-                subscription = Subscription.objects(
-                    stripe_subscription_id=stripe_subscription.id
-                ).first()
-                
-                if subscription:
-                    subscription.status = stripe_subscription.status
-                    subscription.current_period_start = datetime.fromtimestamp(stripe_subscription.current_period_start)
-                    subscription.current_period_end = datetime.fromtimestamp(stripe_subscription.current_period_end)
-                    subscription.cancel_at_period_end = stripe_subscription.cancel_at_period_end
-                    
-                    if stripe_subscription.canceled_at:
-                        subscription.canceled_at = datetime.fromtimestamp(stripe_subscription.canceled_at)
-                    
-                    subscription.save()
-                    logger.info(f"Subscription updated: {subscription.id}")
+                    logger.info(f"Payment recorded: {payment.id} - Status: {payment_status}")
+                else:
+                    # Update existing payment
+                    existing_payment.status = payment_status
+                    existing_payment.save()
+                    logger.info(f"Payment updated: {existing_payment.id} - Status: {payment_status}")
             
             return {'message': 'Webhook processado com sucesso'}, 200
             
         except Exception as e:
-            logger.error(f"Error processing Stripe webhook: {str(e)}")
+            logger.error(f"Error processing Mercado Pago webhook: {str(e)}")
             return {'message': 'Erro ao processar webhook'}, 500

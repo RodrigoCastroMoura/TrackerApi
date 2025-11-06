@@ -45,27 +45,39 @@ class SubscriptionResource(Resource):
             if existing_subscription:
                 return {'message': 'Cliente já possui uma assinatura ativa ou pendente'}, 400
             
-            # Create payment preference
-            preference = MercadoPagoService.create_subscription_preference(
-                customer_email=current_customer.email,
+            # Step 1: Create a preapproval plan (subscription plan) in Mercado Pago
+            plan = MercadoPagoService.create_subscription_plan(
                 plan_name=data['plan_name'],
                 amount=data['amount'],
+                frequency=1,
+                frequency_type='months'
+            )
+            
+            if not plan:
+                return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
+            
+            # Step 2: Create subscription (preapproval) for the customer
+            mp_subscription = MercadoPagoService.create_subscription(
+                preapproval_plan_id=plan['plan_id'],
+                payer_email=current_customer.email,
                 metadata={
                     'customer_id': str(current_customer.id),
                     'company_id': str(current_customer.company_id.id),
                 }
             )
             
-            if not preference:
-                return {'message': 'Erro ao criar link de pagamento'}, 500
+            if not mp_subscription:
+                return {'message': 'Erro ao criar assinatura no Mercado Pago'}, 500
             
-            # Create subscription record
+            # Step 3: Create subscription record in our database
             subscription = Subscription(
                 customer_id=current_customer,
                 company_id=current_customer.company_id,
+                mp_subscription_id=mp_subscription['subscription_id'],
+                mp_preapproval_plan_id=plan['plan_id'],
                 plan_name=data['plan_name'],
                 amount=data['amount'],
-                status='incomplete',
+                status='pending',  # Will be updated by webhook when payment is confirmed
                 billing_cycle='monthly',
                 currency='BRL',
                 created_by=None,
@@ -73,14 +85,14 @@ class SubscriptionResource(Resource):
             )
             subscription.save()
             
-            logger.info(f"Subscription payment link created for customer {current_customer.email}")
+            logger.info(f"Recurring subscription created for customer {current_customer.email}, MP subscription ID: {mp_subscription['subscription_id']}")
             
             return {
-                'message': 'Link de pagamento criado com sucesso',
+                'message': 'Assinatura recorrente criada com sucesso',
                 'subscription_id': str(subscription.id),
-                'payment_url': preference['init_point'],
-                'preference_id': preference['preference_id'],
-                'instructions': 'Acesse o link de pagamento para completar a assinatura'
+                'payment_url': mp_subscription['init_point'],
+                'mp_subscription_id': mp_subscription['subscription_id'],
+                'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
             }, 201
             
         except Exception as e:

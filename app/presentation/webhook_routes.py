@@ -29,8 +29,48 @@ class MercadoPagoWebhook(Resource):
                 logger.warning("Webhook missing topic or resource ID")
                 return {'message': 'Invalid webhook data'}, 400
             
+            # Process subscription notification (preapproval)
+            if topic in ['preapproval', 'subscription']:
+                subscription_info = MercadoPagoService.get_subscription_info(str(resource_id))
+                
+                if not subscription_info:
+                    logger.error(f"Failed to get subscription info for ID: {resource_id}")
+                    return {'message': 'Subscription not found'}, 404
+                
+                # Find subscription by mp_subscription_id
+                subscription = Subscription.objects(
+                    mp_subscription_id=str(subscription_info['id']),
+                    visible=True
+                ).first()
+                
+                if not subscription:
+                    logger.warning(f"Subscription not found in DB for MP ID: {subscription_info['id']}")
+                    return {'message': 'Subscription not found in database'}, 404
+                
+                # Map Mercado Pago subscription status to our status
+                mp_status = subscription_info['status']
+                if mp_status == 'authorized':
+                    subscription.status = 'active'
+                    if not subscription.current_period_start:
+                        subscription.current_period_start = datetime.utcnow()
+                        subscription.current_period_end = datetime.utcnow() + timedelta(days=30)
+                elif mp_status == 'paused':
+                    subscription.status = 'past_due'
+                elif mp_status == 'cancelled':
+                    subscription.status = 'canceled'
+                    subscription.canceled_at = datetime.utcnow()
+                elif mp_status == 'pending':
+                    subscription.status = 'pending'
+                
+                # Store payer ID if available
+                if subscription_info.get('payer_id'):
+                    subscription.mp_payer_id = str(subscription_info['payer_id'])
+                
+                subscription.save()
+                logger.info(f"Subscription {subscription.id} updated to status: {subscription.status}")
+            
             # Process payment notification
-            if topic in ['payment', 'merchant_order']:
+            elif topic in ['payment', 'merchant_order']:
                 payment_info = MercadoPagoService.get_payment_info(str(resource_id))
                 
                 if not payment_info:

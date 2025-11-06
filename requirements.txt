@@ -17,7 +17,5 @@ Pillow
 PyMuPDF
 PyPDF2
 pytesseract
-bson
 requests
-stripe
 mercadopago

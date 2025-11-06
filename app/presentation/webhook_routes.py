@@ -2,7 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource
 from app.domain.models import Subscription, Payment, Customer
 from app.infrastructure.mercadopago_service import MercadoPagoService
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import json
 

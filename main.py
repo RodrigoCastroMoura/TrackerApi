@@ -13,6 +13,7 @@ from app.presentation.customer_routes import api as customer_ns
 from app.presentation.tracking_routes import api as tracking_ns
 from app.presentation.report_routes import api as report_ns
 from app.presentation.subscription_routes import api as subscription_ns
+from app.presentation.subscription_plan_routes import api as subscription_plan_ns
 from app.presentation.webhook_routes import api as webhook_ns
 from app.domain.models import User, Permission
 from config import Config
@@ -168,6 +169,7 @@ def create_app():
         api.add_namespace(link_token_ns, path='/api/links')
         api.add_namespace(tracking_ns, path='/api/tracking')
         api.add_namespace(report_ns, path='/api/reports')
+        api.add_namespace(subscription_plan_ns, path='/api/subscription-plans')
         api.add_namespace(subscription_ns, path='/api/subscriptions')
         api.add_namespace(webhook_ns, path='/api/webhooks')
 

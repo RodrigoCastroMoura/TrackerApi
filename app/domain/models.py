@@ -281,6 +281,54 @@ class Customer(BaseDocument):
         })
         return base_dict
 
+class SubscriptionPlan(BaseDocument):
+    """Subscription Plan model for managing available plans"""
+    company_id = ReferenceField('Company', required=True)
+    
+    # Plan details
+    name = StringField(required=True, max_length=100)
+    description = StringField(max_length=500)
+    amount = FloatField(required=True)  # Monthly amount in BRL
+    currency = StringField(default='BRL')
+    billing_cycle = StringField(choices=['monthly', 'yearly'], default='monthly')
+    
+    # Mercado Pago integration
+    mp_preapproval_plan_id = StringField(unique=True, sparse=True)  # Mercado Pago plan ID
+    
+    # Features and limits (optional, for display purposes)
+    features = ListField(StringField(), default=list)  # List of features included
+    max_vehicles = IntField()  # Maximum number of vehicles (optional)
+    
+    # Status
+    is_active = BooleanField(default=True)  # If plan is available for new subscriptions
+    visible = BooleanField(default=True)
+    
+    meta = {
+        'collection': 'subscription_plans',
+        'indexes': [
+            {'fields': ['company_id']},
+            {'fields': ['is_active']},
+            {'fields': ['mp_preapproval_plan_id'], 'unique': True, 'sparse': True},
+        ]
+    }
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        base_dict = super(SubscriptionPlan, self).to_dict()
+        base_dict.update({
+            'company_id': str(self.company_id.id) if self.company_id else None,
+            'name': self.name,
+            'description': self.description,
+            'amount': self.amount,
+            'currency': self.currency,
+            'billing_cycle': self.billing_cycle,
+            'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
+            'features': self.features,
+            'max_vehicles': self.max_vehicles,
+            'is_active': self.is_active,
+        })
+        return base_dict
+
 class Subscription(BaseDocument):
     """Subscription model for monthly recurring payments"""
     customer_id = ReferenceField('Customer', required=True)

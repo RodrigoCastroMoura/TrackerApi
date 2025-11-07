@@ -37,7 +37,7 @@ Preferred communication style: Simple, everyday language.
 ### Domain Models
 - **Core Entities**: `Company`, `User`, `Permission`, `Customer`, `Vehicle`.
 - **Supporting Models**: `TokenBlacklist`, `UsedLinkToken`, `VehicleData` (GPS data).
-- **Payment Models**: `Subscription` and `Payment` for Mercado Pago.
+- **Payment Models**: `SubscriptionPlan` (planos de assinatura), `Subscription` (assinaturas ativas), `Payment` (histórico de pagamentos).
 
 ### Security & Production Readiness
 - Mandatory environment variables: `FLASK_SECRET_KEY`, `MONGODB_URI`.
@@ -55,6 +55,7 @@ Preferred communication style: Simple, everyday language.
     - `/api/vehicles`: Vehicle management (multi-tenant, includes lock/unlock commands).
     - `/api/tracking/vehicles`: GPS tracking endpoints (last known location, history, route) with geocoding.
     - `/api/reports`: Vehicle usage reports (summary, detailed, trips, stops).
+    - `/api/subscription-plans`: Subscription plan management (list, create, update, delete).
     - `/api/subscriptions`: Monthly subscription management (create, view, cancel) and payment history (customer-only).
     - `/api/webhooks/mercadopago`: Mercado Pago payment notification processing.
 - **Features**: Decorator-based authentication and authorization, multi-tenancy enforcement, consistent error handling, input validation, pagination, and filtering.

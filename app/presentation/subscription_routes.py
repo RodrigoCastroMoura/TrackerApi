@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Customer, Subscription, Payment
+from app.domain.models import Customer, Subscription, Payment, SubscriptionPlan
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from app.presentation.auth_routes import customer_token_required
 from mongoengine import DoesNotExist
@@ -12,8 +12,7 @@ logger = logging.getLogger(__name__)
 api = Namespace('subscriptions', description='Operações de assinatura e pagamento com Mercado Pago')
 
 subscription_create_model = api.model('SubscriptionCreate', {
-    'plan_name': fields.String(required=True, description='Nome do plano de assinatura'),
-    'amount': fields.Float(required=True, description='Valor mensal em reais'),
+    'plan_id': fields.String(required=True, description='ID do plano de assinatura cadastrado'),
 })
 
 @api.route('/')
@@ -23,17 +22,23 @@ class SubscriptionResource(Resource):
     @api.expect(subscription_create_model)
     @customer_token_required
     def post(self, current_customer):
-        """Criar link de pagamento para assinatura mensal"""
+        """Criar assinatura a partir de um plano cadastrado"""
         try:
             data = request.get_json()
             
-            required_fields = ['plan_name', 'amount']
-            for field in required_fields:
-                if field not in data or not data[field]:
-                    return {'message': f'Campo {field} é obrigatório'}, 400
+            if not data.get('plan_id'):
+                return {'message': 'Campo plan_id é obrigatório'}, 400
             
-            if data['amount'] <= 0:
-                return {'message': 'Valor deve ser maior que zero'}, 400
+            # Step 1: Fetch subscription plan
+            plan = SubscriptionPlan.objects(
+                id=data['plan_id'],
+                company_id=current_customer.company_id,
+                is_active=True,
+                visible=True
+            ).first()
+            
+            if not plan:
+                return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
             
             # Check for existing active subscription
             existing_subscription = Subscription.objects(
@@ -45,51 +50,72 @@ class SubscriptionResource(Resource):
             if existing_subscription:
                 return {'message': 'Cliente já possui uma assinatura ativa ou pendente'}, 400
             
-            # Step 1: Create a preapproval plan (subscription plan) in Mercado Pago
-            plan = MercadoPagoService.create_subscription_plan(
-                plan_name=data['plan_name'],
-                amount=data['amount'],
-                frequency=1,
-                frequency_type='months'
-            )
+            # Step 2: Create or reuse Mercado Pago preapproval plan
+            mp_plan_id = plan.mp_preapproval_plan_id
             
-            if not plan:
-                return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
+            if not mp_plan_id:
+                # Map billing_cycle to Mercado Pago frequency
+                if plan.billing_cycle == 'yearly':
+                    frequency = 1
+                    frequency_type = 'years'
+                else:  # monthly
+                    frequency = 1
+                    frequency_type = 'months'
+                
+                # Create new plan in Mercado Pago
+                mp_plan = MercadoPagoService.create_subscription_plan(
+                    plan_name=plan.name,
+                    amount=plan.amount,
+                    frequency=frequency,
+                    frequency_type=frequency_type
+                )
+                
+                if not mp_plan:
+                    return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
+                
+                mp_plan_id = mp_plan['plan_id']
+                
+                # Save MP plan ID for future reuse
+                plan.mp_preapproval_plan_id = mp_plan_id
+                plan.save()
             
-            # Step 2: Create subscription (preapproval) for the customer
+            # Step 3: Create subscription (preapproval) for the customer
             mp_subscription = MercadoPagoService.create_subscription(
-                preapproval_plan_id=plan['plan_id'],
+                preapproval_plan_id=mp_plan_id,
                 payer_email=current_customer.email,
                 metadata={
                     'customer_id': str(current_customer.id),
                     'company_id': str(current_customer.company_id.id),
+                    'plan_id': str(plan.id),
                 }
             )
             
             if not mp_subscription:
                 return {'message': 'Erro ao criar assinatura no Mercado Pago'}, 500
             
-            # Step 3: Create subscription record in our database
+            # Step 4: Create subscription record in our database
             subscription = Subscription(
                 customer_id=current_customer,
                 company_id=current_customer.company_id,
                 mp_subscription_id=mp_subscription['subscription_id'],
-                mp_preapproval_plan_id=plan['plan_id'],
-                plan_name=data['plan_name'],
-                amount=data['amount'],
+                mp_preapproval_plan_id=mp_plan_id,
+                plan_name=plan.name,
+                amount=plan.amount,
                 status='pending',  # Will be updated by webhook when payment is confirmed
-                billing_cycle='monthly',
+                billing_cycle=plan.billing_cycle,
                 currency='BRL',
                 created_by=None,
                 updated_by=None
             )
             subscription.save()
             
-            logger.info(f"Recurring subscription created for customer {current_customer.email}, MP subscription ID: {mp_subscription['subscription_id']}")
+            logger.info(f"Recurring subscription created for customer {current_customer.email}, plan: {plan.name}, MP subscription ID: {mp_subscription['subscription_id']}")
             
             return {
                 'message': 'Assinatura recorrente criada com sucesso',
                 'subscription_id': str(subscription.id),
+                'plan_name': plan.name,
+                'amount': plan.amount,
                 'payment_url': mp_subscription['init_point'],
                 'mp_subscription_id': mp_subscription['subscription_id'],
                 'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'

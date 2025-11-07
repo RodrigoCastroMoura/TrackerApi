@@ -240,7 +240,8 @@ class Customer(BaseDocument):
         'indexes': [
             {'fields': ['email'], 'unique': True},
             {'fields': ['document'], 'unique': True},
-        ]
+        ],
+        'strict': False  # Allow extra fields in DB from old schema versions
     }
 
     def set_password(self, password):

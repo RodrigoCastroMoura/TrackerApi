@@ -1,0 +1,88 @@
+025-11-06 22:21:49.82
+48e61916
+User
+2025-11-07 01:21:49,828 - app.infrastructure.database - INFO - [database.py:45] - Successfully verified MongoDB connection
+2025-11-06 22:21:50.48
+48e61916
+User
+2025-11-07 01:21:50,485 - app.infrastructure.database - INFO - [database.py:50] - Successfully initialized collections
+2025-11-06 22:21:50.52
+48e61916
+User
+/home/runner/workspace/.pythonlibs/lib/python3.11/site-packages/flask_limiter/extension.py:336: UserWarning: Using the in-memory storage for tracking rate limits as no storage was explicitly specified. This is not recommended for production use. See: https://flask-limiter.readthedocs.io#configuring-a-storage-backend for documentation about configuring the storage backend.
+2025-11-06 22:21:50.52
+48e61916
+User
+warnings.warn(
+2025-11-06 22:21:50.52
+48e61916
+User
+2025-11-07 01:21:50,528 - __main__ - WARNING - [main.py:158] - ⚠️ Rate limiting using in-memory storage - not recommended for production!
+2025-11-06 22:21:50.52
+48e61916
+User
+2025-11-07 01:21:50,528 - __main__ - WARNING - [main.py:159] - Set RATELIMIT_STORAGE_URL environment variable to use Redis/Memcached
+2025-11-06 22:21:50.56
+48e61916
+User
+2025-11-07 01:21:50,561 - __main__ - INFO - [main.py:185] - Starting Flask application...
+2025-11-06 22:21:50.57
+48e61916
+User
+* Serving Flask app 'main'
+2025-11-06 22:21:50.57
+48e61916
+User
+* Debug mode: off
+2025-11-06 22:21:51.03
+48e61916
+User
+2025-11-07 01:21:51,032 - werkzeug - INFO - [_internal.py:96] - WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+2025-11-06 22:21:51.03
+48e61916
+User
+* Running on all addresses (0.0.0.0)
+2025-11-06 22:21:51.03
+48e61916
+User
+* Running on http://127.0.0.1:5000
+2025-11-06 22:21:51.03
+48e61916
+User
+* Running on http://10.0.47.29:5000
+2025-11-06 22:21:51.03
+48e61916
+User
+2025-11-07 01:21:51,032 - werkzeug - INFO - [_internal.py:96] - Press CTRL+C to quit
+2025-11-06 22:27:07.38
+48e61916
+User
+2025-11-07 01:27:07,379 - werkzeug - INFO - [_internal.py:96] - 127.0.0.1 - - [07/Nov/2025 01:27:07] "POST /api/auth/customer/login HTTP/1.1" 401 -
+2025-11-06 22:28:06.79
+48e61916
+User
+2025-11-07 01:28:06,799 - werkzeug - INFO - [_internal.py:96] - 127.0.0.1 - - [07/Nov/2025 01:28:06] "POST /api/auth/customer/login HTTP/1.1" 401 -
+2025-11-06 22:28:36.54
+48e61916
+User
+2025-11-07 01:28:36,549 - app.presentation.auth_routes - ERROR - [auth_routes.py:579] - Login error: The fields "{'monthly_amount', 'birth_date', 'auto_debit'}" do not exist on the document "Customer"
+2025-11-06 22:28:36.55
+48e61916
+User
+2025-11-07 01:28:36,550 - werkzeug - INFO - [_internal.py:96] - 127.0.0.1 - - [07/Nov/2025 01:28:36] "POST /api/auth/customer/login HTTP/1.1" 500 -
+2025-11-06 22:29:04.80
+48e61916
+User
+2025-11-07 01:29:04,803 - app.presentation.auth_routes - ERROR - [auth_routes.py:579] - Login error: The fields "{'monthly_amount', 'birth_date', 'auto_debit'}" do not exist on the document "Customer"
+2025-11-06 22:29:04.80
+48e61916
+User
+2025-11-07 01:29:04,804 - werkzeug - INFO - [_internal.py:96] - 127.0.0.1 - - [07/Nov/2025 01:29:04] "POST /api/auth/customer/login HTTP/1.1" 500 -
+2025-11-06 22:29:20.81
+48e61916
+User
+2025-11-07 01:29:20,817 - app.presentation.auth_routes - ERROR - [auth_routes.py:579] - Login error: The fields "{'monthly_amount', 'birth_date', 'auto_debit'}" do not exist on the document "Customer"
+2025-11-06 22:29:20.81
+48e61916
+User
+2025-11-07 01:29:20,818 - werkzeug - INFO - [_internal.py:96] - 127.0.0.1

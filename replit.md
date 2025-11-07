@@ -41,9 +41,11 @@ Preferred communication style: Simple, everyday language.
 
 ### Security & Production Readiness
 - Mandatory environment variables: `FLASK_SECRET_KEY`, `MONGODB_URI`.
+- **Webhook Security**: HMAC-SHA256 signature validation for Mercado Pago webhooks using `MERCADOPAGO_WEBHOOK_SECRET`.
 - Production WSGI server: Gunicorn.
 - CORS support with configurable origins.
 - Bootstrap CLI script (`bootstrap.py`) for secure admin creation.
+- **Security Updates (Nov 2025)**: Added webhook signature validation to prevent unauthorized webhook requests.
 
 ### API Structure
 - **Main Endpoints**:

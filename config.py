@@ -41,3 +41,7 @@ class Config:
     # Rate Limiting Configuration
     # For production, use Redis: RATELIMIT_STORAGE_URL = "redis://localhost:6379"
     RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
+    
+    # Mercado Pago Webhook Security
+    # IMPORTANT: Configure this in production to validate webhook signatures
+    MERCADOPAGO_WEBHOOK_SECRET = os.environ.get('MERCADOPAGO_WEBHOOK_SECRET')

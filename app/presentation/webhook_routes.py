@@ -5,10 +5,68 @@ from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime, timedelta
 import logging
 import json
+import hmac
+import hashlib
+import os
 
 logger = logging.getLogger(__name__)
 
 api = Namespace('webhooks', description='Webhooks de integração - Mercado Pago')
+
+def validate_mercadopago_signature(x_signature, x_request_id, data_id, secret):
+    """
+    Validate Mercado Pago webhook signature for security
+    
+    Args:
+        x_signature: Value from x-signature header (format: "ts=123,v1=abc...")
+        x_request_id: Value from x-request-id header
+        data_id: Value from data.id query parameter
+        secret: Webhook secret key from Mercado Pago dashboard
+    
+    Returns:
+        bool: True if signature is valid, False otherwise
+    """
+    if not all([x_signature, x_request_id, data_id, secret]):
+        logger.warning("Missing required signature parameters")
+        return False
+    
+    try:
+        # Split the x-signature header
+        parts = x_signature.split(',')
+        if len(parts) < 2:
+            logger.warning("Invalid x-signature format")
+            return False
+        
+        ts_part = parts[0]  # ts=1234567890
+        signature_part = parts[1]  # v1=abc123...
+        
+        # Extract values
+        ts_value = ts_part.split('=')[1]
+        received_signature = signature_part.split('=')[1]
+        
+        # Build the signature template (MUST end with semicolon)
+        # Format: id:{data_id};request-id:{x_request_id};ts:{timestamp};
+        signature_template = f"id:{data_id};request-id:{x_request_id};ts:{ts_value};"
+        
+        # Generate HMAC-SHA256 signature
+        calculated_signature = hmac.new(
+            secret.encode('utf-8'),
+            signature_template.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        # Use constant-time comparison to prevent timing attacks
+        is_valid = hmac.compare_digest(calculated_signature, received_signature)
+        
+        if not is_valid:
+            logger.warning("Signature validation failed - potential security threat")
+        
+        return is_valid
+        
+    except (IndexError, AttributeError, ValueError) as e:
+        logger.error(f"Error validating signature: {str(e)}")
+        return False
+
 
 @api.route('/mercadopago')
 class MercadoPagoWebhook(Resource):
@@ -17,6 +75,28 @@ class MercadoPagoWebhook(Resource):
     def post(self):
         """Processar notificações do Mercado Pago (payment, subscription)"""
         try:
+            # Step 1: Validate webhook signature for security
+            x_signature = request.headers.get('x-signature', '')
+            x_request_id = request.headers.get('x-request-id', '')
+            data_id = request.args.get('data.id', '')
+            
+            # Get webhook secret from environment
+            webhook_secret = os.environ.get('MERCADOPAGO_WEBHOOK_SECRET')
+            
+            if not webhook_secret:
+                logger.error("MERCADOPAGO_WEBHOOK_SECRET not configured - webhooks are insecure!")
+                # In production, you should reject webhooks without secret
+                # For now, log warning but continue (for backward compatibility)
+                logger.warning("⚠️ Processing webhook without signature validation - SECURITY RISK!")
+            else:
+                # Validate signature
+                if not validate_mercadopago_signature(x_signature, x_request_id, data_id, webhook_secret):
+                    logger.error("Invalid webhook signature - rejecting request")
+                    return {'message': 'Invalid signature'}, 401
+                
+                logger.info("Webhook signature validated successfully")
+            
+            # Step 2: Process webhook data
             data = request.get_json() or {}
             
             # Mercado Pago sends notifications about different events

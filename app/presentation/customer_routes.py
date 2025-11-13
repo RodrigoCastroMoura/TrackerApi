@@ -191,6 +191,17 @@ class CustomerList(Resource):
             if not postal_code:
                 return {'message': 'CEP inválido - deve ter 8 dígitos'}, 400
             
+            # Check for existing customer before creating
+            existing_email = Customer.objects(email=data['email'].lower()).first()
+            if existing_email:
+                logger.warning(f"Attempt to create customer with duplicate email: {data['email']}")
+                return {'message': f'Email {data["email"]} já está cadastrado'}, 409
+            
+            existing_document = Customer.objects(document=document).first()
+            if existing_document:
+                logger.warning(f"Attempt to create customer with duplicate CPF: {document}")
+                return {'message': f'CPF {data["document"]} já está cadastrado'}, 409
+            
             try:
                 customer = Customer(
                     name=data['name'],
@@ -216,11 +227,17 @@ class CustomerList(Resource):
                 return customer.to_dict(), 201
                 
             except NotUniqueError as e:
-                if 'email' in str(e):
-                    return {'message': 'Email já cadastrado'}, 409
-                if 'document' in str(e):
-                    return {'message': 'CPF já cadastrado'}, 409
-                return {'message': 'Erro de duplicação'}, 409
+                error_msg = str(e)
+                logger.error(f"NotUniqueError creating customer: {error_msg}")
+                
+                if 'email' in error_msg.lower():
+                    return {'message': f'Email {data["email"]} já está cadastrado'}, 409
+                elif 'document' in error_msg.lower():
+                    return {'message': f'CPF {data["document"]} já está cadastrado'}, 409
+                else:
+                    # Log full error for debugging
+                    logger.error(f"Unexpected unique constraint violation: {error_msg}")
+                    return {'message': 'Dados duplicados no sistema. Verifique email e CPF.'}, 409
                 
         except Exception as e:
             logger.error(f"Error creating customer: {str(e)}")

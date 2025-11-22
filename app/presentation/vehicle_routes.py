@@ -72,6 +72,7 @@ class VehicleList(Resource):
                  'customer_id': {'type': 'string', 'description': 'Filtrar por ID do cliente'},
                  'placa': {'type': 'string', 'description': 'Filtrar por placa'},
                  'imei': {'type': 'string', 'description': 'Filtrar por IMEI'},
+                 'tipo': {'type': 'string', 'enum': ['carro', 'moto', 'caminhao', 'van', 'onibus', 'outro'], 'description': 'Filtrar por tipo de veículo'},
                  'status': {'type': 'string', 'enum': ['active', 'inactive']},
                  'bloqueado': {'type': 'boolean', 'description': 'Filtrar por status de bloqueio'}
              })
@@ -99,6 +100,9 @@ class VehicleList(Resource):
             
             if request.args.get('imei'):
                 query['IMEI'] = request.args.get('imei')
+            
+            if request.args.get('tipo'):
+                query['tipo'] = request.args.get('tipo')
             
             if request.args.get('status'):
                 query['status'] = request.args.get('status')

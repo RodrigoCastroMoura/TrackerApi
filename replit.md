@@ -65,7 +65,7 @@ Preferred communication style: Simple, everyday language.
 ### Configuration Management
 - Environment-based configuration via `config.py`.
 - Critical environment variables: `FLASK_SECRET_KEY`, `MONGODB_URI`.
-- Optional variables for CORS, Rate Limiting, Firebase, Mercado Pago, and Email.
+- Optional variables for CORS, Rate Limiting, Firebase, Mercado Pago, Email, and Google Maps (`GOOGLE_MAPS_API_KEY`).
 
 ### Logging & Monitoring
 - Centralized logging (console + file) with structured format.
@@ -81,8 +81,9 @@ Preferred communication style: Simple, everyday language.
 ### Email Service
 - **SMTP Email Provider**: Configurable for transactional emails via Flask-Mail.
 
-### Geocoding Service
-- **Nominatim (OpenStreetMap)**: For reverse geocoding GPS coordinates to addresses, integrated via `geopy` library. Includes rate limiting and LRU caching.
+### Geocoding Services
+- **Nominatim (OpenStreetMap)**: Free reverse geocoding service via `geopy` library. Includes rate limiting (1 req/sec) and LRU caching.
+- **Google Maps Geocoding API**: Premium reverse geocoding service via `googlemaps` library. Higher quality addresses, requires `GOOGLE_MAPS_API_KEY` environment variable. Includes LRU caching and automatic error handling.
 
 ### Payment Gateway
 - **Mercado Pago**: For monthly subscription payment processing, integrated via `mercadopago` SDK. Supports payment links, subscription management, and webhooks.
@@ -92,6 +93,6 @@ Preferred communication style: Simple, everyday language.
 - **Database**: MongoEngine, PyMongo.
 - **Authentication**: PyJWT, Werkzeug.
 - **Storage**: Firebase-admin.
-- **Geocoding**: Geopy.
+- **Geocoding**: Geopy (Nominatim), Googlemaps (Google Maps API).
 - **Payment**: Mercadopago.
 - **Production Server**: Gunicorn.

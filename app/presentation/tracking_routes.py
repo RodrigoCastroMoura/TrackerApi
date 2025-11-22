@@ -247,7 +247,7 @@ class VehicleCurrentLocation(Resource):
                     'heading': 0.0,
                     'altitude': float(last_location.altitude) if last_location.altitude else 0.0,
                     'accuracy': 10.0,  # Not stored in current model
-                    'timestamp': last_location.deviceTimestamp
+                    'timestamp': last_location.timestamp
                 },
                 'tracker': {
                     'serial': vehicle.IMEI,

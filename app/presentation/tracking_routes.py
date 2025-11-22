@@ -48,6 +48,7 @@ vehicle_tracking_model = api.model('VehicleTracking', {
     'id': fields.String(readonly=True),
     'dsplaca': fields.String(description='Placa do veículo'),
     'dsmodelo': fields.String(description='Modelo do veículo'),
+    'tipo': fields.String(description='Tipo do veículo'),
     'customer_id': fields.String(description='ID do cliente'),
     'customer_name': fields.String(description='Nome do cliente'),
     'location': fields.Nested(location_model),
@@ -59,6 +60,7 @@ vehicle_tracking_model = api.model('VehicleTracking', {
 vehicle_location_response_model = api.model('VehicleLocationResponse', {
     'vehicle_id': fields.String(description='ID do veículo'),
     'plate': fields.String(description='Placa do veículo'),
+    'tipo': fields.String(description='Tipo do veículo'),
     'location': fields.Nested(location_model),
     'tracker': fields.Nested(tracker_info_model)
 })
@@ -177,6 +179,7 @@ class VehicleTrackingList(Resource):
                     'id': str(vehicle.id),
                     'dsplaca': vehicle.dsplaca or 'N/A',
                     'dsmodelo': vehicle.dsmodelo or 'N/A',
+                    'tipo': vehicle.tipo,
                     'customer_id': str(vehicle.customer_id.id) if vehicle.customer_id else None,
                     'customer_name': vehicle.customer_id.name if vehicle.customer_id else 'N/A',
                     'status': 'blocked' if vehicle.bloqueado else vehicle.status,
@@ -254,6 +257,7 @@ class VehicleCurrentLocation(Resource):
             response = {
                 'vehicle_id': str(vehicle.id),
                 'plate': vehicle.dsplaca or 'N/A',
+                'tipo': vehicle.tipo,
                 'location': {
                     'lat': lat,
                     'lng': lng,

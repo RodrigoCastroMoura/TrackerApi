@@ -220,7 +220,7 @@ class VehicleCurrentLocation(Resource):
             vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             
             # Get last location
-            last_location = VehicleData.objects(imei=vehicle.IMEI).order_by('-deviceTimestamp').first()
+            last_location = VehicleData.objects(imei=vehicle.IMEI).order_by('-timestamp').first()
             
             if not last_location:
                 return {'message': 'Nenhuma localização encontrada para este veículo'}, 404

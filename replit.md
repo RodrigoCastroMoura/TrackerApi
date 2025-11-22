@@ -3,6 +3,9 @@
 ## Overview
 This project is a comprehensive multi-tenant vehicle tracking system built with Flask, adhering to Clean Architecture principles. It offers user authentication, multi-company management (multi-tenancy), real-time GPS tracking, and detailed reports with role-based access control. The system utilizes MongoDB for data persistence and Firebase Cloud Storage for file storage. Its core purpose is to provide a robust and scalable solution for vehicle monitoring and management for various businesses, enabling efficient operations and data-driven insights.
 
+## Recent Changes
+- **Nov 22, 2025**: Added vehicle type classification field ("tipo") to Vehicle model with support across all CRUD and tracking endpoints. Vehicles can now be classified as: carro, moto, caminhao, van, onibus, outro.
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 

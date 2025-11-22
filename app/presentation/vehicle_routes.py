@@ -19,6 +19,7 @@ vehicle_model = api.model('Vehicle', {
     'dsplaca': fields.String(description='Placa do veículo'),
     'dsmodelo': fields.String(description='Modelo do veículo'),
     'dsmarca': fields.String(description='Marca do veículo'),
+    'tipo': fields.String(description='Tipo do veículo', enum=['carro', 'moto', 'caminhao', 'van', 'onibus', 'outro']),
     'ano': fields.Integer(description='Ano do veículo'),
     'comandobloqueo': fields.Boolean(description='Comando de bloqueio pendente'),
     'bloqueado': fields.Boolean(description='Status atual de bloqueio', default=False),
@@ -33,6 +34,7 @@ vehicle_update_model = api.model('VehicleUpdate', {
     'dsplaca': fields.String(description='Placa do veículo'),
     'dsmodelo': fields.String(description='Modelo do veículo'),
     'dsmarca': fields.String(description='Marca do veículo'),
+    'tipo': fields.String(description='Tipo do veículo', enum=['carro', 'moto', 'caminhao', 'van', 'onibus', 'outro']),
     'ano': fields.Integer(description='Ano do veículo')
 })
 

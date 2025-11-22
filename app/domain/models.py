@@ -124,6 +124,7 @@ class Vehicle(BaseDocument):
     dsplaca = StringField(max_length=10)  # Placa do veículo
     dsmodelo = StringField(max_length=100)  # Modelo do veículo
     dsmarca = StringField(max_length=100)  # Marca do veículo
+    tipo = StringField(max_length=50, choices=['carro', 'moto', 'caminhao', 'van', 'onibus', 'outro'])  # Tipo do veículo
     ano = IntField()  # Ano do veículo
     customer_id = ReferenceField('Customer')  # Cliente associado ao veículo
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
@@ -154,6 +155,7 @@ class Vehicle(BaseDocument):
             'IMEI': self.IMEI,
             'dsplaca': self.dsplaca,
             'dsmodelo': self.dsmodelo,
+            'tipo': self.tipo,
             'ano': self.ano,
             'dsmarca': self.dsmarca,
             'customer_id': str(self.customer_id.id) if self.customer_id else None,

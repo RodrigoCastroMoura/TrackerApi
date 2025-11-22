@@ -169,6 +169,7 @@ class VehicleList(Resource):
                     dsplaca=data.get('dsplaca'),
                     dsmodelo=data.get('dsmodelo'),
                     dsmarca=data.get('dsmarca'),
+                    tipo=data.get('tipo'),
                     ano=data.get('ano'),
                     company_id=current_user.company_id,  # Multi-tenancy
                     customer_id=customer,

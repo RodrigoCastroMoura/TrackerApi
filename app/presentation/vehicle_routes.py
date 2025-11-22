@@ -267,7 +267,12 @@ class VehicleResource(Resource):
             
             if 'dsmodelo' in data:
                 vehicle.dsmodelo = data['dsmodelo']
-
+            
+            if 'dsmarca' in data:
+                vehicle.dsmarca = data['dsmarca']
+            
+            if 'tipo' in data:
+                vehicle.tipo = data['tipo']
 
             if 'ano' in data:
                 vehicle.ano = data['ano']

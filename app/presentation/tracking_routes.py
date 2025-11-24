@@ -153,7 +153,7 @@ class VehicleTrackingList(Resource):
                 (page - 1) * per_page).limit(per_page)
             
             # Get best geocoding service (Google Maps with Nominatim fallback)
-            geocoding = get_best_geocoding_service()
+            geocoding = get_geocoding_service()
             
             # Get last location for each vehicle
             result_vehicles = []
@@ -394,7 +394,7 @@ class VehicleRoute(Resource):
             end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
             
             # Get best geocoding service (Google Maps with Nominatim fallback)
-            geocoding = get_best_geocoding_service()
+            geocoding = get_geocoding_service()
             
             # Get location history
             locations_data = VehicleData.objects(

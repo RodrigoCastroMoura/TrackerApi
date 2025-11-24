@@ -409,7 +409,7 @@ class TokenRefresh(Resource):
 class PasswordRecover(Resource):
     @api.doc('recover_password')
     def post(self):
-        """Request password recovery"""
+        """Request password recovery - sends temporary password via email"""
         try:
             data = request.get_json()
             if not data or 'identifier' not in data:
@@ -423,16 +423,26 @@ class PasswordRecover(Resource):
 
             if not user:
                 return {'message': 'Usuário não encontrado'}, 404
+            
+            if user.status != 'active':
+                return {'message': 'Usuário inativo'}, 401
 
-            # Gerar token temporário de recuperação (válido por 1 hora)
-            recovery_token = create_token(user, 'recovery')
+            # Gerar senha temporária
+            temporary_password = generate_temporary_password()
+            
+            # Atualizar usuário com senha temporária e marcar para troca obrigatória
+            user.set_password(temporary_password)
+            user.must_change_password = True
+            user.save()
+            
+            logger.info(f"Senha temporária gerada para usuário: {user.email}")
 
-            # Enviar email de recuperação
+            # Enviar email com senha temporária
             from app.infrastructure.email_service import EmailService
-            if EmailService.send_password_recovery_email(user.email, recovery_token):
-                return {'message': 'Email de recuperação enviado com sucesso'}, 200
+            if EmailService.send_temporary_password_email(user.email, user.name, temporary_password):
+                return {'message': 'Senha temporária enviada por email. Faça login e troque sua senha.'}, 200
             else:
-                return {'message': 'Erro ao enviar email de recuperação'}, 500
+                return {'message': 'Erro ao enviar email com senha temporária'}, 500
 
         except Exception as e:
             logger.error(f"Password recovery error: {str(e)}")
@@ -658,7 +668,7 @@ class CustomerPasswordRecover(Resource):
     @api.doc('customer_password_recover')
     @limiter.limit("3 per hour")
     def post(self):
-        """Solicitar recuperação de senha para cliente"""
+        """Solicitar recuperação de senha para cliente - envia senha temporária via email"""
         try:
             data = request.get_json()
             if not data or 'identifier' not in data:
@@ -678,15 +688,24 @@ class CustomerPasswordRecover(Resource):
             if customer.status != 'active':
                 return {'message': 'Cliente inativo'}, 401
 
-            recovery_token = create_token(customer, 'recovery')
+            # Gerar senha temporária
+            temporary_password = generate_temporary_password()
+            
+            # Atualizar cliente com senha temporária e marcar para troca obrigatória
+            customer.set_password(temporary_password)
+            customer.must_change_password = True
+            customer.save()
+            
+            logger.info(f"Senha temporária gerada para cliente: {customer.email}")
 
+            # Enviar email com senha temporária
             from app.infrastructure.email_service import EmailService
-            if EmailService.send_password_recovery_email(customer.email, recovery_token):
-                logger.info(f"Email de recuperação enviado para cliente: {customer.email}")
-                return {'message': 'Email de recuperação enviado com sucesso'}, 200
+            if EmailService.send_temporary_password_email(customer.email, customer.name, temporary_password):
+                logger.info(f"Email com senha temporária enviado para cliente: {customer.email}")
+                return {'message': 'Senha temporária enviada por email. Faça login e troque sua senha.'}, 200
             else:
-                logger.error(f"Falha ao enviar email de recuperação para: {customer.email}")
-                return {'message': 'Erro ao enviar email de recuperação'}, 500
+                logger.error(f"Falha ao enviar email com senha temporária para: {customer.email}")
+                return {'message': 'Erro ao enviar email com senha temporária'}, 500
 
         except Exception as e:
             logger.error(f"Customer password recovery error: {str(e)}")

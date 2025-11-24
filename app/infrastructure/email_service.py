@@ -8,7 +8,55 @@ mail = Mail()
 
 class EmailService:
     @staticmethod
+    def send_temporary_password_email(recipient_email: str, recipient_name: str, temporary_password: str) -> bool:
+        """
+        Envia email com senha temporária para usuário/cliente.
+        
+        Args:
+            recipient_email: Email do destinatário
+            recipient_name: Nome do destinatário
+            temporary_password: Senha temporária gerada
+            
+        Returns:
+            bool: True se enviado com sucesso, False caso contrário
+        """
+        try:
+            msg = Message(
+                "Senha Temporária - DocSmart",
+                sender=current_app.config['MAIL_DEFAULT_SENDER'],
+                recipients=[recipient_email]
+            )
+
+            msg.html = f"""
+            <h2>Recuperação de Senha</h2>
+            <p>Olá <strong>{recipient_name}</strong>,</p>
+            <p>Você solicitou a recuperação de senha da sua conta.</p>
+            <p>Sua senha temporária é: <strong style="font-size: 18px; color: #007bff;">{temporary_password}</strong></p>
+            <p><strong>Importante:</strong></p>
+            <ul>
+                <li>Faça login com esta senha temporária</li>
+                <li>Após o login, você será obrigado a trocar sua senha por uma nova</li>
+                <li>Esta senha é válida apenas para um único login</li>
+            </ul>
+            <p>Se você não solicitou esta recuperação, entre em contato com o suporte imediatamente.</p>
+            <br>
+            <p>Atenciosamente,<br>Equipe DocSmart</p>
+            """
+
+            mail.send(msg)
+            logger.info(f"Temporary password email sent to {recipient_email}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error sending temporary password email: {str(e)}")
+            return False
+
+    @staticmethod
     def send_password_recovery_email(recipient_email: str, recovery_token: str) -> bool:
+        """
+        DEPRECATED: Use send_temporary_password_email instead.
+        Mantido apenas para compatibilidade com código antigo.
+        """
         try:
             # Create recovery link
             recovery_url = f"{current_app.config.get('APP_URL_RECOVERY', '')}/{recovery_token}"

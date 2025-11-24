@@ -5,14 +5,18 @@ from bson.objectid import ObjectId
 from typing import Optional
 from enum import Enum
 
-class TipoVeiculo(str, Enum):
-    """Vehicle type enum"""
-    CARRO = 'carro'
-    MOTO = 'moto'
-    CAMINHAO = 'caminhao'
-    VAN = 'van'
-    ONIBUS = 'onibus'
-    OUTRO = 'outro'
+class TipoVeiculo(Enum):
+    """Vehicle type enum with numeric and string values"""
+    CARRO = (1, 'carro')
+    MOTO = (2, 'moto')
+    CAMINHAO = (3, 'caminhao')
+    VAN = (4, 'van')
+    ONIBUS = (5, 'onibus')
+    OUTRO = (6, 'outro')
+    
+    def __init__(self, numero, descricao):
+        self.numero = numero
+        self.descricao = descricao
 
 class BaseDocument(Document):
     meta = {'abstract': True}
@@ -135,7 +139,7 @@ class Vehicle(BaseDocument):
     dsplaca = StringField(max_length=10)  # Placa do veículo
     dsmodelo = StringField(max_length=100)  # Modelo do veículo
     dsmarca = StringField(max_length=100)  # Marca do veículo
-    tipo = StringField(max_length=50, choices=[t.value for t in TipoVeiculo])  # Tipo do veículo
+    tipo = StringField(max_length=50, choices=[t.descricao for t in TipoVeiculo])  # Tipo do veículo
     ano = IntField()  # Ano do veículo
     customer_id = ReferenceField('Customer')  # Cliente associado ao veículo
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy

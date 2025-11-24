@@ -85,6 +85,7 @@ class User(BaseDocument):
     status = StringField(required=True, choices=['active', 'inactive'], default='active')
     visible = BooleanField(default=True)  # Campo para exclusão lógica
     password_changed = BooleanField(default=False)  # Indica se o usuário já trocou a senha inicial
+    must_change_password = BooleanField(default=False)  # Força troca de senha no próximo login
     permissions = ListField(ReferenceField(Permission))
     meta = {'collection': 'users'}
 
@@ -236,6 +237,7 @@ class Customer(BaseDocument):
     role = StringField(required=True, choices=['customer'], default='customer')
     password_hash = StringField(required=True, max_length=256)
     password_changed = BooleanField(default=False)  # Indica se o cliente já trocou a senha inicial
+    must_change_password = BooleanField(default=False)  # Força troca de senha no próximo login
     
     meta = {
         'collection': 'customers',

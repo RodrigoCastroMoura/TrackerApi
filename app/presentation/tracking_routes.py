@@ -120,7 +120,6 @@ class VehicleTrackingList(Resource):
     @api.doc('list_vehicle_tracking',
              params={
                  'status': {'type': 'string', 'enum': ['active', 'blocked', 'idle'], 'description': 'Filtrar por status'},
-                 'customer_id': {'type': 'string', 'description': 'Filtrar por cliente'},
                  'page': {'type': 'integer', 'default': 1},
                  'per_page': {'type': 'integer', 'default': 20}
              })
@@ -136,6 +135,10 @@ class VehicleTrackingList(Resource):
             # Build query - filter by company
             query = {'visible': True, 'company_id': current_user.company_id}
             
+            # Se o usuário autenticado é um cliente, filtrar automaticamente por customer_id
+            if hasattr(current_user, 'role') and current_user.role == 'customer':
+                query['customer_id'] = current_user.id
+            
             # Additional filters
             status_filter = request.args.get('status')
             if status_filter == 'blocked':
@@ -143,23 +146,6 @@ class VehicleTrackingList(Resource):
             elif status_filter == 'active':
                 query['status'] = 'active'
                 query['bloqueado'] = False
-            
-            # Validate customer_id belongs to the same company (multi-tenancy security)
-            customer_id = request.args.get('customer_id')
-            if customer_id:
-                if not ObjectId.is_valid(customer_id):
-                    return {'message': 'customer_id inválido'}, 400
-                
-                from app.domain.models import Customer
-                try:
-                    customer = Customer.objects.get(
-                        id=customer_id,
-                        company_id=current_user.company_id,
-                        visible=True
-                    )
-                    query['customer_id'] = customer.id
-                except DoesNotExist:
-                    return {'message': 'Cliente não encontrado ou não pertence à sua empresa'}, 403
             
             # Execute query
             total = Vehicle.objects(**query).count()
@@ -235,7 +221,14 @@ class VehicleCurrentLocation(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
+            # Build query - filter by company
+            query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
+            
+            # Se o usuário autenticado é um cliente, filtrar automaticamente por customer_id
+            if hasattr(current_user, 'role') and current_user.role == 'customer':
+                query['customer_id'] = current_user.id
+            
+            vehicle = Vehicle.objects.get(**query)
             
             # Get last location
             last_location = VehicleData.objects(imei=vehicle.IMEI).order_by('-timestamp').first()
@@ -310,7 +303,14 @@ class VehicleLocationHistory(Resource):
             if not start_date or not end_date:
                 return {'message': 'start_date e end_date são obrigatórios'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
+            # Build query - filter by company
+            query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
+            
+            # Se o usuário autenticado é um cliente, filtrar automaticamente por customer_id
+            if hasattr(current_user, 'role') and current_user.role == 'customer':
+                query['customer_id'] = current_user.id
+            
+            vehicle = Vehicle.objects.get(**query)
             
             # Parse dates
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -401,7 +401,14 @@ class VehicleRoute(Resource):
             if not start_date or not end_date:
                 return {'message': 'start_date e end_date são obrigatórios'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
+            # Build query - filter by company
+            query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
+            
+            # Se o usuário autenticado é um cliente, filtrar automaticamente por customer_id
+            if hasattr(current_user, 'role') and current_user.role == 'customer':
+                query['customer_id'] = current_user.id
+            
+            vehicle = Vehicle.objects.get(**query)
             
             # Parse dates
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))

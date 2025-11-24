@@ -53,9 +53,14 @@ externalPort = 8000
 localPort = 34811
 externalPort = 3000
 
-[[ports]]
-localPort = 35249
-externalPort = 3001
-
 [agent]
 expertMode = true
+
+[userenv]
+
+[userenv.shared]
+MAIL_SERVER = "smtp.gmail.com"
+MAIL_PORT = "587"
+MAIL_USE_TLS = "True"
+MAIL_USERNAME = "rodrigo.castro.moura@gmail.com"
+MAIL_PASSWORD = "cswg ydne bhrl necz"

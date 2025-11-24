@@ -202,7 +202,7 @@ class VehicleTrackingList(Resource):
                         'address': address,
                         'speed': 0.0,  # Not stored in current model
                         'heading': 0.0,  # Not stored in current model
-                        'timestamp': last_location.deviceTimestamp
+                        'timestamp': last_location.timestamp
                     }
                 else:
                     vehicle_data['location'] = None

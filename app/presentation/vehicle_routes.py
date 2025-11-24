@@ -326,7 +326,7 @@ class VehicleBlock(Resource):
     @api.doc('block_vehicle')
     @api.expect(block_command_model)
     @token_required
-    @require_permission('vehicle', 'update')
+    @require_permission('customer', 'update')
     def post(self, current_user, id):
         """Enviar comando de bloqueio/desbloqueio"""
         try:
@@ -372,9 +372,7 @@ class VehicleBlock(Resource):
             logger.error(f"Error sending block command: {str(e)}")
             return {'message': 'Erro ao enviar comando'}, 500
 
-@api.route('/<id>/location')
-@api.param('id', 'Vehicle identifier')
-class VehicleLocation(Resource):
+
     
     @api.doc('get_vehicle_location',
              params={
@@ -423,18 +421,18 @@ class VehicleLocation(Resource):
             logger.error(f"Error getting vehicle location: {str(e)}")
             return {'message': 'Erro ao buscar localização'}, 500
 
-@api.route('/by-imei/<imei>')
-@api.param('imei', 'Vehicle IMEI')
-class VehicleByIMEI(Resource):
+@api.route('/by-placa/<placa>')
+@api.param('placa', 'Vehicle placa')
+class VehicleByPlaca(Resource):
     
-    @api.doc('get_vehicle_by_imei')
+    @api.doc('get_vehicle_by_placa')
     @api.marshal_with(vehicle_model)
     @token_required
     @require_permission('vehicle', 'read')
-    def get(self, current_user, imei):
-        """Buscar veículo por IMEI"""
+    def get(self, current_user, placa):
+        """Buscar veículo por placa"""
         try:
-            vehicle = Vehicle.objects.get(IMEI=imei, visible=True, company_id=current_user.company_id)
+            vehicle = Vehicle.objects.get(dsplaca=placa, visible=True, company_id=current_user.company_id)
             return vehicle.to_dict(), 200
             
         except DoesNotExist:

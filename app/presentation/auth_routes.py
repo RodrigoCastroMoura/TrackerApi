@@ -11,8 +11,23 @@ from mongoengine.errors import DoesNotExist
 from mongoengine import Document, StringField, DateTimeField
 from config import Config
 import os
+import string
+import random
 
 logger = logging.getLogger(__name__)
+
+def generate_temporary_password(length=8):
+    """
+    Gera uma senha temporária aleatória com letras maiúsculas, minúsculas e números.
+    
+    Args:
+        length: Comprimento da senha (padrão 8)
+    
+    Returns:
+        str: Senha temporária gerada
+    """
+    characters = string.ascii_letters + string.digits
+    return ''.join(random.choice(characters) for _ in range(length))
 
 limiter = Limiter(
     key_func=get_remote_address,

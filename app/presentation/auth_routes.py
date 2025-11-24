@@ -110,7 +110,7 @@ def require_permission(resource_type, action_type):
                 return {'message': 'Usuário não autenticado'}, 401
 
             if current_user.role == 'customer':
-                current_permissions = ["vehicle_read", "vehicle_write", "vehicle_update"]
+                current_permissions = ["customer_read", "customer_write", "customer_update"]
             else:
                 current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
 

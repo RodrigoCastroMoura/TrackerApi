@@ -28,7 +28,8 @@ class Config:
     MAIL_USE_TLS = os.environ.get('MAIL_USE_TLS', 'True').lower() == 'true'
     MAIL_USERNAME = os.environ.get('MAIL_USERNAME')
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
-    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER')
+    # Use MAIL_USERNAME as default sender if MAIL_DEFAULT_SENDER is not set
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', os.environ.get('MAIL_USERNAME'))
     
     # Application URLs
     APP_URL = os.environ.get('APP_URL', 'http://localhost:3000')

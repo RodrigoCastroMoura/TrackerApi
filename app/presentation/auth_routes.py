@@ -511,19 +511,39 @@ class PasswordChange(Resource):
     @api.doc('change_password')
     @token_required
     def post(self, current_user):
-        """Change password (requires authentication)"""
+        """
+        Change password (requires authentication).
+        If must_change_password is True, current password is not required.
+        """
         try:
             data = request.get_json()
-            if not data or 'current_password' not in data or 'new_password' not in data:
-                return {'message': 'Senha atual e nova senha são obrigatórias'}, 400
+            new_password = data.get('new_password')
+            
+            if not new_password:
+                return {'message': 'Nova senha é obrigatória'}, 400
+            
+            if len(new_password) < 6:
+                return {'message': 'A nova senha deve ter no mínimo 6 caracteres'}, 400
 
-            if not current_user.check_password(data['current_password']):
-                return {'message': 'Senha atual incorreta'}, 401
-
-            current_user.set_password(data['new_password'])
+            # Se must_change_password é True, não exige senha atual
+            must_change = current_user.must_change_password if hasattr(current_user, 'must_change_password') else False
+            
+            if not must_change:
+                # Usuário está trocando senha normalmente, precisa da senha atual
+                current_password = data.get('current_password')
+                if not current_password:
+                    return {'message': 'Senha atual é obrigatória'}, 400
+                    
+                if not current_user.check_password(current_password):
+                    return {'message': 'Senha atual incorreta'}, 401
+            
+            # Trocar senha
+            current_user.set_password(new_password)
             current_user.password_changed = True
+            current_user.must_change_password = False  # Remover flag obrigatória
             current_user.save()
-
+            
+            logger.info(f"Senha alterada para usuário: {current_user.email}")
             return {'message': 'Senha alterada com sucesso'}, 200
 
         except Exception as e:
@@ -636,24 +656,39 @@ class CustomerPasswordChange(Resource):
     @api.doc('customer_password_change')
     @token_required
     def post(self, current_user):
-        """Mudança de senha para cliente autenticado"""
+        """
+        Mudança de senha para cliente autenticado.
+        If must_change_password is True, current password is not required.
+        """
         try:
             if current_user.role != 'customer':
                 return {'message': 'Acesso negado - Apenas clientes podem usar este endpoint'}, 403
 
             data = request.get_json()
-            if not data or 'current_password' not in data or 'new_password' not in data:
-                return {'message': 'Senha atual e nova senha são obrigatórias'}, 400
-
-            if not current_user.check_password(data['current_password']):
-                return {'message': 'Senha atual incorreta'}, 401
-
-            new_password = data['new_password']
+            new_password = data.get('new_password')
+            
+            if not new_password:
+                return {'message': 'Nova senha é obrigatória'}, 400
+            
             if len(new_password) < 6:
                 return {'message': 'A nova senha deve ter no mínimo 6 caracteres'}, 400
 
+            # Se must_change_password é True, não exige senha atual
+            must_change = current_user.must_change_password if hasattr(current_user, 'must_change_password') else False
+            
+            if not must_change:
+                # Cliente está trocando senha normalmente, precisa da senha atual
+                current_password = data.get('current_password')
+                if not current_password:
+                    return {'message': 'Senha atual é obrigatória'}, 400
+                    
+                if not current_user.check_password(current_password):
+                    return {'message': 'Senha atual incorreta'}, 401
+
+            # Trocar senha
             current_user.set_password(new_password)
             current_user.password_changed = True
+            current_user.must_change_password = False  # Remover flag obrigatória
             current_user.save()
 
             logger.info(f"Cliente {current_user.email} alterou senha com sucesso")

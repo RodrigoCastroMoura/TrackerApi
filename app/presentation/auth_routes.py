@@ -56,6 +56,7 @@ def create_token(user, token_type='access', resource_id=None):
         'email': user.email,
         'role': user.role,
         'permissions': permissions,
+        'must_change_password': user.must_change_password if hasattr(user, 'must_change_password') else False,
         'exp': expires,
         'iat': now,
         'type': token_type,

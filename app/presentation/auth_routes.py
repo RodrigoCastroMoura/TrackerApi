@@ -433,6 +433,7 @@ class PasswordRecover(Resource):
             # Atualizar usuário com senha temporária e marcar para troca obrigatória
             user.set_password(temporary_password)
             user.must_change_password = True
+            user.password_changed = False  # Resetar para forçar troca
             user.save()
             
             logger.info(f"Senha temporária gerada para usuário: {user.email}")
@@ -447,64 +448,6 @@ class PasswordRecover(Resource):
         except Exception as e:
             logger.error(f"Password recovery error: {str(e)}")
             return {'message': 'Erro ao processar recuperação de senha'}, 500
-
-@api.route('/password/reset')
-class PasswordReset(Resource):
-    @api.doc('reset_password')
-    def post(self):
-        """Reset password using recovery token"""
-        try:
-            data = request.get_json()
-            if not data or 'token' not in data or 'new_password' not in data:
-                return {'message': 'Token e nova senha são obrigatórios'}, 400
-
-            # Verificar token no blacklist de uso único
-            token = data['token']
-            
-            # Verifica se o token já foi usado anteriormente
-            from app.application.link_token_service import UsedLinkToken
-            if UsedLinkToken.objects(token=token).first():
-                logger.warning(f"Tentativa de usar token de recuperação já utilizado")
-                return {'message': 'Token já utilizado anteriormente'}, 401
-                
-            try:
-                token_data = jwt.decode(
-                    token,
-                    Config.SECRET_KEY,
-                    algorithms=["HS256"]
-                )
-
-                if token_data.get('type') != 'recovery':
-                    return {'message': 'Token inválido'}, 401
-
-                user = User.objects.get(id=token_data['user_id'])
-                
-                # Marcar token como usado antes de processar
-                from app.application.link_token_service import UsedLinkToken
-                from datetime import datetime
-                expires_at = datetime.fromtimestamp(token_data['exp'])
-                used_token = UsedLinkToken(
-                    token=token,
-                    expires_at=expires_at
-                )
-                used_token.save()
-                logger.info(f"Token de recuperação marcado como utilizado")
-                
-                # Processar a alteração da senha
-                user.set_password(data['new_password'])
-                user.password_changed = True
-                user.save()
-
-                return {'message': 'Senha alterada com sucesso'}, 200
-
-            except jwt.ExpiredSignatureError:
-                return {'message': 'Token expirado'}, 401
-            except jwt.InvalidTokenError:
-                return {'message': 'Token inválido'}, 401
-
-        except Exception as e:
-            logger.error(f"Password reset error: {str(e)}")
-            return {'message': 'Erro ao resetar senha'}, 500
 
 @api.route('/password/change')
 class PasswordChange(Resource):
@@ -729,6 +672,7 @@ class CustomerPasswordRecover(Resource):
             # Atualizar cliente com senha temporária e marcar para troca obrigatória
             customer.set_password(temporary_password)
             customer.must_change_password = True
+            customer.password_changed = False  # Resetar para forçar troca
             customer.save()
             
             logger.info(f"Senha temporária gerada para cliente: {customer.email}")
@@ -745,70 +689,6 @@ class CustomerPasswordRecover(Resource):
         except Exception as e:
             logger.error(f"Customer password recovery error: {str(e)}")
             return {'message': 'Erro ao processar recuperação de senha'}, 500
-
-@api.route('/customer/password/reset')
-class CustomerPasswordReset(Resource):
-    @api.doc('customer_password_reset')
-    def post(self):
-        """Resetar senha de cliente usando token de recuperação"""
-        try:
-            data = request.get_json()
-            if not data or 'token' not in data or 'new_password' not in data:
-                return {'message': 'Token e nova senha são obrigatórios'}, 400
-
-            token = data['token']
-            
-            from app.application.link_token_service import UsedLinkToken
-            if UsedLinkToken.objects(token=token).first():
-                logger.warning(f"Tentativa de usar token de recuperação já utilizado")
-                return {'message': 'Token já utilizado anteriormente'}, 401
-                
-            try:
-                token_data = jwt.decode(
-                    token,
-                    Config.SECRET_KEY,
-                    algorithms=["HS256"]
-                )
-
-                if token_data.get('type') != 'recovery':
-                    return {'message': 'Token inválido'}, 401
-
-                customer = Customer.objects.get(id=token_data['user_id'])
-                
-                if customer.role != 'customer':
-                    return {'message': 'Token inválido para cliente'}, 401
-                
-                new_password = data['new_password']
-                if len(new_password) < 6:
-                    return {'message': 'A nova senha deve ter no mínimo 6 caracteres'}, 400
-
-                from app.application.link_token_service import UsedLinkToken
-                from datetime import datetime
-                expires_at = datetime.fromtimestamp(token_data['exp'])
-                used_token = UsedLinkToken(
-                    token=token,
-                    expires_at=expires_at
-                )
-                used_token.save()
-                logger.info(f"Token de recuperação marcado como utilizado para cliente")
-                
-                customer.set_password(new_password)
-                customer.password_changed = True
-                customer.save()
-
-                logger.info(f"Senha resetada com sucesso para cliente: {customer.email}")
-                return {'message': 'Senha alterada com sucesso'}, 200
-
-            except jwt.ExpiredSignatureError:
-                return {'message': 'Token expirado'}, 401
-            except jwt.InvalidTokenError:
-                return {'message': 'Token inválido'}, 401
-            except DoesNotExist:
-                return {'message': 'Cliente não encontrado'}, 404
-
-        except Exception as e:
-            logger.error(f"Customer password reset error: {str(e)}")
-            return {'message': 'Erro ao resetar senha'}, 500
 
 def cleanup_blacklist():
     try:

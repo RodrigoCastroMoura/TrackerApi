@@ -221,14 +221,7 @@ class VehicleCurrentLocation(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            # Build query - filter by company
-            query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
-            
-            # Se o usuário autenticado é um cliente, filtrar automaticamente por customer_id
-            if hasattr(current_user, 'role') and current_user.role == 'customer':
-                query['customer_id'] = current_user.id
-            
-            vehicle = Vehicle.objects.get(**query)
+            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             
             # Get last location
             last_location = VehicleData.objects(imei=vehicle.IMEI).order_by('-timestamp').first()
@@ -303,14 +296,7 @@ class VehicleLocationHistory(Resource):
             if not start_date or not end_date:
                 return {'message': 'start_date e end_date são obrigatórios'}, 400
             
-            # Build query - filter by company
-            query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
-            
-            # Se o usuário autenticado é um cliente, filtrar automaticamente por customer_id
-            if hasattr(current_user, 'role') and current_user.role == 'customer':
-                query['customer_id'] = current_user.id
-            
-            vehicle = Vehicle.objects.get(**query)
+            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             
             # Parse dates
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
@@ -401,14 +387,7 @@ class VehicleRoute(Resource):
             if not start_date or not end_date:
                 return {'message': 'start_date e end_date são obrigatórios'}, 400
             
-            # Build query - filter by company
-            query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
-            
-            # Se o usuário autenticado é um cliente, filtrar automaticamente por customer_id
-            if hasattr(current_user, 'role') and current_user.role == 'customer':
-                query['customer_id'] = current_user.id
-            
-            vehicle = Vehicle.objects.get(**query)
+            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             
             # Parse dates
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))

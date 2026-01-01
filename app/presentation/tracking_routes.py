@@ -37,23 +37,13 @@ location_model = api.model('Location', {
     'timestamp': fields.DateTime(description='Timestamp da localização')
 })
 
-tracker_info_model = api.model('TrackerInfo', {
-    'serial': fields.String(description='Serial do rastreador (IMEI)'),
-    'battery': fields.Float(description='Nível de bateria (%)'),
-    'signal_strength': fields.Integer(description='Força do sinal'),
-    'online': fields.Boolean(description='Status online')
-})
-
 vehicle_tracking_model = api.model('VehicleTracking', {
     'id': fields.String(readonly=True),
     'dsplaca': fields.String(description='Placa do veículo'),
     'dsmodelo': fields.String(description='Modelo do veículo'),
     'tipo': fields.String(description='Tipo do veículo'),
     'location': fields.Nested(location_model),
-    'status': fields.String(description='Status do veículo'),
-    'tracker_serial': fields.String(description='Serial do rastreador'),
-    'is_tracking': fields.Boolean(description='Se está rastreando'),
-    'bloqueado': fields.Boolean(description='Status de bloqueio do veículo')
+    'status': fields.String(description='Status do veículo')
 })
 
 vehicle_location_response_model = api.model('VehicleLocationResponse', {
@@ -61,8 +51,8 @@ vehicle_location_response_model = api.model('VehicleLocationResponse', {
     'plate': fields.String(description='Placa do veículo'),
     'tipo': fields.String(description='Tipo do veículo'),
     'bloqueado': fields.Boolean(description='Status de bloqueio do veículo'),
-    'location': fields.Nested(location_model),
-    'tracker': fields.Nested(tracker_info_model)
+    'location': fields.Nested(location_model)
+
 })
 
 location_point_model = api.model('LocationPoint', {
@@ -158,39 +148,33 @@ class VehicleTrackingList(Resource):
             # Get last location for each vehicle
             result_vehicles = []
             for vehicle in vehicles:
-                # Get last location from VehicleData
-                last_location = VehicleData.objects(imei=vehicle.IMEI).order_by('-timestamp').first()
+              
                 
                 vehicle_data = {
                     'id': str(vehicle.id),
                     'dsplaca': vehicle.dsplaca or 'N/A',
                     'dsmodelo': vehicle.dsmodelo or 'N/A',
                     'tipo': vehicle.tipo,
-                    'status': 'blocked' if vehicle.bloqueado else vehicle.status,
-                    'tracker_serial': vehicle.IMEI,
-                    'is_tracking': last_location is not None,
-                    'bloqueado': vehicle.bloqueado
+                    'status': 'blocked' if vehicle.bloqueado else vehicle.status
                 }
                 
-                if last_location:
-                    lat = float(last_location.latitude) if last_location.latitude else 0.0
-                    lng = float(last_location.longitude) if last_location.longitude else 0.0
+
+                lat = float(vehicle.latitude) if vehicle.latitude else 0.0
+                lng = float(vehicle.longitude) if vehicle.longitude else 0.0
                     
-                    # Get address from coordinates (Google Maps or Nominatim)
-                    address = 'N/A'
-                    if lat != 0.0 and lng != 0.0:
-                        address = geocoding.get_address_or_fallback(lat, lng)
-                    
-                    vehicle_data['location'] = {
-                        'lat': lat,
-                        'lng': lng,
-                        'address': address,
-                        'speed': 0.0,  # Not stored in current model
-                        'heading': 0.0,  # Not stored in current model
-                        'timestamp': last_location.timestamp
-                    }
-                else:
-                    vehicle_data['location'] = None
+                # Get address from coordinates (Google Maps or Nominatim)
+                address = 'N/A'
+                if lat != 0.0 and lng != 0.0:
+                    address = geocoding.get_address_or_fallback(lat, lng)
+                
+                vehicle_data['location'] = {
+                    'lat': lat,
+                    'lng': lng,
+                    'address': address,
+                    'speed': 0.0,  # Not stored in current model
+                    'heading': 0.0,  # Not stored in current model
+                    'timestamp': vehicle.tsusermanu
+                }
                 
                 result_vehicles.append(vehicle_data)
             
@@ -253,12 +237,6 @@ class VehicleCurrentLocation(Resource):
                     'altitude': float(last_location.altitude) if last_location.altitude else 0.0,
                     'accuracy': 10.0,  # Not stored in current model
                     'timestamp': last_location.timestamp
-                },
-                'tracker': {
-                    'serial': vehicle.IMEI,
-                    'battery': vehicle.bateriavoltagem or 0.0,
-                    'signal_strength': 4,  # Not stored in current model
-                    'online': True  # Assume online if we have recent data
                 }
             }
             

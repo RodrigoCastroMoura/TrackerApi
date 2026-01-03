@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Vehicle, VehicleData, Company
+from app.domain.models import Vehicle
 from app.presentation.auth_routes import token_required, require_permission
 from app.infrastructure.geocoding_service import (
     get_google_geocoding_service,
@@ -9,7 +9,6 @@ from app.infrastructure.geocoding_service import (
 from mongoengine.errors import DoesNotExist
 import logging
 from bson.objectid import ObjectId
-from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,6 @@ def get_best_geocoding_service():
 
 api = Namespace('tracking', description='Vehicle tracking operations')
 
-# Models for Swagger
 location_model = api.model('Location', {
     'lat': fields.Float(description='Latitude'),
     'lng': fields.Float(description='Longitude'),
@@ -42,16 +40,15 @@ vehicle_tracking_model = api.model('VehicleTracking', {
     'dsplaca': fields.String(description='Placa do veículo'),
     'dsmodelo': fields.String(description='Modelo do veículo'),
     'tipo': fields.String(description='Tipo do veículo'),
-    'location': fields.Nested(location_model),
     'status': fields.String(description='Status do veículo')
 })
 
 vehicle_location_response_model = api.model('VehicleLocationResponse', {
     'vehicle_id': fields.String(description='ID do veículo'),
     'plate': fields.String(description='Placa do veículo'),
+    'location': fields.Nested(location_model),
     'tipo': fields.String(description='Tipo do veículo'),
-    'bloqueado': fields.Boolean(description='Status de bloqueio do veículo'),
-    'location': fields.Nested(location_model)
+    'bloqueado': fields.Boolean(description='Status de bloqueio do veículo')
 
 })
 
@@ -142,13 +139,9 @@ class VehicleTrackingList(Resource):
             vehicles = Vehicle.objects(**query).order_by('-created_at').skip(
                 (page - 1) * per_page).limit(per_page)
             
-            # Get best geocoding service (Google Maps with Nominatim fallback)
-            geocoding = get_geocoding_service()
-            
             # Get last location for each vehicle
             result_vehicles = []
             for vehicle in vehicles:
-              
                 
                 vehicle_data = {
                     'id': str(vehicle.id),
@@ -156,24 +149,6 @@ class VehicleTrackingList(Resource):
                     'dsmodelo': vehicle.dsmodelo or 'N/A',
                     'tipo': vehicle.tipo,
                     'status': 'blocked' if vehicle.bloqueado else vehicle.status
-                }
-                
-
-                lat = float(vehicle.latitude) if vehicle.latitude else 0.0
-                lng = float(vehicle.longitude) if vehicle.longitude else 0.0
-                    
-                # Get address from coordinates (Google Maps or Nominatim)
-                address = 'N/A'
-                if lat != 0.0 and lng != 0.0:
-                    address = geocoding.get_address_or_fallback(lat, lng)
-                
-                vehicle_data['location'] = {
-                    'lat': lat,
-                    'lng': lng,
-                    'address': address,
-                    'speed': 0.0,  # Not stored in current model
-                    'heading': 0.0,  # Not stored in current model
-                    'timestamp': vehicle.tsusermanu
                 }
                 
                 result_vehicles.append(vehicle_data)
@@ -206,17 +181,11 @@ class VehicleCurrentLocation(Resource):
             
             vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
             
-            # Get last location
-            last_location = VehicleData.objects(imei=vehicle.IMEI).order_by('-timestamp').first()
-            
-            if not last_location:
-                return {'message': 'Nenhuma localização encontrada para este veículo'}, 404
-            
             # Get best geocoding service (Google Maps with Nominatim fallback)
             geocoding = get_best_geocoding_service()
             
-            lat = float(last_location.latitude) if last_location.latitude else 0.0
-            lng = float(last_location.longitude) if last_location.longitude else 0.0
+            lat = float(vehicle.latitude) if vehicle.latitude else 0.0
+            lng = float(vehicle.longitude) if vehicle.longitude else 0.0
             
             # Get address from coordinates (Google Maps or Nominatim)
             address = 'N/A'
@@ -234,9 +203,9 @@ class VehicleCurrentLocation(Resource):
                     'address': address,
                     'speed': 0.0,
                     'heading': 0.0,
-                    'altitude': float(last_location.altitude) if last_location.altitude else 0.0,
+                    'altitude': float(vehicle.altitude) if vehicle.altitude else 0.0,
                     'accuracy': 10.0,  # Not stored in current model
-                    'timestamp': last_location.timestamp
+                    'timestamp': vehicle.tsusermanu
                 }
             }
             

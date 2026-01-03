@@ -319,12 +319,101 @@ class GoogleGeocodingService:
         Returns:
             Address string or formatted coordinates
         """
-        address = self.reverse_geocode(lat, lng, language)
+        address = self.reverse_geocode_full(lat, lng, language)
         if address:
             return address
         else:
             return f"{lat:.6f}, {lng:.6f}"
 
+    @lru_cache(maxsize=1000)
+    def reverse_geocode_full(self, lat: float, lng: float, language: str = 'pt') -> Optional[str]:
+        """
+        Convert coordinates to address with FULL street names (not abbreviated).
+        
+        Args:
+            lat: Latitude
+            lng: Longitude
+            language: Language for the address (default: 'pt' for Portuguese)
+        
+        Returns:
+            Full address string (unabbreviated) or None if geocoding fails
+        """
+        try:
+            # Round coordinates to 4 decimal places for caching
+            lat_rounded = round(lat, 4)
+            lng_rounded = round(lng, 4)
+            
+            # Perform reverse geocoding
+            results = self.client.reverse_geocode(
+                (lat_rounded, lng_rounded),
+                language=language
+            )
+            
+            if not results or len(results) == 0:
+                logger.warning(f"No address found for coordinates: {lat}, {lng}")
+                return None
+            
+            # Extract components with long_name (full names)
+            result = results[0]
+            components = {}
+            
+            for component in result.get('address_components', []):
+                types = component.get('types', [])
+                long_name = component.get('long_name', '')
+                
+                if 'street_number' in types:
+                    components['number'] = long_name
+                elif 'route' in types:
+                    components['street'] = long_name  # Nome completo da rua!
+                elif 'sublocality' in types or 'sublocality_level_1' in types:
+                    components['neighborhood'] = long_name
+                elif 'administrative_area_level_2' in types:
+                    components['city'] = long_name
+                elif 'administrative_area_level_1' in types:
+                    components['state'] = long_name  # Nome completo do estado
+                elif 'postal_code' in types:
+                    components['postal_code'] = long_name
+                elif 'country' in types:
+                    components['country'] = long_name
+            
+            # Construir endereço completo
+            address_parts = []
+            
+            # Rua + Número
+            if components.get('street'):
+                street_part = components['street']
+                if components.get('number'):
+                    street_part += f", {components['number']}"
+                address_parts.append(street_part)
+            
+            # Bairro
+            if components.get('neighborhood'):
+                address_parts.append(components['neighborhood'])
+            
+            # Cidade - Estado
+            city_state = []
+            if components.get('city'):
+                city_state.append(components['city'])
+            if components.get('state'):
+                city_state.append(components['state'])
+            if city_state:
+                address_parts.append(' - '.join(city_state))
+            
+            # CEP
+            if components.get('postal_code'):
+                address_parts.append(components['postal_code'])
+            
+            # País
+            if components.get('country'):
+                address_parts.append(components['country'])
+            
+            # Juntar tudo
+            full_address = ', '.join(address_parts)
+            return full_address
+                
+        except Exception as e:
+            logger.error(f"Google Maps geocoding error: {str(e)}")
+            return None
 
 # Singleton instances
 _geocoding_service = None

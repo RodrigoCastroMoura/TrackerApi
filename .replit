@@ -7,7 +7,7 @@ packages = ["libGL", "libGLU", "tesseract"]
 
 [deployment]
 run = ["sh", "-c", "PORT=5000 gunicorn -c gunicorn_config.py wsgi:app"]
-deploymentTarget = "autoscale"
+deploymentTarget = "gce"
 
 [workflows]
 runButton = "Project"

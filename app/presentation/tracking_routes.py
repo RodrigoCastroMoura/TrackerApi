@@ -37,18 +37,21 @@ location_model = api.model('Location', {
 
 vehicle_tracking_model = api.model('VehicleTracking', {
     'id': fields.String(readonly=True),
-    'dsplaca': fields.String(description='Placa do veículo'),
-    'dsmodelo': fields.String(description='Modelo do veículo'),
-    'tipo': fields.String(description='Tipo do veículo'),
-    'status': fields.String(description='Status do veículo')
+    'plate': fields.String(description='Placa do veículo'),
+    'model': fields.String(description='Modelo do veículo'),
+    'type': fields.String(description='Tipo do veículo'),
+    'block': fields.String(description='Status do veículo')
 })
 
 vehicle_location_response_model = api.model('VehicleLocationResponse', {
     'vehicle_id': fields.String(description='ID do veículo'),
     'plate': fields.String(description='Placa do veículo'),
     'location': fields.Nested(location_model),
-    'tipo': fields.String(description='Tipo do veículo'),
-    'bloqueado': fields.Boolean(description='Status de bloqueio do veículo')
+    'type': fields.String(description='Tipo do veículo'),
+    'block': fields.Boolean(description='Status de bloqueio do veículo'),
+    'ignition': fields.Boolean(description='Status da ignição')
+
+
 
 })
 
@@ -145,10 +148,10 @@ class VehicleTrackingList(Resource):
                 
                 vehicle_data = {
                     'id': str(vehicle.id),
-                    'dsplaca': vehicle.dsplaca or 'N/A',
-                    'dsmodelo': vehicle.dsmodelo or 'N/A',
-                    'tipo': vehicle.tipo,
-                    'status': 'blocked' if vehicle.bloqueado else vehicle.status
+                    'plate': vehicle.dsplaca or 'N/A',
+                    'model': vehicle.dsmodelo or 'N/A',
+                    'type': vehicle.tipo,
+                    'block': 'blocked' if vehicle.bloqueado else vehicle.status
                 }
                 
                 result_vehicles.append(vehicle_data)
@@ -195,8 +198,10 @@ class VehicleCurrentLocation(Resource):
             response = {
                 'vehicle_id': str(vehicle.id),
                 'plate': vehicle.dsplaca or 'N/A',
-                'tipo': vehicle.tipo,
-                'bloqueado': vehicle.bloqueado,
+                'type': vehicle.tipo,
+                'block': vehicle.bloqueado,
+                'ignition': vehicle.ignicao,
+                'model': vehicle.dsmodelo or 'N/A',
                 'location': {
                     'lat': lat,
                     'lng': lng,

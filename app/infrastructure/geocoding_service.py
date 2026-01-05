@@ -371,10 +371,7 @@ class GoogleGeocodingService:
                     components['city'] = long_name
                 elif 'administrative_area_level_1' in types:
                     components['state'] = long_name  # Nome completo do estado
-                elif 'postal_code' in types:
-                    components['postal_code'] = long_name
-                elif 'country' in types:
-                    components['country'] = long_name
+             
             
             # Construir endereço completo
             address_parts = []

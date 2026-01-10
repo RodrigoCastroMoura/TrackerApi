@@ -260,6 +260,9 @@ class Customer(BaseDocument):
     password_hash = StringField(required=True, max_length=256)
     password_changed = BooleanField(default=False)  # Indica se o cliente já trocou a senha inicial
     must_change_password = BooleanField(default=False)  # Força troca de senha no próximo login
+
+    # FCM Token para notificações push
+    fcm_token = StringField(max_length=500)  
     
     meta = {
         'collection': 'customers',
@@ -304,7 +307,8 @@ class Customer(BaseDocument):
             'status': self.status,
             'visible': self.visible,
             'role': self.role,
-            'password_changed': self.password_changed
+            'password_changed': self.password_changed,
+            'fcm_token': self.fcm_token
         })
         return base_dict
 

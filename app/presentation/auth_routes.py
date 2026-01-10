@@ -49,7 +49,9 @@ class TokenBlacklist(Document):
 
 login_model = api.model('Login', {
     'identifier': fields.String(required=True, description='Email or CPF'),
-    'password': fields.String(required=True, description='Password')
+    'password': fields.String(required=True, description='Password'),
+    'fcm_token': fields.String(required=False, description='FCM Token for push notifications')
+
 })
 
 def create_token(user, token_type='access', resource_id=None):
@@ -524,9 +526,10 @@ class LoginCustomer(Resource):
             data = request.get_json()
             if not data:
                 return {'message': 'Dados não fornecidos'}, 400
-
+ 
             identifier = data.get('identifier')
             password = data.get('password')
+            fcm_token = data.get('fcm_token')
 
             if not identifier or not password:
                 return {'message': 'Identificador e senha são obrigatórios'}, 400
@@ -542,6 +545,15 @@ class LoginCustomer(Resource):
                 if customer.status != 'active':
                     logger.warning(f"Login attempt by inactive user: {customer.document}")
                     return {'message': 'Usuário inativo'}, 401
+                
+
+                if not fcm_token:
+                    logger.debug(f"FCM token not provided for customer: {customer.email}")
+                else:
+                    customer.fcm_token = fcm_token
+                    customer.save()
+                    logger.debug(f"FCM token updated for customer: {customer.email}")
+                
 
                 access_token = create_token(customer, 'customer')
                 refresh_token = create_token(customer, 'refresh')

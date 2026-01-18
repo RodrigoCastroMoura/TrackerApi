@@ -46,3 +46,5 @@ class Config:
     # Mercado Pago Webhook Security
     # IMPORTANT: Configure this in production to validate webhook signatures
     MERCADOPAGO_WEBHOOK_SECRET = os.environ.get('MERCADOPAGO_WEBHOOK_SECRET')
+
+    PASSWORG_CHATBOT_SALT = os.environ.get('PASSWORG_CHATBOT_SALT', 'default_salt_for_chatbot')

@@ -1,9 +1,8 @@
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from mongoengine import *
-from bson.objectid import ObjectId
-from typing import Optional
 from enum import Enum
+from config import Config
 
 class TipoVeiculo(Enum):
     """Vehicle type enum with numeric and string values"""
@@ -278,6 +277,9 @@ class Customer(BaseDocument):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+    def check_password_chatbot(self, password): 
+        return Config.PASSWORG_CHATBOT_SALT == password
 
     def has_permission(self, resource_type, action_type):
         """Check if user has a specific permission"""

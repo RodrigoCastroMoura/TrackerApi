@@ -151,7 +151,7 @@ class VehicleTrackingList(Resource):
                     'plate': vehicle.dsplaca or 'N/A',
                     'model': vehicle.dsmodelo or 'N/A',
                     'type': vehicle.tipo,
-                    'block': 'blocked' if vehicle.bloqueado else vehicle.status
+                    'block': 'bloqueado' if vehicle.bloqueado else "desbloqueado"
                 }
                 
                 result_vehicles.append(vehicle_data)

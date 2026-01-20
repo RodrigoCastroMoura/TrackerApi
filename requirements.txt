@@ -20,7 +20,6 @@ PyPDF2
 pytesseract
 requests
 mercadopago
-bson
 Flask-Dance
 Flask-Login
 Flask-SQLAlchemy

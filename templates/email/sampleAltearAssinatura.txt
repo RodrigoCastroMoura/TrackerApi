@@ -1,0 +1,27 @@
+﻿<table width="100%" border="0" cellspacing="4" cellpadding="0">
+	<tr>
+		<th align="left">Código de assinatura</th>
+	</tr>
+	<tr>
+		<td>*CODIGO*</td>
+	</tr>
+</table>
+<br>
+<table width="100%" border="0" cellspacing="4" cellpadding="0">
+	<tr>
+		<th align="left">Plano escolhido</th>
+	</tr>
+	<tr>
+		<td align="left">*PLANO*</td>
+	</tr>
+</table>
+<br>
+<table width="100%" border="0" cellspacing="4" cellpadding="0">
+	<tr>
+		<th align="left">Valor do Plano</th> 	
+	</tr>
+	<tr>
+		<td>R$*VALOR*</td>
+	</tr>
+</table>
+<br>

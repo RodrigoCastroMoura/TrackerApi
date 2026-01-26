@@ -30,6 +30,10 @@ class Config:
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD')
     # Use MAIL_USERNAME as default sender if MAIL_DEFAULT_SENDER is not set
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', os.environ.get('MAIL_USERNAME'))
+
+    TEMPLATE_EMAIL_PATH = os.environ.get('TEMPLATE_EMAIL', 'templates/email/sampleTemplate.txt')
+    TEMPLATE_PASSWORD_PATH = os.environ.get('TEMPLATE_REENVIO_EMAIL', 'templates/email/sampleReenvioEmail.txt')
+    TEMPLATE_URL = os.environ.get('TEMPLATE_URL', 'http://192.168.15.7:8000/')
     
     # Application URLs
     APP_URL = os.environ.get('APP_URL', 'http://localhost:3000')

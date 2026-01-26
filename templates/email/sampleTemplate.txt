@@ -1,0 +1,77 @@
+﻿<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title></title>
+<style>
+@media only screen and (max-width: 649px) {
+#templateColumns {
+	width: 92.5% !important;
+}
+}
+div, button {
+	margin: 0 !important;
+	padding: 0 !important;
+	display: block !important;
+}
+</style>
+</head>
+
+<body bgcolor="#eeeeee" style="background-color: #e9e9e9">
+<div style="background-color: #e9e9e9">
+<div style="display: block; height: 15px; width: 100%;"></div>
+<table width="650" border="0" cellspacing="0" id="templateColumns" cellpadding="0" align="center" bgcolor="white" style="background-color: #FFF;">
+  <tr>
+    <td><table width="100%" border="0" cellspacing="0" cellpadding="0">
+        <tr>
+          <td><img src="cid:Email_03" style="display: block; width: 100%; border: 0;"></td>
+        </tr>
+        <tr>
+            <td><img src="cid:Email_05" style="display: block; width: 100%; border: 0;"></td>
+          </tr>
+        <tr>
+          <td>
+            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+              <tr>
+                <td width="7%"><img src="cid:Email_06" style="display: block; width: 100%; border: 0;"></td>
+                <td>
+                  <h1 style="font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: bold; color: #0c2033;">Olá *NOME*</h1>
+                  <p style="font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: normal; color: #414141; line-height: 26px;">
+                      *MSG1*
+                  </p>
+                  <p style="font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: normal; color: #414141; line-height: 26px;">
+                      *MSG2*  
+                  </p>
+                  <p style="font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: bold; color: #0c2033; line-height: 26px;">
+                      atenciosamente,<br/>
+                      <strong>Equipe Monitora Net</strong>
+                  </p>
+                </td>
+                <td width="7%"><img src="cid:Email_06" style="display: block; width: 100%; border: 0;"></td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td><img src="cid:Email_09" style="display: block; width: 100%; border: 0;"></td>
+        </tr>
+        <tr>
+            <td><img src="cid:Email_10" style="display: block; width: 100%; border: 0;"></td>
+        </tr>
+        <tr>
+            <td><img src="cid:Email_11" style="display: block; width: 100%; border: 0;"></td>
+        </tr>
+        <tr>
+            <td><img src="cid:Email_12" style="display: block; width: 100%; border: 0;"></td>
+        </tr>
+        <tr>
+            <td><img src="cid:Email_13" style="display: block; width: 100%; border: 0;"></td>
+        </tr>
+      </table></td>
+  </tr>
+  
+</table>
+<div style="display: block; height: 15px; width: 100%;"></div>
+</div>
+</body>
+</html>

@@ -16,7 +16,7 @@ import random
 
 logger = logging.getLogger(__name__)
 
-def generate_temporary_password(length=8):
+def generate_temporary_password(length=6):
     """
     Gera uma senha temporária aleatória com letras maiúsculas, minúsculas e números.
     
@@ -26,7 +26,8 @@ def generate_temporary_password(length=8):
     Returns:
         str: Senha temporária gerada
     """
-    characters = string.ascii_letters + string.digits
+    # characters = string.ascii_letters + string.digits
+    characters = string.digits
     return ''.join(random.choice(characters) for _ in range(length))
 
 limiter = Limiter(

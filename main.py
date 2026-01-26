@@ -155,7 +155,7 @@ def create_app():
         # Initialize limiter with storage URL from config
         limiter.init_app(app)
         if Config.RATELIMIT_STORAGE_URL.startswith('memory://'):
-            logger.warning("⚠️  Rate limiting using in-memory storage - not recommended for production!")
+            logger.warning("Rate limiting using in-memory storage - not recommended for production!")
             logger.warning("   Set RATELIMIT_STORAGE_URL environment variable to use Redis/Memcached")
         else:
             logger.info(f"Rate limiting configured with: {Config.RATELIMIT_STORAGE_URL}")

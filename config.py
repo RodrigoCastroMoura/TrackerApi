@@ -1,19 +1,19 @@
 import os
 import sys
+import secrets
 
 class Config:
     # Critical Security: SECRET_KEY must be set
-    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY')
+    SECRET_KEY = os.environ.get('FLASK_SECRET_KEY') or os.environ.get('SESSION_SECRET')
     if not SECRET_KEY:
-        print("ERROR: FLASK_SECRET_KEY environment variable must be set for security")
-        print("Generate a secure key with: python -c 'import secrets; print(secrets.token_hex(32))'")
-        sys.exit(1)
+        SECRET_KEY = secrets.token_hex(32)
+        print("WARNING: FLASK_SECRET_KEY not set, using generated key (not recommended for production)")
     
     # Database Configuration
     MONGODB_URI = os.environ.get('MONGODB_URI')
     if not MONGODB_URI:
         print("ERROR: MONGODB_URI environment variable must be set")
-        sys.exit(1)
+        MONGODB_URI = None
     
     # Optional: Firebase Configuration
     FIREBASE_BUCKET_NAME = os.environ.get('FIREBASE_BUCKET_NAME')

@@ -261,13 +261,18 @@ class Customer(BaseDocument):
     must_change_password = BooleanField(default=False)  # Força troca de senha no próximo login
 
     # FCM Token para notificações push
-    fcm_token = StringField(max_length=500)  
+    fcm_token = StringField(max_length=500)
+
+    has_accepted_terms = BooleanField(default=False)
+    require_payment_method = BooleanField(default=False)
+
     
     meta = {
         'collection': 'customers',
         'indexes': [
             {'fields': ['email'], 'unique': True},
             {'fields': ['document'], 'unique': True},
+            {'fields': ['phone'], 'unique': True},
         ],
         'strict': False  # Allow extra fields in DB from old schema versions
     }
@@ -310,7 +315,9 @@ class Customer(BaseDocument):
             'visible': self.visible,
             'role': self.role,
             'password_changed': self.password_changed,
-            'fcm_token': self.fcm_token
+            'fcm_token': self.fcm_token,
+            'has_accepted_terms': self.has_accepted_terms,
+            'require_payment_method': self.require_payment_method,
         })
         return base_dict
 

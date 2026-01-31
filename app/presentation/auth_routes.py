@@ -564,6 +564,8 @@ class LoginCustomer(Resource):
                     'refresh_token': refresh_token,
                     'token_type': 'Bearer',
                     'expires_in': 3600,
+                    'has_accepted_terms': customer.has_accepted_terms,
+                    'require_payment_method': customer.require_payment_method,
                     'requires_password_change': not customer.password_changed,
                     'user': {
                         'id': str(customer.id),

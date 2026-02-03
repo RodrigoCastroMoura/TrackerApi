@@ -260,6 +260,18 @@ class Customer(BaseDocument):
     password_changed = BooleanField(default=False)  # Indica se o cliente já trocou a senha inicial
     must_change_password = BooleanField(default=False)  # Força troca de senha no próximo login
 
+    # Mercado Pago data
+    mp_subscription_id = StringField(unique=True, sparse=True)
+    mp_preapproval_plan_id = StringField()  # Preapproval plan ID
+    mp_status = StringField(
+        choices=['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded'],
+        default='pending'
+    )
+    failure_message = StringField()  # Error message if payment failed
+    payment_url = StringField()  # URL para pagamento da assinatura
+    payment_date = DateTimeField()
+    refunded_at = DateTimeField()
+    
     # FCM Token para notificações push
     fcm_token = StringField(max_length=500)
 
@@ -330,13 +342,11 @@ class SubscriptionPlan(BaseDocument):
     description = StringField(max_length=500)
     amount = FloatField(required=True)  # Monthly amount in BRL
     currency = StringField(default='BRL')
-    billing_cycle = StringField(choices=['monthly', 'yearly'], default='monthly')
+    billing_cycle = StringField(choices=['monthly', 'weekly', 'yearly'], default='monthly')
     
     # Mercado Pago integration
     mp_preapproval_plan_id = StringField(unique=True, sparse=True)  # Mercado Pago plan ID
     
-    # Features and limits (optional, for display purposes)
-    features = ListField(StringField(), default=list)  # List of features included
     max_vehicles = IntField()  # Maximum number of vehicles (optional)
     
     # Status
@@ -363,7 +373,6 @@ class SubscriptionPlan(BaseDocument):
             'currency': self.currency,
             'billing_cycle': self.billing_cycle,
             'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
-            'features': self.features,
             'max_vehicles': self.max_vehicles,
             'is_active': self.is_active,
         })
@@ -383,7 +392,7 @@ class Subscription(BaseDocument):
     plan_name = StringField(required=True)  # Nome do plano
     amount = FloatField(required=True)  # Valor mensal em reais
     currency = StringField(default='BRL')
-    billing_cycle = StringField(choices=['monthly', 'yearly'], default='monthly')
+    billing_cycle = StringField(choices=['monthly', 'weekly', 'yearly'], default='monthly')
     
     # Status and dates
     status = StringField(

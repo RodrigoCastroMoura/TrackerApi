@@ -1,7 +1,7 @@
 import logging
 from flask import request, jsonify
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import User, Customer
+from app.domain.models import SubscriptionPlan, User, Customer, Vehicle
 from functools import wraps
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -9,6 +9,7 @@ import jwt
 import datetime
 from mongoengine.errors import DoesNotExist
 from mongoengine import Document, StringField, DateTimeField
+from app.infrastructure.mercadopago_service import MercadoPagoService
 from config import Config
 import os
 import string
@@ -294,6 +295,48 @@ def customer_token_required(f):
 
     return decorated
 
+def create_subscription(customer)->StringField:
+    """Cria uma assinatura padrão para o customer"""
+    try:
+
+        total_vehicles = Vehicle.objects(customer_id=customer.id, visible=True).count()
+
+        default_plan = SubscriptionPlan.objects(
+            max_vehicles=total_vehicles,
+            is_active=True,
+            visible=True
+        ).first()
+        
+        if not default_plan:
+            logger.error(f"No active subscription plan found for {customer.id} matching {total_vehicles} vehicles")
+            return None
+           
+        mp_subscription = MercadoPagoService.create_subscription(
+                preapproval_plan_id=default_plan.mp_preapproval_plan_id,
+                payer_email=customer.email,
+                metadata={
+                    'customer_id': str(customer.id),
+                    'plan_id': str(default_plan.id),
+                }
+            )
+            
+        if not mp_subscription:
+            logger.error(f"Failed to create Mercado Pago subscription for customer {customer.id}")
+            return None
+       
+        customer.mp_subscription_id = mp_subscription['subscription_id']
+        customer.mp_preapproval_plan_id = default_plan.mp_preapproval_plan_id
+        customer.payment_url = mp_subscription['init_point']
+        customer.save()
+
+        return mp_subscription['init_point']
+
+       
+
+    except Exception as e:
+        logger.error(f"Error creating subscription for customer {customer.email}: {str(e)}")
+        return None
+
 @api.route('/login')
 class Login(Resource):
     @api.doc('login')
@@ -554,6 +597,10 @@ class LoginCustomer(Resource):
                     customer.fcm_token = fcm_token
                     customer.save()
                     logger.debug(f"FCM token updated for customer: {customer.email}")
+
+                if not customer.require_payment_method:
+                    logger.info(f"Customer {customer.email} requires payment method")
+                    payment_url = create_subscription(customer)
                 
 
                 access_token = create_token(customer, 'customer')
@@ -567,6 +614,7 @@ class LoginCustomer(Resource):
                     'has_accepted_terms': customer.has_accepted_terms,
                     'require_payment_method': customer.require_payment_method,
                     'requires_password_change': not customer.password_changed,
+                    'payment_url': payment_url if payment_url else None,
                     'user': {
                         'id': str(customer.id),
                         'name': customer.name,

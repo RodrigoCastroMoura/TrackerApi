@@ -176,12 +176,13 @@ class MercadoPagoService:
         metadata: Optional[Dict] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Create a subscription (preapproval) for a customer
+        Create a subscription (preapproval) for a customer WITH card_token_id.
+        Use create_pending_subscription for payment link flow.
         
         Args:
             preapproval_plan_id: ID of the preapproval plan
             payer_email: Customer email
-            card_token_id: Card token (optional, can be added later)
+            card_token_id: Card token (REQUIRED when using preapproval_plan_id)
             metadata: Additional metadata
             
         Returns:
@@ -192,15 +193,17 @@ class MercadoPagoService:
             if not sdk:
                 return None
             
+            if not card_token_id:
+                logger.error("card_token_id is required when using preapproval_plan_id")
+                return None
+            
             subscription_data = {
                 "preapproval_plan_id": preapproval_plan_id,
                 "payer_email": payer_email,
-                "status": "pending",
+                "card_token_id": card_token_id,
+                "status": "authorized",
                 "metadata": metadata or {}
             }
-            
-            if card_token_id:
-                subscription_data["card_token_id"] = card_token_id
             
             sub_response = sdk.preapproval().create(subscription_data)
             subscription = sub_response["response"]
@@ -215,6 +218,84 @@ class MercadoPagoService:
             
         except Exception as e:
             logger.error(f"Error creating subscription: {str(e)}")
+            return None
+
+    @staticmethod
+    def create_pending_subscription(
+        reason: str,
+        payer_email: str,
+        amount: float,
+        frequency: int = 1,
+        frequency_type: str = 'months',
+        back_url: Optional[str] = None,
+        external_reference: Optional[str] = None,
+        metadata: Optional[Dict] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Create a pending subscription that generates a payment link.
+        Customer can complete payment via the init_point URL.
+        
+        Args:
+            reason: Description of the subscription
+            payer_email: Customer email
+            amount: Monthly amount in BRL
+            frequency: Billing frequency (default: 1)
+            frequency_type: Type of frequency (months, days) - default: months
+            back_url: URL to redirect after payment
+            external_reference: Your reference ID (e.g., customer_id)
+            metadata: Additional metadata
+            
+        Returns:
+            Dict with subscription_id, init_point (payment URL), and status
+        """
+        try:
+            sdk = MercadoPagoService.get_sdk()
+            if not sdk:
+                return None
+            
+            subscription_data = {
+                "reason": reason,
+                "payer_email": payer_email,
+                "auto_recurring": {
+                    "frequency": frequency,
+                    "frequency_type": frequency_type,
+                    "transaction_amount": float(amount),
+                    "currency_id": "BRL"
+                },
+                "status": "pending"
+            }
+            
+            if back_url:
+                subscription_data["back_url"] = back_url
+            
+            if external_reference:
+                subscription_data["external_reference"] = external_reference
+                
+            if metadata:
+                subscription_data["metadata"] = metadata
+            
+            sub_response = sdk.preapproval().create(subscription_data)
+            
+            if sub_response.get("status") == 400 or sub_response.get("status") == 401:
+                logger.error(f"Mercado Pago error: {sub_response.get('response')}")
+                return {
+                    'error': True,
+                    'message': sub_response.get('response', {}).get('message', 'Unknown error'),
+                    'status': sub_response.get("status")
+                }
+            
+            subscription = sub_response["response"]
+            
+            logger.info(f"Created pending subscription: {subscription['id']}")
+            
+            return {
+                'subscription_id': subscription['id'],
+                'init_point': subscription.get('init_point'),
+                'status': subscription['status']
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating pending subscription: {str(e)}")
             return None
     
     @staticmethod

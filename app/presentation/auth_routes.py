@@ -296,7 +296,7 @@ def customer_token_required(f):
     return decorated
 
 def create_subscription(customer)->StringField:
-    """Cria uma assinatura padrão para o customer"""
+    """Cria uma assinatura padrão para o customer via link de pagamento"""
     try:
 
         total_vehicles = Vehicle.objects(customer_id=customer.id, visible=True).count()
@@ -310,18 +310,31 @@ def create_subscription(customer)->StringField:
         if not default_plan:
             logger.error(f"No active subscription plan found for {customer.id} matching {total_vehicles} vehicles")
             return None
+        
+        back_url = os.environ.get('REPLIT_DEV_DOMAIN', os.environ.get('REPLIT_DOMAINS', 'localhost'))
+        if back_url and not back_url.startswith('http'):
+            back_url = f"https://{back_url}"
            
-        mp_subscription = MercadoPagoService.create_subscription(
-                preapproval_plan_id=default_plan.mp_preapproval_plan_id,
-                payer_email=customer.email,
-                metadata={
-                    'customer_id': str(customer.id),
-                    'plan_id': str(default_plan.id),
-                }
-            )
+        mp_subscription = MercadoPagoService.create_pending_subscription(
+            reason=f"Assinatura - {default_plan.name}",
+            payer_email=customer.email,
+            amount=default_plan.amount,
+            frequency=1,
+            frequency_type='months',
+            back_url=f"{back_url}/subscription/success",
+            external_reference=str(customer.id),
+            metadata={
+                'customer_id': str(customer.id),
+                'plan_id': str(default_plan.id),
+            }
+        )
             
         if not mp_subscription:
             logger.error(f"Failed to create Mercado Pago subscription for customer {customer.id}")
+            return None
+        
+        if mp_subscription.get('error'):
+            logger.error(f"Mercado Pago error: {mp_subscription.get('message')}")
             return None
        
         customer.mp_subscription_id = mp_subscription['subscription_id']
@@ -330,8 +343,6 @@ def create_subscription(customer)->StringField:
         customer.save()
 
         return mp_subscription['init_point']
-
-       
 
     except Exception as e:
         logger.error(f"Error creating subscription for customer {customer.email}: {str(e)}")

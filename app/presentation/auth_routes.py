@@ -311,9 +311,11 @@ def create_subscription(customer)->StringField:
             logger.error(f"No active subscription plan found for {customer.id} matching {total_vehicles} vehicles")
             return None
         
-        back_url = os.environ.get('REPLIT_DEV_DOMAIN', os.environ.get('REPLIT_DOMAINS', 'localhost'))
-        if back_url and not back_url.startswith('http'):
-            back_url = f"https://{back_url}"
+        domain = os.environ.get('REPLIT_DEV_DOMAIN') or os.environ.get('REPLIT_DOMAINS') or ''
+        if domain:
+            back_url = f"https://{domain}/subscription/success"
+        else:
+            back_url = None
            
         mp_subscription = MercadoPagoService.create_pending_subscription(
             reason=f"Assinatura - {default_plan.name}",
@@ -321,7 +323,7 @@ def create_subscription(customer)->StringField:
             amount=default_plan.amount,
             frequency=1,
             frequency_type='months',
-            back_url=f"{back_url}/subscription/success",
+            back_url=back_url,
             external_reference=str(customer.id),
             metadata={
                 'customer_id': str(customer.id),

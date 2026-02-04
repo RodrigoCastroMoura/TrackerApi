@@ -1,12 +1,12 @@
 import os
 import mercadopago
 import logging
-from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
+from config import Config
 
 logger = logging.getLogger(__name__)
 
-MP_ACCESS_TOKEN = os.environ.get('MERCADOPAGO_ACCESS_TOKEN', '')
+MP_ACCESS_TOKEN = Config.MERCADOPAGO_ACCESS_TOKEN
 
 class MercadoPagoService:
     """Service for handling Mercado Pago payment operations"""

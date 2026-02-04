@@ -4,10 +4,10 @@ from app.domain.models import Subscription, Payment, Customer
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime, timedelta
 import logging
-import json
 import hmac
 import hashlib
 import os
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class MercadoPagoWebhook(Resource):
             data_id = request.args.get('data.id', '')
             
             # Get webhook secret from environment
-            webhook_secret = os.environ.get('MERCADOPAGO_WEBHOOK_SECRET')
+            webhook_secret = Config.MERCADOPAGO_WEBHOOK_SECRET
             
             if not webhook_secret:
                 logger.error("MERCADOPAGO_WEBHOOK_SECRET not configured - webhooks are insecure!")

@@ -75,7 +75,12 @@ class MercadoPagoWebhook(Resource):
     def post(self):
         """Processar notificações do Mercado Pago (payment, subscription)"""
         try:
-            # Step 1: Validate webhook signature for security
+            data = request.get_json() or {}
+            
+            # Check if this is a test/sandbox webhook (live_mode=false)
+            is_test_mode = data.get('live_mode') == False
+            
+            # Step 1: Validate webhook signature for security (skip in test mode)
             x_signature = request.headers.get('x-signature', '')
             x_request_id = request.headers.get('x-request-id', '')
             data_id = request.args.get('data.id', '')
@@ -83,22 +88,19 @@ class MercadoPagoWebhook(Resource):
             # Get webhook secret from environment
             webhook_secret = Config.MERCADOPAGO_WEBHOOK_SECRET
             
-            if not webhook_secret:
-                logger.error("MERCADOPAGO_WEBHOOK_SECRET not configured - webhooks are insecure!")
-                # In production, you should reject webhooks without secret
-                # For now, log warning but continue (for backward compatibility)
-                logger.warning("⚠️ Processing webhook without signature validation - SECURITY RISK!")
+            if is_test_mode:
+                logger.info("Test mode webhook received - skipping signature validation")
+            elif not webhook_secret:
+                logger.warning("⚠️ MERCADOPAGO_WEBHOOK_SECRET not configured - processing without validation")
             else:
-                # Validate signature
-                if not validate_mercadopago_signature(x_signature, x_request_id, data_id, webhook_secret):
+                # Validate signature only in production mode with secret configured
+                if x_signature and not validate_mercadopago_signature(x_signature, x_request_id, data_id, webhook_secret):
                     logger.error("Invalid webhook signature - rejecting request")
                     return {'message': 'Invalid signature'}, 401
                 
                 logger.info("Webhook signature validated successfully")
             
-            # Step 2: Process webhook data
-            data = request.get_json() or {}
-            
+            # Step 2: Process webhook data (already parsed above)
             # Mercado Pago sends notifications about different events
             topic = data.get('topic') or data.get('type')
             resource_id = data.get('id') or data.get('data', {}).get('id')

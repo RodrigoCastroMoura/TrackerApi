@@ -256,6 +256,7 @@ class MercadoPagoService:
             subscription_data = {
                 "reason": reason,
                 "payer_email": payer_email,
+                "back_url": f"meuapp://sucesso",
                 "auto_recurring": {
                     "frequency": frequency,
                     "frequency_type": frequency_type,
@@ -265,8 +266,7 @@ class MercadoPagoService:
                 "status": "pending"
             }
             
-            if back_url:
-                subscription_data["back_url"] = back_url
+          
             
             if external_reference:
                 subscription_data["external_reference"] = external_reference

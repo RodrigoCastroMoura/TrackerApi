@@ -256,7 +256,7 @@ class MercadoPagoService:
             subscription_data = {
                 "reason": reason,
                 "payer_email": payer_email,
-                "back_url": f"meuapp://sucesso",
+                "back_url": f"https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/subscription/success",
                 "auto_recurring": {
                     "frequency": frequency,
                     "frequency_type": frequency_type,

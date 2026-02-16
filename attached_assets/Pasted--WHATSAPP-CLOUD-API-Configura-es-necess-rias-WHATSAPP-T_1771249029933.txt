@@ -1,0 +1,105 @@
+## WHATSAPP CLOUD API
+
+**Configurações necessárias:**
+- WHATSAPP_TOKEN (da Meta)
+- WHATSAPP_PHONE_ID (ID do número)
+- VERIFY_TOKEN (para webhook)
+- APP_SECRET (para validar assinatura)
+
+**Endpoints WhatsApp:**
+- Enviar mensagem: POST https://graph.facebook.com/v21.0/{phone_id}/messages
+- Webhook: POST /webhook (recebe mensagens)
+
+## FUNCIONALIDADES CRÍTICAS
+
+### 1. DEDUPLICAÇÃO DE MENSAGENS
+WhatsApp envia duplicatas! Implementar:
+```python
+# Filtrar notificações de status
+if "statuses" in value:
+    continue
+
+# Deduplicação por message_id
+message_id = msg.get("id")
+if session_manager.is_message_processed(phone_number, message_id):
+    return
+session_manager.mark_message_processed(phone_number, message_id)
+```
+
+### 2. SELEÇÃO DE VEÍCULO POR ID
+**CRÍTICO:** Listas interativas enviam ID, não title!
+```python
+# Em app.py
+if interactive_type == "list_reply":
+    text = interactive.get("list_reply", {}).get("id", "")  # USA ID!
+
+# Em message_handlers.py
+if message_type == "interactive":
+    vehicle = self._get_vehicle_by_id(session, message)  # Busca por ID
+```
+
+### 3. GERENCIAMENTO DE ESTADO
+Estados: UNAUTHENTICATED → AUTHENTICATED → VEHICLE_SELECTED
+
+**Limpeza de estado:**
+```python
+def _show_vehicles(self, session):
+    session.selected_vehicle = None  # Limpar seleção anterior
+
+def handle_menu(self, session):
+    session.selected_vehicle = None  # Limpar ao voltar
+    session.state = "AUTHENTICATED"
+```
+
+## FLUXO DE CONVERSA
+
+1. **Usuário não autenticado:**
+   - Recebe: "Envie CPF,SENHA"
+   - Envia: "12345678900,minhasenha"
+   - Sistema autentica e lista veículos
+
+2. **Seleção de veículo:**
+   - Se 1 veículo: seleciona automaticamente
+   - Se múltiplos: mostra lista interativa (rows com ID!)
+
+3. **Ações no veículo:**
+   - Botões: Localização, Bloquear/Desbloquear, Menu, Sair
+   - Cada ação mantém contexto do veículo selecionado
+
+## MODELOS DE DADOS
+```python
+@dataclass
+class Vehicle:
+    id: str
+    plate: str
+    model: str
+    blocked: str
+    is_blocked: bool
+
+@dataclass
+class User:
+    name: str
+    token: str
+    vehicles: List[Vehicle]
+    intrudution_shown: bool = False
+
+@dataclass
+class Session:
+    phone_number: str
+    state: str = "UNAUTHENTICATED"
+    user: Optional[User] = None
+    selected_vehicle: Optional[Vehicle] = None
+    last_activity: datetime = field(default_factory=datetime.now)
+```
+
+## LOGS DETALHADOS
+
+Use tags para facilitar debugging:
+```python
+logger.info(f"[DEDUP] Mensagem duplicada ignorada: {message_id}")
+logger.info(f"[PROCESS] {phone_number} | Estado: {session.state} | Tipo: {message_type}")
+logger.info(f"[AUTH] SELECIONANDO VEICULO: {vehicle.plate} (ID: {vehicle.id})")
+logger.info(f"[ACTION] Desbloqueando {vehicle.plate}")
+```
+
+## CONFIGURAÇÕES (.env)

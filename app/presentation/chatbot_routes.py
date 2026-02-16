@@ -68,6 +68,10 @@ def webhook():
             changes = e.get("changes", [])
             for change in changes:
                 value = change.get("value", {})
+
+                if "statuses" in value:
+                    continue
+
                 messages = value.get("messages", [])
 
                 for msg in messages:

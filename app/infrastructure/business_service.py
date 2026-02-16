@@ -138,11 +138,7 @@ class BusinessService:
             if lat != 0.0 and lng != 0.0:
                 try:
                     geocoding = _get_best_geocoding_service()
-                    result = geocoding.get_address_or_fallback(lat, lng)
-                    if result and not self._is_coordinate_string(result):
-                        address = result
-                    else:
-                        address = "Endereco nao disponivel"
+                    address = geocoding.get_address_or_fallback(lat, lng)
                 except Exception as e:
                     logger.warning(f"[BIZ] Geocoding failed: {str(e)}")
 
@@ -197,18 +193,6 @@ class BusinessService:
             logger.error(f"[BIZ] Block command error: {str(e)}")
             return False, f"Erro ao enviar comando para {chat_vehicle.plate}."
 
-
-    def _is_coordinate_string(self, text: str) -> bool:
-        text = text.strip()
-        parts = text.split(",")
-        if len(parts) == 2:
-            try:
-                float(parts[0].strip())
-                float(parts[1].strip())
-                return True
-            except ValueError:
-                pass
-        return False
 
 
 business_service = BusinessService()

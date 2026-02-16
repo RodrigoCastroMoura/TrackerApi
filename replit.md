@@ -97,13 +97,13 @@ Preferred communication style: Simple, everyday language.
 - **Mercado Pago**: For monthly subscription payment processing, integrated via `mercadopago` SDK. Supports payment links, subscription management, and webhooks.
 
 ### WhatsApp Chatbot
-- **Provider**: WhatsApp Cloud API (Meta) via `app/chatbot/` module.
+- **Provider**: WhatsApp Cloud API (Meta).
 - **Webhook Endpoint**: `/api/chatbot/webhook` (GET for verification, POST for messages).
 - **Features**: State-machine based conversation flow (UNAUTHENTICATED → AUTHENTICATED → VEHICLE_SELECTED). Supports vehicle location, block/unblock commands, interactive buttons and lists.
 - **Session Management**: In-memory sessions with configurable timeout (`SESSION_TIMEOUT_MINUTES`), thread-safe.
 - **Auth Flow**: Auto-authenticates by phone number using `PASSWORD_CHATBOT_SALT`, with CPF/password fallback.
 - **Environment Variables**: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `PASSWORD_CHATBOT_SALT`, `WHATSAPP_API_URL`, `API_BASE_URL`, `SESSION_TIMEOUT_MINUTES`.
-- **Module Structure**: `config.py` (settings), `models.py` (Session/Vehicle/ChatUser), `whatsapp_client.py` (API client), `session_manager.py` (session tracking), `business_service.py` (API calls), `message_handlers.py` (state machine), `routes.py` (webhook).
+- **Structure**: `app/infrastructure/whatsapp_service.py` (WhatsAppClient, SessionManager, BusinessService, MessageHandler) + `app/presentation/chatbot_routes.py` (webhook Blueprint). Config in `config.py`.
 
 ### Python Packages (Key Examples)
 - **Framework**: Flask, Flask-RESTX.

@@ -173,7 +173,7 @@ def create_app():
         api.add_namespace(subscription_ns, path='/api/subscriptions')
         api.add_namespace(webhook_ns, path='/api/webhooks')
 
-        from app.chatbot.routes import chatbot_bp
+        from app.presentation.chatbot_routes import chatbot_bp
         app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')
         logger.info("WhatsApp chatbot blueprint registered at /api/chatbot")
 

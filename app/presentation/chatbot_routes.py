@@ -2,9 +2,8 @@ import logging
 import hmac
 import hashlib
 from flask import Blueprint, request, jsonify
-from app.chatbot.config import ChatbotConfig
-from app.chatbot.session_manager import session_manager
-from app.chatbot.message_handlers import message_handler
+from config import Config
+from app.infrastructure.whatsapp_service import session_manager, message_handler
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +11,7 @@ chatbot_bp = Blueprint('chatbot', __name__)
 
 
 def verify_webhook_signature(request_obj) -> bool:
-    if not ChatbotConfig.APP_SECRET:
+    if not Config.WHATSAPP_APP_SECRET:
         logger.warning("WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)")
         return True
 
@@ -23,7 +22,7 @@ def verify_webhook_signature(request_obj) -> bool:
 
     payload = request_obj.get_data()
     expected = "sha256=" + hmac.HMAC(
-        ChatbotConfig.APP_SECRET.encode("utf-8"),
+        Config.WHATSAPP_APP_SECRET.encode("utf-8"),
         msg=payload,
         digestmod=hashlib.sha256
     ).hexdigest()
@@ -37,7 +36,7 @@ def verify():
     token = request.args.get('hub.verify_token')
     challenge = request.args.get('hub.challenge')
 
-    if mode == 'subscribe' and token == ChatbotConfig.VERIFY_TOKEN:
+    if mode == 'subscribe' and token == Config.WHATSAPP_VERIFY_TOKEN:
         logger.info("Webhook verified successfully")
         return challenge, 200
 

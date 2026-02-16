@@ -96,6 +96,22 @@ class MessageHandler:
             self._reset_session(session)
             return
 
+        action_commands = ["localizacao", "loc", "l", "bloquear", "block", "b",
+                           "desbloquear", "unblock", "d", "voltar", "back", "menu"]
+        if msg_lower in action_commands and session.selected_vehicle:
+            logger.info(f"[AUTH] Comando de acao com veiculo ja selecionado, redirecionando para action handler")
+            session.state = "VEHICLE_SELECTED"
+            self._handle_vehicle_action(session, message, message_type)
+            return
+
+        if msg_lower in action_commands and len(session.user.vehicles) == 1:
+            vehicle = session.user.vehicles[0]
+            logger.info(f"[AUTH] Comando de acao com 1 veiculo, auto-selecionando: {vehicle.plate}")
+            session.state = "VEHICLE_SELECTED"
+            session.selected_vehicle = vehicle
+            self._handle_vehicle_action(session, message, message_type)
+            return
+
         vehicle = None
 
         if message_type == "interactive":
@@ -117,10 +133,6 @@ class MessageHandler:
             self._show_vehicle_options(session)
         else:
             logger.warning(f"[AUTH] Veiculo nao encontrado para: '{message}'")
-            self.whatsapp.send_message(
-                session.phone_number,
-                "Veiculo nao encontrado."
-            )
             self._show_vehicles(session)
 
     def _show_vehicles(self, session: ChatSession) -> None:
@@ -213,10 +225,19 @@ class MessageHandler:
 
         if not vehicle:
             logger.error(f"[ACTION] selected_vehicle e None! Estado inconsistente.")
+            session.state = "AUTHENTICATED"
             self._show_vehicles(session)
             return
 
         logger.info(f"[ACTION] {session.phone_number} | Veiculo: {vehicle.plate} | Acao: '{msg_lower}'")
+
+        if message_type == "interactive":
+            new_vehicle = self._get_vehicle_by_id(session, message)
+            if new_vehicle and new_vehicle.id != vehicle.id:
+                logger.info(f"[ACTION] Trocando veiculo para: {new_vehicle.plate}")
+                session.selected_vehicle = new_vehicle
+                self._show_vehicle_options(session)
+                return
 
         buttons = [
             {"id": "voltar", "title": "Voltar"}

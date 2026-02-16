@@ -1,0 +1,136 @@
+2026-02-16 17:53:29.21
+125c4d98
+User
+INFO:app.presentation.chatbot_routes:[WEBHOOK] From: 5511991791044 | Type: interactive | Text: '6893f84fe4b416c9333071b1'
+2026-02-16 17:53:29.21
+125c4d98
+User
+INFO:app.infrastructure.message_handler:[ACTION] 5511991791044 | Veiculo: AAA-0A00 | Acao: '6893f84fe4b416c9333071b1'
+2026-02-16 17:53:29.21
+125c4d98
+User
+WARNING:app.infrastructure.message_handler:[ACTION] Comando nao reconhecido: '6893f84fe4b416c9333071b1'
+2026-02-16 17:53:29.21
+125c4d98
+User
+INFO:app.infrastructure.message_handler:[OPTIONS] Mostrando opcoes para: AAA-0A00
+2026-02-16 17:53:29.65
+125c4d98
+User
+INFO:app.infrastructure.whatsapp_client:Message sent to 5511991791044
+2026-02-16 17:53:29.65
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:29 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:30.48
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:30.48
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:30 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:30.61
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:30.61
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:30 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:30.83
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:30.83
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:30 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:48.28
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:48.28
+125c4d98
+User
+WARNING:app.infrastructure.message_handler:[ID_SEARCH] Nenhum veiculo encontrado com ID: 'localizacao'
+2026-02-16 17:53:48.28
+125c4d98
+User
+INFO:app.infrastructure.message_handler:[AUTH] 5511991791044 | Tipo: interactive | Msg: 'localizacao'
+2026-02-16 17:53:48.28
+125c4d98
+User
+WARNING:app.infrastructure.message_handler:[AUTH] Veiculo nao encontrado para: 'localizacao'
+2026-02-16 17:53:48.28
+125c4d98
+User
+INFO:app.infrastructure.message_handler:[AUTH] Buscando veiculo por placa/modelo: 'localizacao'
+2026-02-16 17:53:48.28
+125c4d98
+User
+INFO:app.presentation.chatbot_routes:[WEBHOOK] From: 5511991791044 | Type: interactive | Text: 'localizacao'
+2026-02-16 17:53:48.28
+125c4d98
+User
+INFO:app.infrastructure.message_handler:[AUTH] Buscando veiculo por ID: 'localizacao'
+2026-02-16 17:53:48.68
+125c4d98
+User
+INFO:app.infrastructure.whatsapp_client:Message sent to 5511991791044
+2026-02-16 17:53:49.08
+125c4d98
+User
+INFO:app.infrastructure.whatsapp_client:Message sent to 5511991791044
+2026-02-16 17:53:49.08
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:49 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:49.33
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:49.33
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:49 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:49.84
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:49.84
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:49 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:50.03
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:50.03
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:50 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:50.07
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:50.07
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:50 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:50.18
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:50.18
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:50 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"
+2026-02-16 17:53:50.21
+125c4d98
+User
+WARNING:app.presentation.chatbot_routes:WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)
+2026-02-16 17:53:50.21
+125c4d98
+User
+127.0.0.1 - - [16/Feb/2026:20:53:50 +0000] "POST /api/chatbot/webhook HTTP/1.1" 200 16 "-" "facebookexternalua"

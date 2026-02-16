@@ -33,6 +33,7 @@ class ChatSession:
     state: str = "UNAUTHENTICATED"
     user: Optional[ChatUser] = None
     selected_vehicle: Optional[ChatVehicle] = None
+    pending_identifier: Optional[str] = None
     last_activity: datetime = field(default_factory=datetime.utcnow)
 
     def is_expired(self, timeout_minutes: int = 30) -> bool:

@@ -15,6 +15,7 @@ class MessageHandler:
         self.business = business
         self.handlers = {
             "UNAUTHENTICATED": self._handle_unauthenticated,
+            "WAITING_PASSWORD": self._handle_waiting_password,
             "AUTHENTICATED": self._handle_authenticated,
             "VEHICLE_SELECTED": self._handle_vehicle_action
         }
@@ -29,8 +30,6 @@ class MessageHandler:
             self._reset_session(session)
 
     def _handle_unauthenticated(self, session: ChatSession, message: str, message_type: str = "text") -> None:
-        msg_lower = message.lower().strip()
-
         logger.info(f"[UNAUTH] {session.phone_number}: '{message}'")
 
         phone_number = self._remover_caracteres_esquerda(session.phone_number)
@@ -44,35 +43,49 @@ class MessageHandler:
             session.user = user
             session.user.intrudution_shown = False
             session.state = "AUTHENTICATED"
-            logger.info(f"[AUTH] Usuario autenticado: {user.name}, {len(user.vehicles)} veiculos")
+            logger.info(f"[AUTH] Usuario autenticado por telefone: {user.name}, {len(user.vehicles)} veiculos")
             self._show_vehicles(session)
         else:
-            if "," in message:
-                parts = [p.strip() for p in message.split(",")]
-                if len(parts) >= 2:
-                    identifier = parts[0]
-                    password = parts[1]
-
-                    user = self.business.authenticate_by_credentials(identifier, password)
-
-                    if user and len(user.vehicles) > 0:
-                        session.user = user
-                        session.user.intrudution_shown = False
-                        session.state = "AUTHENTICATED"
-                        logger.info(f"[AUTH] Usuario autenticado: {user.name}, {len(user.vehicles)} veiculos")
-                        self._show_vehicles(session)
-                    else:
-                        self.whatsapp.send_message(
-                            session.phone_number,
-                            "Credenciais invalidas ou nenhum veiculo encontrado.\n\n"
-                            "Envie: CPF,SENHA"
-                        )
+            msg_clean = message.strip()
+            if len(msg_clean) >= 11 and msg_clean.replace(".", "").replace("-", "").replace("/", "").isdigit():
+                session.state = "WAITING_PASSWORD"
+                session.pending_identifier = msg_clean
+                logger.info(f"[UNAUTH] CPF recebido, aguardando senha: {session.pending_identifier}")
+                self.whatsapp.send_message(
+                    session.phone_number,
+                    "Agora, por favor, digite sua *senha*:"
+                )
             else:
                 self.whatsapp.send_message(
                     session.phone_number,
-                    "Bem-vindo ao Sistema de Rastreamento!\n\n"
-                    "Para acessar, envie:\nCPF,SENHA"
+                    "Bem-vindo ao Sistema de Rastreamento! \n\n"
+                    "Para acessar, por favor, digite seu *CPF*:"
                 )
+
+    def _handle_waiting_password(self, session: ChatSession, message: str, message_type: str = "text") -> None:
+        logger.info(f"[WAITING_PWD] {session.phone_number}: senha recebida")
+
+        password = message.strip()
+        identifier = session.pending_identifier or ""
+
+        user = self.business.authenticate_by_credentials(identifier, password)
+
+        if user and len(user.vehicles) > 0:
+            session.user = user
+            session.user.intrudution_shown = False
+            session.state = "AUTHENTICATED"
+            session.pending_identifier = None
+            logger.info(f"[AUTH] Usuario autenticado por credenciais: {user.name}, {len(user.vehicles)} veiculos")
+            self._show_vehicles(session)
+        else:
+            session.state = "UNAUTHENTICATED"
+            session.pending_identifier = None
+            logger.warning(f"[WAITING_PWD] Credenciais invalidas para: {identifier}")
+            self.whatsapp.send_message(
+                session.phone_number,
+                "CPF ou senha incorretos, ou nenhum veiculo encontrado.\n\n"
+                "Por favor, digite seu *CPF* para tentar novamente:"
+            )
 
     def _handle_authenticated(self, session: ChatSession, message: str, message_type: str = "text") -> None:
         msg_lower = message.lower().strip()
@@ -298,6 +311,7 @@ class MessageHandler:
         session.user = None
         session.state = "UNAUTHENTICATED"
         session.selected_vehicle = None
+        session.pending_identifier = None
 
         self.whatsapp.send_message(
             session.phone_number,

@@ -4,6 +4,7 @@
 This project is a comprehensive multi-tenant vehicle tracking system built with Flask, adhering to Clean Architecture principles. It offers user authentication, multi-company management (multi-tenancy), real-time GPS tracking, and detailed reports with role-based access control. The system utilizes MongoDB for data persistence and Firebase Cloud Storage for file storage. Its core purpose is to provide a robust and scalable solution for vehicle monitoring and management for various businesses, enabling efficient operations and data-driven insights.
 
 ## Recent Changes
+- **Feb 16, 2026**: Added WhatsApp chatbot module (`app/chatbot/`) for customer interaction via WhatsApp. Supports auto-authentication by phone number, vehicle selection (interactive lists/buttons), location tracking, and block/unblock commands. Integrated as Flask Blueprint at `/api/chatbot/webhook`.
 - **Nov 24, 2025 (Security Update)**: Enhanced tracking list endpoint with automatic customer_id filtering. Removed customer_id query parameter from GET /tracking/vehicles - now automatically extracted from JWT token for customer users. This prevents customers from accessing vehicles belonging to other customers in the vehicle list view.
 - **Nov 24, 2025 (Email Configuration)**: Fixed MAIL_DEFAULT_SENDER configuration - now automatically uses MAIL_USERNAME when not explicitly set. Registered all email credentials as encrypted secrets for secure deployment.
 - **Nov 24, 2025**: Redesigned password recovery system with temporary password flow. Removed token-based password reset endpoints (/password/reset, /customer/password/reset). New flow: Recovery generates random 12-char temporary password, sets must_change_password=True and password_changed=False flags, sends email with credentials. JWT tokens include must_change_password flag for frontend enforcement. Password change endpoints allow forced updates without current password validation.
@@ -66,6 +67,7 @@ Preferred communication style: Simple, everyday language.
     - `/api/subscription-plans`: Subscription plan management (list, create, update, delete).
     - `/api/subscriptions`: Monthly subscription management (create, view, cancel) and payment history (customer-only).
     - `/api/webhooks/mercadopago`: Mercado Pago payment notification processing.
+    - `/api/chatbot/webhook`: WhatsApp chatbot webhook (GET=verification, POST=messages).
 - **Features**: Decorator-based authentication and authorization, multi-tenancy enforcement, consistent error handling, input validation, pagination, and filtering.
 
 ### Configuration Management
@@ -93,6 +95,15 @@ Preferred communication style: Simple, everyday language.
 
 ### Payment Gateway
 - **Mercado Pago**: For monthly subscription payment processing, integrated via `mercadopago` SDK. Supports payment links, subscription management, and webhooks.
+
+### WhatsApp Chatbot
+- **Provider**: WhatsApp Cloud API (Meta) via `app/chatbot/` module.
+- **Webhook Endpoint**: `/api/chatbot/webhook` (GET for verification, POST for messages).
+- **Features**: State-machine based conversation flow (UNAUTHENTICATED → AUTHENTICATED → VEHICLE_SELECTED). Supports vehicle location, block/unblock commands, interactive buttons and lists.
+- **Session Management**: In-memory sessions with configurable timeout (`SESSION_TIMEOUT_MINUTES`), thread-safe.
+- **Auth Flow**: Auto-authenticates by phone number using `PASSWORD_CHATBOT_SALT`, with CPF/password fallback.
+- **Environment Variables**: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `PASSWORD_CHATBOT_SALT`, `WHATSAPP_API_URL`, `API_BASE_URL`, `SESSION_TIMEOUT_MINUTES`.
+- **Module Structure**: `config.py` (settings), `models.py` (Session/Vehicle/ChatUser), `whatsapp_client.py` (API client), `session_manager.py` (session tracking), `business_service.py` (API calls), `message_handlers.py` (state machine), `routes.py` (webhook).
 
 ### Python Packages (Key Examples)
 - **Framework**: Flask, Flask-RESTX.

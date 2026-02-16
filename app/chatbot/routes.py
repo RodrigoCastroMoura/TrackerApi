@@ -13,14 +13,16 @@ chatbot_bp = Blueprint('chatbot', __name__)
 
 def verify_webhook_signature(request_obj) -> bool:
     if not ChatbotConfig.APP_SECRET:
+        logger.warning("WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)")
         return True
 
     signature = request_obj.headers.get("X-Hub-Signature-256", "")
     if not signature:
+        logger.warning("Missing X-Hub-Signature-256 header")
         return False
 
     payload = request_obj.get_data()
-    expected = "sha256=" + hmac.new(
+    expected = "sha256=" + hmac.HMAC(
         ChatbotConfig.APP_SECRET.encode("utf-8"),
         msg=payload,
         digestmod=hashlib.sha256

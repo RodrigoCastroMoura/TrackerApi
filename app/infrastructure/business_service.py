@@ -1,5 +1,6 @@
 import logging
 from typing import Optional, Tuple
+from datetime import timezone, timedelta
 from config import Config
 from app.domain.models import Customer, Vehicle
 from app.infrastructure.session_manager import ChatUser, ChatVehicle, ChatSession
@@ -133,17 +134,33 @@ class BusinessService:
             lat = float(vehicle.latitude) if vehicle.latitude else 0.0
             lng = float(vehicle.longitude) if vehicle.longitude else 0.0
 
-            address = "N/A"
+            address = "Endereco nao disponivel"
             if lat != 0.0 and lng != 0.0:
-                geocoding = _get_best_geocoding_service()
-                address = geocoding.get_address_or_fallback(lat, lng)
+                try:
+                    geocoding = _get_best_geocoding_service()
+                    result = geocoding.get_address_or_fallback(lat, lng)
+                    if result and not self._is_coordinate_string(result):
+                        address = result
+                    else:
+                        address = "Endereco nao disponivel"
+                except Exception as e:
+                    logger.warning(f"[BIZ] Geocoding failed: {str(e)}")
+
+            last_update = "Nao disponivel"
+            if vehicle.tsusermanu:
+                try:
+                    br_tz = timezone(timedelta(hours=-3))
+                    dt_br = vehicle.tsusermanu.replace(tzinfo=timezone.utc).astimezone(br_tz)
+                    last_update = dt_br.strftime("%d/%m/%Y as %H:%M")
+                except Exception:
+                    last_update = vehicle.tsusermanu.strftime("%d/%m/%Y as %H:%M")
 
             return {
                 "latitude": lat,
                 "longitude": lng,
                 "address": address,
                 "speed": 0,
-                "last_update": vehicle.tsusermanu.isoformat() if vehicle.tsusermanu else "N/A"
+                "last_update": last_update
             }
 
         except Exception as e:
@@ -179,6 +196,19 @@ class BusinessService:
         except Exception as e:
             logger.error(f"[BIZ] Block command error: {str(e)}")
             return False, f"Erro ao enviar comando para {chat_vehicle.plate}."
+
+
+    def _is_coordinate_string(self, text: str) -> bool:
+        text = text.strip()
+        parts = text.split(",")
+        if len(parts) == 2:
+            try:
+                float(parts[0].strip())
+                float(parts[1].strip())
+                return True
+            except ValueError:
+                pass
+        return False
 
 
 business_service = BusinessService()

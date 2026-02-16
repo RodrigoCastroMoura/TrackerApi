@@ -173,6 +173,10 @@ def create_app():
         api.add_namespace(subscription_ns, path='/api/subscriptions')
         api.add_namespace(webhook_ns, path='/api/webhooks')
 
+        from app.chatbot.routes import chatbot_bp
+        app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')
+        logger.info("WhatsApp chatbot blueprint registered at /api/chatbot")
+
         return app
     except Exception as e:
         logger.error(f"Error creating Flask application: {str(e)}")

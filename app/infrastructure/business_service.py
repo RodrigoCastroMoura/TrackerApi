@@ -32,9 +32,7 @@ class BusinessService:
                 logger.warning(f"[BIZ] Customer not found for phone: {phone}")
                 return None
 
-            if not customer.check_password_chatbot(salt):
-                logger.warning(f"[BIZ] Chatbot salt validation failed")
-                return None
+            
 
             if customer.status != 'active':
                 logger.warning(f"[BIZ] Inactive customer: {customer.document}")
@@ -145,7 +143,7 @@ class BusinessService:
             last_update = "Nao disponivel"
             if vehicle.tsusermanu:
                 try:
-                    br_tz = timezone(timedelta(hours=-3))
+                    br_tz = timezone(timedelta())
                     dt_br = vehicle.tsusermanu.replace(tzinfo=timezone.utc).astimezone(br_tz)
                     last_update = dt_br.strftime("%d/%m/%Y as %H:%M")
                 except Exception:

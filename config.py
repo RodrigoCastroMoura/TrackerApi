@@ -56,9 +56,9 @@ class Config:
 
     WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
     WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "meu_token_secreto_123")
-    WHATSAPP_PHONE_NUMBER_ID = os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
+    WHATSAPP_PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "")
     WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
     PASSWORD_CHATBOT_SALT = os.environ.get("PASSWORD_CHATBOT_SALT", "")
-    WHATSAPP_API_URL = os.environ.get("WHATSAPP_API_URL", "https://graph.facebook.com/v18.0")
+    WHATSAPP_API_URL = os.environ.get("WHATSAPP_API_URL", "")
     API_BASE_URL = os.environ.get("API_BASE_URL", "")
     SESSION_TIMEOUT_MINUTES = int(os.environ.get("SESSION_TIMEOUT_MINUTES", 30))

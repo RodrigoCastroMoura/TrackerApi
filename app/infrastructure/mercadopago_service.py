@@ -255,18 +255,16 @@ class MercadoPagoService:
             
             subscription_data = {
                 "reason": reason,
-                "payer_email": payer_email,
-                "back_url": f"https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/subscription/success",
                 "auto_recurring": {
                     "frequency": frequency,
                     "frequency_type": frequency_type,
                     "transaction_amount": float(amount),
                     "currency_id": "BRL"
                 },
+                 "back_url": back_url,
+                 "payer_email": payer_email,              
                 "status": "pending"
             }
-            
-          
             
             if external_reference:
                 subscription_data["external_reference"] = external_reference
@@ -342,7 +340,12 @@ class MercadoPagoService:
             if not sdk:
                 return None
             
-            sub_response = sdk.preapproval().get(subscription_id)
+
+            filtro  = {
+              "status": f"{subscription_id}"
+            }
+            
+            sub_response = sdk.preapproval().search()
             subscription = sub_response["response"]
             
             return {

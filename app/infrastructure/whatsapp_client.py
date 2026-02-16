@@ -105,3 +105,6 @@ class WhatsAppClient:
         except Exception as e:
             logger.error(f"Error sending WhatsApp message: {str(e)}")
             return False
+
+
+whatsapp_client = WhatsAppClient()

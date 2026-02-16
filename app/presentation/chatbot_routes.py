@@ -3,7 +3,12 @@ import hmac
 import hashlib
 from flask import Blueprint, request, jsonify
 from config import Config
-from app.infrastructure.whatsapp_service import session_manager, message_handler
+from app.infrastructure.session_manager import session_manager
+from app.infrastructure.whatsapp_client import whatsapp_client
+from app.infrastructure.business_service import business_service
+from app.infrastructure.message_handler import MessageHandler
+
+message_handler = MessageHandler(whatsapp_client, business_service)
 
 logger = logging.getLogger(__name__)
 

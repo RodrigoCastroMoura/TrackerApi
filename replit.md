@@ -103,7 +103,7 @@ Preferred communication style: Simple, everyday language.
 - **Session Management**: In-memory sessions with configurable timeout (`SESSION_TIMEOUT_MINUTES`), thread-safe.
 - **Auth Flow**: Auto-authenticates by phone number using `PASSWORD_CHATBOT_SALT`, with CPF/password fallback.
 - **Environment Variables**: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `PASSWORD_CHATBOT_SALT`, `WHATSAPP_API_URL`, `API_BASE_URL`, `SESSION_TIMEOUT_MINUTES`.
-- **Structure**: `app/infrastructure/whatsapp_service.py` (WhatsAppClient, SessionManager, BusinessService, MessageHandler) + `app/presentation/chatbot_routes.py` (webhook Blueprint). Config in `config.py`.
+- **Structure**: `app/infrastructure/whatsapp_client.py` (WhatsAppClient), `app/infrastructure/session_manager.py` (SessionManager + dataclasses ChatSession/ChatUser/ChatVehicle), `app/infrastructure/business_service.py` (BusinessService), `app/infrastructure/message_handler.py` (MessageHandler) + `app/presentation/chatbot_routes.py` (webhook Blueprint). Config in `config.py`.
 
 ### Python Packages (Key Examples)
 - **Framework**: Flask, Flask-RESTX.

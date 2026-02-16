@@ -2,7 +2,7 @@ import requests
 import logging
 from typing import Optional, Tuple
 from config import Config
-from app.infrastructure.whatsapp.models import ChatUser, ChatVehicle, ChatSession
+from app.infrastructure.session_manager import ChatUser, ChatVehicle, ChatSession
 
 logger = logging.getLogger(__name__)
 
@@ -124,3 +124,6 @@ class BusinessService:
         except Exception as e:
             logger.error(f"[BIZ] Block command error: {str(e)}")
             return False, f"Erro ao enviar comando para {vehicle.plate}."
+
+
+business_service = BusinessService()

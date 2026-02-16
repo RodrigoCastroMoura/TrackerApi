@@ -35,10 +35,9 @@ class MessageHandler:
 
         phone_number = self._remover_caracteres_esquerda(session.phone_number)
 
-        user = self.business.authenticate_user(
+        user = self.business.authenticate_by_phone(
             phone_number,
-            Config.PASSWORD_CHATBOT_SALT,
-            "auth/customer/chatbot/login"
+            Config.PASSWORD_CHATBOT_SALT
         )
 
         if user:
@@ -54,7 +53,7 @@ class MessageHandler:
                     identifier = parts[0]
                     password = parts[1]
 
-                    user = self.business.authenticate_user(identifier, password, "auth/login")
+                    user = self.business.authenticate_by_credentials(identifier, password)
 
                     if user and len(user.vehicles) > 0:
                         session.user = user

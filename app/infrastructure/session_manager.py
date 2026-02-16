@@ -22,6 +22,7 @@ class ChatUser:
     name: str
     email: str
     token: str
+    company_id: str = ""
     vehicles: List[ChatVehicle] = field(default_factory=list)
     intrudution_shown: bool = False
 

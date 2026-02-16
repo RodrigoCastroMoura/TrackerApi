@@ -101,8 +101,9 @@ Preferred communication style: Simple, everyday language.
 - **Webhook Endpoint**: `/api/chatbot/webhook` (GET for verification, POST for messages).
 - **Features**: State-machine based conversation flow (UNAUTHENTICATED → AUTHENTICATED → VEHICLE_SELECTED). Supports vehicle location, block/unblock commands, interactive buttons and lists.
 - **Session Management**: In-memory sessions with configurable timeout (`SESSION_TIMEOUT_MINUTES`), thread-safe.
-- **Auth Flow**: Auto-authenticates by phone number using `PASSWORD_CHATBOT_SALT`, with CPF/password fallback.
-- **Environment Variables**: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `PASSWORD_CHATBOT_SALT`, `WHATSAPP_API_URL`, `API_BASE_URL`, `SESSION_TIMEOUT_MINUTES`.
+- **Auth Flow**: Auto-authenticates by phone number using `PASSWORD_CHATBOT_SALT` (direct DB access via Customer model), with CPF/password fallback. All business logic accesses MongoDB directly (no HTTP API calls).
+- **Security**: Multi-tenancy enforced via `customer_id` and `company_id` filters on all vehicle operations (location, block/unblock).
+- **Environment Variables**: `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_VERIFY_TOKEN`, `WHATSAPP_APP_SECRET`, `PASSWORD_CHATBOT_SALT`, `SESSION_TIMEOUT_MINUTES`.
 - **Structure**: `app/infrastructure/whatsapp_client.py` (WhatsAppClient), `app/infrastructure/session_manager.py` (SessionManager + dataclasses ChatSession/ChatUser/ChatVehicle), `app/infrastructure/business_service.py` (BusinessService), `app/infrastructure/message_handler.py` (MessageHandler) + `app/presentation/chatbot_routes.py` (webhook Blueprint). Config in `config.py`.
 
 ### Python Packages (Key Examples)

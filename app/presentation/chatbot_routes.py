@@ -3,6 +3,7 @@ import hmac
 import hashlib
 from flask import Blueprint, request, jsonify
 from config import Config
+from app.presentation.auth_routes import limiter
 from app.infrastructure.session_manager import session_manager
 from app.infrastructure.whatsapp_client import whatsapp_client
 from app.infrastructure.business_service import business_service
@@ -36,6 +37,7 @@ def verify_webhook_signature(request_obj) -> bool:
 
 
 @chatbot_bp.route('/webhook', methods=['GET'])
+@limiter.exempt
 def verify():
     mode = request.args.get('hub.mode')
     token = request.args.get('hub.verify_token')
@@ -50,6 +52,7 @@ def verify():
 
 
 @chatbot_bp.route('/webhook', methods=['POST'])
+@limiter.exempt
 def webhook():
     try:
         if not verify_webhook_signature(request):

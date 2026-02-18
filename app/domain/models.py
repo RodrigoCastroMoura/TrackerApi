@@ -154,7 +154,8 @@ class Vehicle(BaseDocument):
     latitude = StringField(max_length=50)  # Última latitude conhecida
     altitude = StringField(max_length=50)  # Última altitude conhecida
     status = StringField(choices=['active', 'inactive'], default='active')
-    visible = BooleanField(default=True)  # Campo para exclusão lógica
+    visible = BooleanField(default=True)  # Campo para exclusão 
+    numberSendMessageWhatsApp = StringField(max_length=20)  # Número para enviar a mensagem via WhatsApp
 
     meta = {
         'collection': 'vehicles',
@@ -190,7 +191,8 @@ class Vehicle(BaseDocument):
             'latitude': self.latitude,
             'altitude': self.altitude,
             'status': self.status,
-            'visible': self.visible
+            'visible': self.visible,
+            'numberSendMessageWhatsApp': self.numberSendMessageWhatsApp
         })
         return base_dict
     

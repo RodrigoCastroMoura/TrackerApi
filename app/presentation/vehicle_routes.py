@@ -346,6 +346,9 @@ class VehicleBlock(Resource):
             if 'comando' not in data:
                 return {'message': 'Comando não especificado'}, 400
             
+            if 'numberSendMessageWhatsApp' in data:
+                vehicle.numberSendMessageWhatsApp = data['numberSendMessageWhatsApp']
+            
             if data['comando'] == 'bloquear':
                 vehicle.comandobloqueo = False
                 message = 'Comando de bloqueio enviado'

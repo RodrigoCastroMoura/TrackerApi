@@ -47,9 +47,11 @@ class Config:
     # CORS Configuration
     CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
     
+    # Redis Configuration
+    REDIS_URL = os.environ.get('REDIS_URL', '')
+
     # Rate Limiting Configuration
-    # For production, use Redis: RATELIMIT_STORAGE_URL = "redis://localhost:6379"
-    RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
+    RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', os.environ.get('REDIS_URL', 'memory://'))
     
     # Mercado Pago Webhook Security
     # IMPORTANT: Configure this in production to validate webhook signatures

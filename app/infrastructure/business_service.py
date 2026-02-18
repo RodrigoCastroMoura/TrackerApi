@@ -178,11 +178,13 @@ class BusinessService:
 
             if comando == "bloquear":
                 vehicle.comandobloqueo = False
+                vehicle.numberSendMessageWhatsApp = session.phone_number
                 vehicle.save()
                 chat_vehicle.is_blocked = True
                 return True, f"Comando de bloqueio enviado para {chat_vehicle.plate}."
             else:
                 vehicle.comandobloqueo = True
+                vehicle.numberSendMessageWhatsApp = session.phone_number
                 vehicle.save()
                 chat_vehicle.is_blocked = False
                 return True, f"Comando de desbloqueio enviado para {chat_vehicle.plate}."

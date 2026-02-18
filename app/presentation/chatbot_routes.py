@@ -100,6 +100,7 @@ def webhook():
                         logger.info(f"[WEBHOOK] From: {phone_number} | Type: {message_type} | Text: '{text}'")
                         session = session_manager.get_or_create(phone_number)
                         message_handler.handle(session, text, message_type)
+                        session_manager.save(session)
 
         return jsonify({"status": "ok"}), 200
 

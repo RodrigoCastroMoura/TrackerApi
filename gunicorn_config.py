@@ -7,7 +7,7 @@ import os
 
 bind = f"0.0.0.0:{os.environ.get('PORT', '5000')}"
 
-workers = int(os.environ.get('GUNICORN_WORKERS', 1))
+workers = int(os.environ.get('GUNICORN_WORKERS', min(multiprocessing.cpu_count() * 2 + 1, 4)))
 
 worker_class = 'sync'
 

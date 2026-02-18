@@ -152,13 +152,11 @@ def create_app():
                   authorizations=authorizations,
                   security='Bearer Auth')
 
-        # Initialize limiter with storage URL from config
         limiter.init_app(app)
-        if Config.RATELIMIT_STORAGE_URL.startswith('memory://'):
-            logger.warning("Rate limiting using in-memory storage - not recommended for production!")
-            logger.warning("   Set RATELIMIT_STORAGE_URL environment variable to use Redis/Memcached")
+        if Config.RATELIMIT_STORAGE_URL and not Config.RATELIMIT_STORAGE_URL.startswith('memory://'):
+            logger.info("Rate limiting configured with Redis storage")
         else:
-            logger.info(f"Rate limiting configured with: {Config.RATELIMIT_STORAGE_URL}")
+            logger.warning("Rate limiting using in-memory storage - set REDIS_URL to use Redis")
 
         # Add namespaces
         api.add_namespace(auth_ns, path='/api/auth')

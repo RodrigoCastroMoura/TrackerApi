@@ -36,11 +36,16 @@ def _get_limiter_storage_uri():
     if url and not url.startswith('memory://'):
         try:
             import redis as redis_lib
-            return url
-        except ImportError:
+            _v = tuple(int(x) for x in redis_lib.__version__.split('.')[:2])
+            if _v >= (3, 0):
+                return url
+            else:
+                import logging
+                logging.getLogger(__name__).warning(f"Redis package version {redis_lib.__version__} is too old (need >=3.0), rate limiting will use in-memory storage")
+        except (ImportError, Exception):
             import logging
             logging.getLogger(__name__).warning("Redis package not available, rate limiting will use in-memory storage")
-    return None
+    return 'memory://'
 
 limiter = Limiter(
     key_func=get_remote_address,

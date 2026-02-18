@@ -1,5 +1,5 @@
 """
-Gunicorn configuration file for DocSmart API production deployment.
+Gunicorn configuration file for Monitora-net API production deployment.
 """
 
 import multiprocessing
@@ -24,7 +24,7 @@ accesslog = '-'
 errorlog = '-'
 loglevel = os.environ.get('LOG_LEVEL', 'info')
 
-proc_name = 'docsmart-api'
+proc_name = 'monitor_net-api'
 
 def on_starting(server):
     print(f"Starting Gunicorn server for DocSmart API")

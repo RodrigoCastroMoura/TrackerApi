@@ -1,6 +1,10 @@
 import os
 import sys
 import secrets
+from dotenv import load_dotenv
+
+# Carregar variáveis do .env
+load_dotenv()
 
 class Config:
     # Critical Security: SECRET_KEY must be set

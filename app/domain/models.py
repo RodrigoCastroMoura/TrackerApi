@@ -276,7 +276,7 @@ class Customer(BaseDocument):
     fcm_token = StringField(max_length=500)
 
     has_accepted_terms = BooleanField(default=False)
-    require_payment_method = BooleanField(default=False)
+    require_payment_method = BooleanField(default=True)
 
     
     meta = {

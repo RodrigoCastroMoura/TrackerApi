@@ -31,10 +31,21 @@ def generate_temporary_password(length=6):
     characters = string.digits
     return ''.join(random.choice(characters) for _ in range(length))
 
+def _get_limiter_storage_uri():
+    url = Config.RATELIMIT_STORAGE_URL
+    if url and not url.startswith('memory://'):
+        try:
+            import redis as redis_lib
+            return url
+        except ImportError:
+            import logging
+            logging.getLogger(__name__).warning("Redis package not available, rate limiting will use in-memory storage")
+    return None
+
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["200 per day", "50 per hour"],
-    storage_uri=Config.RATELIMIT_STORAGE_URL if Config.RATELIMIT_STORAGE_URL and not Config.RATELIMIT_STORAGE_URL.startswith('memory://') else None
+    storage_uri=_get_limiter_storage_uri()
 )
 
 api = Namespace('auth', description='Authentication operations')

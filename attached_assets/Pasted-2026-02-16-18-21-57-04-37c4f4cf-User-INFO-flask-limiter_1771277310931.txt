@@ -1,0 +1,136 @@
+2026-02-16 18:21:57.04
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:21:57.04
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:21:57 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:03.62
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:03.62
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:03 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:03.88
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:03.88
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:03 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:04.16
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:04.16
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:04 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:05.75
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:05.75
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:05 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:11.69
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:11.69
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:11 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:12.00
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:12.00
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:12 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:12.79
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:12.79
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:12 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:13.62
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:13.62
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:13 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:20.16
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:20.17
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:20 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:22:38.25
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:22:38.26
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:22:38 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:23:35.35
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:23:35.35
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:23:35 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:24:39.48
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:24:39.48
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:24:39 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:25:14.25
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:25:14.25
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:25:14 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:25:39.24
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:25:39.24
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:25:39 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:25:53.36
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:25:53.37
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:25:53 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"
+2026-02-16 18:26:07.04
+37c4f4cf
+User
+INFO:flask-limiter:ratelimit 50 per 1 hour (127.0.0.1) exceeded at endpoint: chatbot.webhook
+2026-02-16 18:26:07.04
+37c4f4cf
+User
+127.0.0.1 - - [16/Feb/2026:21:26:07 +0000] "POST /api/chatbot/webhook HTTP/1.1" 429 116 "-" "facebookexternalua"

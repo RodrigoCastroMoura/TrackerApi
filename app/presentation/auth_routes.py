@@ -602,15 +602,17 @@ class LoginCustomer(Resource):
                     customer.save()
                     logger.debug(f"FCM token updated for customer: {customer.email}")
 
-                if not customer.require_payment_method:
+                if customer.require_payment_method:
                     logger.info(f"Customer {customer.email} requires payment method")
                     payment_url = create_subscription(customer)
+                else:                    
+                    payment_url = None
                 
 
                 access_token = create_token(customer, 'customer')
                 refresh_token = create_token(customer, 'refresh')
 
-                return {
+                response = {
                     'access_token': access_token,
                     'refresh_token': refresh_token,
                     'token_type': 'Bearer',
@@ -618,7 +620,6 @@ class LoginCustomer(Resource):
                     'has_accepted_terms': customer.has_accepted_terms,
                     'require_payment_method': customer.require_payment_method,
                     'requires_password_change': not customer.password_changed,
-                    'payment_url': payment_url if payment_url else None,
                     'user': {
                         'id': str(customer.id),
                         'name': customer.name,
@@ -627,7 +628,13 @@ class LoginCustomer(Resource):
                         'document': customer.document,
                         'phone': customer.phone
                     }
-                }, 200
+                }
+
+                # Só adiciona se existir
+                if payment_url:
+                    response['payment_url'] = payment_url
+
+                return response, 200
 
             return {'message': 'Credenciais inválidas'}, 401
 

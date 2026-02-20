@@ -8,7 +8,7 @@ from app.infrastructure.geocoding_service import (
     get_google_geocoding_service,
     get_geocoding_service
 )
-
+from app.infrastructure.redis_cache import vehicle_cache
 logger = logging.getLogger(__name__)
 
 
@@ -181,13 +181,21 @@ class BusinessService:
                 vehicle.numberSendMessageWhatsApp = session.phone_number
                 vehicle.save()
                 chat_vehicle.is_blocked = True
-                return True, f"Comando de bloqueio enviado para {chat_vehicle.plate}."
             else:
                 vehicle.comandobloqueo = True
                 vehicle.numberSendMessageWhatsApp = session.phone_number
                 vehicle.save()
                 chat_vehicle.is_blocked = False
-                return True, f"Comando de desbloqueio enviado para {chat_vehicle.plate}."
+
+            imei = vehicle.IMEI 
+
+            updates = {
+                "numberSendMessageWhatsApp": session.phone_number,
+                "comandobloqueo": vehicle.comandobloqueo
+            }
+            vehicle_cache.update_vehicle_fields(imei, updates)
+
+            return True, f"Comando de {comando} enviado para {chat_vehicle.plate}."
 
         except Exception as e:
             logger.error(f"[BIZ] Block command error: {str(e)}")

@@ -5,7 +5,8 @@ from app.presentation.auth_routes import token_required, require_permission
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging
 from bson.objectid import ObjectId
-from datetime import datetime, timedelta
+from datetime import datetime
+from app.infrastructure.redis_cache import vehicle_cache
 import re
 
 logger = logging.getLogger(__name__)
@@ -356,6 +357,13 @@ class VehicleBlock(Resource):
             vehicle.updated_by = current_user.id
 
             vehicle.save()
+
+            imei = vehicle.imei
+            updates = {
+                "comandobloqueo": vehicle.comandobloqueo,
+                "updated_by": vehicle.updated_by,
+            }
+            vehicle_cache.update_vehicle_fields(imei, updates)
             
             logger.info(f"Block command sent to vehicle {vehicle.IMEI}: {data['comando']}")
             

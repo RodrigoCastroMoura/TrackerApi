@@ -9,6 +9,7 @@ from app.infrastructure.geocoding_service import (
 from mongoengine.errors import DoesNotExist
 import logging
 from bson.objectid import ObjectId
+from app.infrastructure.redis_cache import vehicle_cache
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +148,7 @@ class VehicleTrackingList(Resource):
             for vehicle in vehicles:
                 
                 vehicle_data = {
-                    'id': str(vehicle.id),
+                    'id': str(vehicle.IMEI),
                     'plate': vehicle.dsplaca or 'N/A',
                     'model': vehicle.dsmodelo or 'N/A',
                     'type': vehicle.tipo,
@@ -179,16 +180,29 @@ class VehicleCurrentLocation(Resource):
     def get(self, current_user, id):
         """Retorna a localização atual de um veículo específico"""
         try:
-            if not ObjectId.is_valid(id):
-                return {'message': 'ID do veículo inválido'}, 400
+            if not id:
+                return {'message': 'ID do veículo não fornecido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
-            
+            vehicle_obj = None
+            vehicle_dict = vehicle_cache.get_vehicle(id)  # tenta cache
+
+            if not vehicle_dict:
+                # Busca no banco
+                vehicle_obj = Vehicle.objects.get(IMEI=id, visible=True, company_id=current_user.company_id)
+                
+                # Tenta salvar no cache (se Redis estiver up)
+                vehicle_cache.set_vehicle(id, vehicle_obj.to_dict())
+
+            if vehicle_dict:
+                vehicle = vehicle_dict
+            elif vehicle_obj:
+                vehicle = vehicle_obj.to_dict()  #
+
             # Get best geocoding service (Google Maps with Nominatim fallback)
             geocoding = get_best_geocoding_service()
             
-            lat = float(vehicle.latitude) if vehicle.latitude else 0.0
-            lng = float(vehicle.longitude) if vehicle.longitude else 0.0
+            lat = float(vehicle.get('latitude')) if vehicle.get('latitude') else 0.0
+            lng = float(vehicle.get('longitude')) if vehicle.get('longitude') else 0.0
             
             # Get address from coordinates (Google Maps or Nominatim)
             address = 'N/A'
@@ -196,23 +210,23 @@ class VehicleCurrentLocation(Resource):
                 address = geocoding.get_address_or_fallback(lat, lng)
             
             response = {
-                'vehicle_id': str(vehicle.id),
-                'plate': vehicle.dsplaca or 'N/A',
-                'type': vehicle.tipo,
-                'block': vehicle.bloqueado,
-                'ignition': vehicle.ignicao,
-                'model': vehicle.dsmodelo or 'N/A',
-                'location': {
-                    'lat': lat,
-                    'lng': lng,
-                    'address': address,
-                    'speed': 0.0,
-                    'heading': 0.0,
-                    'altitude': float(vehicle.altitude) if vehicle.altitude else 0.0,
-                    'accuracy': 10.0,  # Not stored in current model
-                    'timestamp': vehicle.tsusermanu
-                }
-            }
+                        'vehicle_id': str(vehicle.get('_id', 'N/A')),
+                        'plate': vehicle.get('dsplaca') or 'N/A',
+                        'type': vehicle.get('tipo'),
+                        'block': vehicle.get('bloqueado'),
+                        'ignition': vehicle.get('ignicao'),
+                        'model': vehicle.get('dsmodelo') or 'N/A',
+                        'location': {
+                            'lat': lat,
+                            'lng': lng,
+                            'address': address,
+                            'speed': 0.0,
+                            'heading': 0.0,
+                            'altitude': float(vehicle.get('altitude')) if vehicle.get('altitude') else 0.0,
+                            'accuracy': 10.0,
+                            'timestamp': vehicle.get('tsusermanu')
+                        }
+                    }
             
             return response, 200
             

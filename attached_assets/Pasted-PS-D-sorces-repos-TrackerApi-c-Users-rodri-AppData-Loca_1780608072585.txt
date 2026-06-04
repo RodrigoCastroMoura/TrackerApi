@@ -1,0 +1,25 @@
+PS D:\sorces\repos\TrackerApi>  & 'c:\Users\rodri\AppData\Local\Programs\Python\Python313\python.exe' 'c:\Users\rodri\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\libs\debugpy\launcher' '58355' '--' '-m' 'flask' 'run' '--host=0.0.0.0' '--port=5000' 
+2026-06-04 18:20:26,119 - main - DEBUG - [main.py:41] - Verifying MongoDB connection...
+2026-06-04 18:20:26,119 - main - DEBUG - [main.py:47] - Attempting to connect to MongoDB...
+2026-06-04 18:20:30,579 - main - INFO - [main.py:51] - MongoDB connection verified successfully
+2026-06-04 18:20:30,583 - main - INFO - [main.py:125] - CORS enabled for origins: ['*']
+2026-06-04 18:20:30,780 - app.infrastructure.database - INFO - [database.py:45] - Successfully verified MongoDB connection
+2026-06-04 18:20:30,959 - app.infrastructure.database - INFO - [database.py:50] - Successfully initialized collections
+2026-06-04 18:20:30,993 - main - INFO - [main.py:157] - Rate limiting configured with Redis storage
+2026-06-04 18:20:31,107 - app.infrastructure.session_manager - INFO - [session_manager.py:146] - Redis session manager initialized successfully
+2026-06-04 18:20:31,117 - main - INFO - [main.py:176] - WhatsApp chatbot blueprint registered at /api/chatbot
+ * Serving Flask app 'main.py'
+ * Debug mode: off
+2026-06-04 18:20:31,134 - werkzeug - INFO - [_internal.py:96] - WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.18:5000
+2026-06-04 18:20:31,134 - werkzeug - INFO - [_internal.py:96] - Press CTRL+C to quit
+2026-06-04 18:20:37,310 - app.presentation.auth_routes - DEBUG - [auth_routes.py:618] - FCM token not provided for customer: joaquim_castro_moura@hotmail.com
+2026-06-04 18:20:37,311 - app.presentation.auth_routes - INFO - [auth_routes.py:625] - Customer joaquim_castro_moura@hotmail.com requires payment method
+2026-06-04 18:20:37,591 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.mercadopago.com:443
+2026-06-04 18:20:38,120 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.mercadopago.com:443 "POST /preapproval HTTP/1.1" 401 56
+2026-06-04 18:20:38,131 - app.infrastructure.mercadopago_service - ERROR - [mercadopago_service.py:280] - Mercado Pago error: {'code': 'unauthorized', 'message': 'invalid access token'}
+2026-06-04 18:20:38,132 - app.presentation.auth_routes - ERROR - [auth_routes.py:349] - Mercado Pago error: invalid access token
+2026-06-04 18:20:38,137 - werkzeug - INFO - [_internal.py:96] - 127.0.0.1 - - [04/Jun/2026 18:20:38] "POST /api/auth/customer/login HTTP/1.1" 200 -
+2026-06-04 18:20:48,192 - werkzeug - INFO - [_internal.py:96] - 127.0.0.1 - - [04/Jun/2026 18:20:48] "POST /api/subscription-plans/ HTTP/1.1" 403 -

@@ -1,0 +1,13 @@
+2026-06-04 19:00:24,793 - app.infrastructure.mercadopago_service - ERROR - [mercadopago_service.py:280] - Mercado Pago error: {'code': 'unauthorized', 'message': 'invalid access token'}
+2026-06-04 19:00:24,796 - werkzeug - INFO - [_internal.py:96] - 192.168.0.18 - - [04/Jun/2026 19:00:24] "POST /api/subscriptions/ HTTP/1.1" 500 -
+2026-06-04 19:00:32,887 - app.presentation.auth_routes - DEBUG - [auth_routes.py:618] - FCM token not provided for customer: joaquim_castro_moura@hotmail.com
+2026-06-04 19:00:32,887 - app.presentation.auth_routes - INFO - [auth_routes.py:625] - Customer joaquim_castro_moura@hotmail.com requires payment method
+2026-06-04 19:00:32,951 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.mercadopago.com:443
+2026-06-04 19:00:33,483 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.mercadopago.com:443 "POST /preapproval HTTP/1.1" 401 56
+2026-06-04 19:00:33,484 - app.infrastructure.mercadopago_service - ERROR - [mercadopago_service.py:280] - Mercado Pago error: {'code': 'unauthorized', 'message': 'invalid access token'}
+2026-06-04 19:00:33,485 - app.presentation.auth_routes - ERROR - [auth_routes.py:349] - Mercado Pago error: invalid access token
+2026-06-04 19:00:33,486 - werkzeug - INFO - [_internal.py:96] - 127.0.0.1 - - [04/Jun/2026 19:00:33] "POST /api/auth/customer/login HTTP/1.1" 200 -
+2026-06-04 19:00:37,324 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.mercadopago.com:443
+2026-06-04 19:00:37,863 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.mercadopago.com:443 "POST /preapproval HTTP/1.1" 401 56
+2026-06-04 19:00:37,864 - app.infrastructure.mercadopago_service - ERROR - [mercadopago_service.py:280] - Mercado Pago error: {'code': 'unauthorized', 'message': 'invalid access token'}
+2026-06-04 19:00:37,864 - werkzeug - INFO - [_internal.py:96] - 192.168.0.18 - - [04/Jun/2026 19:00:37] "POST /api/subscriptions/ HTTP/1.1" 500 -

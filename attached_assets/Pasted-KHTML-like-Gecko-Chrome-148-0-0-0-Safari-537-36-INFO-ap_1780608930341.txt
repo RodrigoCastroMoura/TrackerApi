@@ -1,0 +1,35 @@
+KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+INFO:app.infrastructure.session_manager:Redis session manager initialized successfully
+INFO:main:WhatsApp chatbot blueprint registered at /api/chatbot
+127.0.0.1 - - [04/Jun/2026:21:27:13 +0000] "GET /swaggerui/favicon-32x32.png HTTP/1.1" 200 0 "http://localhost:5000/" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:27:13 +0000] "GET /swaggerui/droid-sans.css HTTP/1.1" 304 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:27:13 +0000] "GET /swaggerui/swagger-ui.css HTTP/1.1" 304 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:27:13 +0000] "GET /swaggerui/swagger-ui-bundle.js HTTP/1.1" 304 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:27:13 +0000] "GET /swaggerui/swagger-ui-standalone-preset.js HTTP/1.1" 304 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:27:13 +0000] "GET /swagger.json HTTP/1.1" 200 42437 "http://localhost:5000/" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:27:13 +0000] "GET /swagger.json HTTP/1.1" 200 42437 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+INFO:app.infrastructure.mercadopago_service:Created subscription plan: 3e8fee8a37ff4776a409db1cce314f57
+INFO:app.presentation.subscription_plan_routes:Mercado Pago plan created: 3e8fee8a37ff4776a409db1cce314f57 for plan Plano Rastreamento Pro
+INFO:app.presentation.subscription_plan_routes:Subscription plan created: Plano Rastreamento Pro by user rodrigo.castro.moura@gmail.com
+127.0.0.1 - - [04/Jun/2026:21:27:43 +0000] "POST /api/subscription-plans/ HTTP/1.1" 201 544 "-" "python-requests/2.32.5"
+127.0.0.1 - - [04/Jun/2026:21:27:45 +0000] "GET /api/subscription-plans/ HTTP/1.1" 200 1794 "-" "python-requests/2.32.5"
+127.0.0.1 - - [04/Jun/2026:21:27:46 +0000] "GET /api/subscription-plans/6a21edcf7c16502bd8aebea2 HTTP/1.1" 200 544 "-" "python-requests/2.32.5"
+INFO:app.infrastructure.mercadopago_service:Created pending subscription: bfb2536668284ac6bd3913b8c045470a
+INFO:app.presentation.subscription_routes:Recurring subscription created for customer joaquim_castro_moura@hotmail.com, plan: Plano Rastreamento Pro, MP subscription ID: bfb2536668284ac6bd3913b8c045470a
+127.0.0.1 - - [04/Jun/2026:21:27:48 +0000] "POST /api/subscriptions/ HTTP/1.1" 201 418 "-" "python-requests/2.32.5"
+127.0.0.1 - - [04/Jun/2026:21:27:49 +0000] "GET /api/subscriptions/ HTTP/1.1" 200 585 "-" "python-requests/2.32.5"
+127.0.0.1 - - [04/Jun/2026:21:27:49 +0000] "GET /api/subscriptions/history HTTP/1.1" 404 207 "-" "python-requests/2.32.5"
+127.0.0.1 - - [04/Jun/2026:21:28:12 +0000] "GET /api/subscriptions/payments HTTP/1.1" 200 68 "-" "python-requests/2.32.5"
+127.0.0.1 - - [04/Jun/2026:21:32:09 +0000] "GET / HTTP/1.1" 200 3840 "https://replit.com/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:32:09 +0000] "GET /swaggerui/swagger-ui.css HTTP/1.1" 200 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:32:09 +0000] "GET /swaggerui/droid-sans.css HTTP/1.1" 200 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:32:10 +0000] "GET /swaggerui/swagger-ui-bundle.js HTTP/1.1" 200 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:32:10 +0000] "GET /swaggerui/swagger-ui-standalone-preset.js HTTP/1.1" 200 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:32:11 +0000] "GET /swaggerui/favicon-32x32.png HTTP/1.1" 200 0 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+127.0.0.1 - - [04/Jun/2026:21:32:11 +0000] "GET /swagger.json HTTP/1.1" 200 42437 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+INFO:app.presentation.auth_routes:Customer joaquim_castro_moura@hotmail.com requires payment method
+INFO:app.infrastructure.mercadopago_service:Created pending subscription: 4e2a00c6f5014bb8af74536a4f44d78e
+127.0.0.1 - - [04/Jun/2026:21:32:39 +0000] "POST /api/auth/customer/login HTTP/1.1" 200 1433 "https://a44e38c0-e336-4bda-b620-9b20e6c8ad41-00-1n3l18em07e6d.janeway.replit.dev//api/auth/customer/login" "PostmanRuntime/7.51.1"
+127.0.0.1 - - [04/Jun/2026:21:32:46 +0000] "POST /api/subscription-plans/ HTTP/1.1" 403 93 "-" "PostmanRuntime/7.51.1"
+127.0.0.1 - - [04/Jun/2026:21:32:49 +0000] "POST /api/subscription-plans/ HTTP/1.1" 403 93 "-" "PostmanRuntime/7.51.1"
+127.0.0.1 - - [04/Jun/2026:21:32:53 +0000] "POST /api/subscription-plans/ HTTP/1.1" 403 93 "-" "PostmanRuntime/7.51.1"

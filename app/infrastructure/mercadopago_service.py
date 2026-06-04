@@ -96,8 +96,17 @@ class MercadoPagoService:
                 return None
             
             payment_response = sdk.payment().get(payment_id)
+
+            if payment_response.get("status") not in [200, 201]:
+                logger.error(f"Mercado Pago error fetching payment {payment_id}: {payment_response.get('response')}")
+                return None
+
             payment = payment_response["response"]
-            
+
+            if 'id' not in payment:
+                logger.error(f"Unexpected MP response for payment {payment_id}: {payment}")
+                return None
+
             return {
                 'id': payment['id'],
                 'status': payment['status'],  # approved, pending, rejected, cancelled, refunded

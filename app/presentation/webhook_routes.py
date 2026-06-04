@@ -107,7 +107,7 @@ class MercadoPagoWebhook(Resource):
                 
                 if not subscription_info:
                     logger.error(f"Failed to get subscription info for ID: {resource_id}")
-                    return {'message': 'Subscription not found'}, 404
+                    return {'message': 'Webhook recebido'}, 200
                 
                 customer = Customer.objects(
                     mp_subscription_id=str(subscription_info['id']),
@@ -121,7 +121,7 @@ class MercadoPagoWebhook(Resource):
                 
                 if not customer:
                     logger.warning(f"Customer not found for subscription: {subscription_info['id']}")
-                    return {'message': 'Customer not found'}, 404
+                    return {'message': 'Webhook recebido'}, 200
                 
                 mp_status = subscription_info['status']
                 if mp_status == 'authorized':
@@ -145,17 +145,17 @@ class MercadoPagoWebhook(Resource):
                 
                 if not payment_info:
                     logger.error(f"Failed to get payment info for ID: {resource_id}")
-                    return {'message': 'Payment not found'}, 404
+                    return {'message': 'Webhook recebido'}, 200
                 
                 payer_email = payment_info.get('payer_email')
                 if not payer_email:
                     logger.warning("No payer email in payment info")
-                    return {'message': 'No payer email'}, 400
+                    return {'message': 'Webhook recebido'}, 200
                 
                 customer = Customer.objects(email=payer_email, visible=True).first()
                 if not customer:
                     logger.warning(f"Customer not found for email: {payer_email}")
-                    return {'message': 'Customer not found'}, 404
+                    return {'message': 'Webhook recebido'}, 200
                 
                 mp_status = payment_info['status']
                 if mp_status == 'approved':

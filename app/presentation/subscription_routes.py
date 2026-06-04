@@ -30,14 +30,31 @@ class SubscriptionResource(Resource):
             if not data.get('plan_id'):
                 return {'message': 'Campo plan_id é obrigatório'}, 400
             
-            # Step 1: Fetch subscription plan
-            plan = SubscriptionPlan.objects(
-                id=data['plan_id'],
-                company_id=current_customer.company_id,
-                is_active=True,
-                visible=True
-            ).first()
-            
+            # Step 1: Fetch subscription plan — aceita ObjectId do banco ou mp_preapproval_plan_id
+            plan_id_input = data['plan_id']
+            plan = None
+
+            if len(plan_id_input) == 24:
+                # Formato ObjectId do MongoDB
+                try:
+                    plan = SubscriptionPlan.objects(
+                        id=plan_id_input,
+                        company_id=current_customer.company_id,
+                        is_active=True,
+                        visible=True
+                    ).first()
+                except Exception:
+                    pass
+
+            if not plan:
+                # Tenta pelo mp_preapproval_plan_id (ID do Mercado Pago)
+                plan = SubscriptionPlan.objects(
+                    mp_preapproval_plan_id=plan_id_input,
+                    company_id=current_customer.company_id,
+                    is_active=True,
+                    visible=True
+                ).first()
+
             if not plan:
                 return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
             

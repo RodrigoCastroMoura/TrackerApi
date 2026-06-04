@@ -131,8 +131,8 @@ def require_permission(resource_type, action_type):
                 return {'message': 'Usuário não autenticado'}, 401
 
             if current_user.role == 'customer':
-                logger.warning(f"Customer '{current_user.email}' tried to access '{permission_name}' — use admin login (/api/auth/login)")
-                return {'message': 'Acesso negado. Esta ação requer login de administrador (/api/auth/login), não login de cliente.'}, 403
+                logger.warning(f"Customer '{current_user.email}' tried to access admin-only resource '{permission_name}'")
+                return {'message': 'Permissão insuficiente', 'required_permission': permission_name}, 403
             elif current_user.role == 'admin':
                 return f(*args, **kwargs)
             else:

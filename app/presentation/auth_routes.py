@@ -132,6 +132,8 @@ def require_permission(resource_type, action_type):
 
             if current_user.role == 'customer':
                 current_permissions = ["customer_read", "customer_write", "customer_update"]
+            elif current_user.role == 'admin':
+                return f(*args, **kwargs)
             else:
                 current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
 
@@ -319,10 +321,10 @@ def create_subscription(customer)->StringField:
         total_vehicles = Vehicle.objects(customer_id=customer.id, visible=True).count()
 
         default_plan = SubscriptionPlan.objects(
-            max_vehicles=total_vehicles,
+            max_vehicles__gte=total_vehicles,
             is_active=True,
             visible=True
-        ).first()
+        ).order_by('max_vehicles', 'amount').first()
         
         if not default_plan:
             logger.error(f"No active subscription plan found for {customer.id} matching {total_vehicles} vehicles")
@@ -331,7 +333,7 @@ def create_subscription(customer)->StringField:
            
         mp_subscription = MercadoPagoService.create_pending_subscription(
             reason=f"Assinatura - {default_plan.name}",
-            payer_email="test_user_946674863462824943@testuser.com",
+            payer_email=customer.email,
             amount=default_plan.amount,
             frequency=1,
             frequency_type='months',

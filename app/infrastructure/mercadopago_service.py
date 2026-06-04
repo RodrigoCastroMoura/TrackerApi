@@ -154,7 +154,7 @@ class MercadoPagoService:
                 "back_url": f"https://{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/success",
             }
             
-            plan_response = sdk.preapproval_plan().create(plan_data)
+            plan_response = sdk.plan().create(plan_data)
             plan = plan_response["response"]
             
             logger.info(f"Created subscription plan: {plan['id']}")
@@ -261,10 +261,12 @@ class MercadoPagoService:
                     "transaction_amount": float(amount),
                     "currency_id": "BRL"
                 },
-                 "back_url": back_url,
                  "payer_email": payer_email,              
                 "status": "pending"
             }
+            
+            if back_url:
+                subscription_data["back_url"] = back_url
             
             if external_reference:
                 subscription_data["external_reference"] = external_reference

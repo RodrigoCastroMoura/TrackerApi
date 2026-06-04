@@ -349,6 +349,7 @@ class SubscriptionPlan(BaseDocument):
     # Mercado Pago integration
     mp_preapproval_plan_id = StringField(unique=True, sparse=True)  # Mercado Pago plan ID
     
+    features = ListField(StringField())  # Lista de funcionalidades do plano
     max_vehicles = IntField()  # Maximum number of vehicles (optional)
     
     # Status
@@ -375,6 +376,7 @@ class SubscriptionPlan(BaseDocument):
             'currency': self.currency,
             'billing_cycle': self.billing_cycle,
             'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
+            'features': self.features or [],
             'max_vehicles': self.max_vehicles,
             'is_active': self.is_active,
         })
@@ -398,7 +400,7 @@ class Subscription(BaseDocument):
     
     # Status and dates
     status = StringField(
-        choices=['active', 'canceled', 'past_due', 'unpaid', 'incomplete'],
+        choices=['active', 'canceled', 'past_due', 'unpaid', 'incomplete', 'pending'],
         default='incomplete'
     )
     current_period_start = DateTimeField()

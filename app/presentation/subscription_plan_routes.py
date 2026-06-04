@@ -63,7 +63,7 @@ class SubscriptionPlanListResource(Resource):
     @require_permission('subscription_plan', 'write')
     @api.expect(subscription_plan_model)
     @api.marshal_with(subscription_plan_response, code=201)
-    def post(current_user, self):
+    def post(self, current_user):
         """Create a new subscription plan (admin only)"""
         try:
             data = request.json
@@ -121,7 +121,7 @@ class SubscriptionPlanResource(Resource):
     @require_permission('subscription_plan', 'update')
     @api.expect(subscription_plan_model)
     @api.marshal_with(subscription_plan_response)
-    def put(current_user, self, plan_id):
+    def put(self, current_user, plan_id):
         """Update a subscription plan (admin only)"""
         try:
             plan = SubscriptionPlan.objects(
@@ -166,7 +166,7 @@ class SubscriptionPlanResource(Resource):
     @api.doc('delete_subscription_plan', security='Bearer')
     @token_required
     @require_permission('subscription_plan', 'delete')
-    def delete(current_user, self, plan_id):
+    def delete(self, current_user, plan_id):
         """Delete a subscription plan (soft delete, admin only)"""
         try:
             plan = SubscriptionPlan.objects(

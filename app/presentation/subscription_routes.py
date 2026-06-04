@@ -1,3 +1,4 @@
+import os
 from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Customer, Subscription, Payment, SubscriptionPlan
@@ -93,6 +94,7 @@ class SubscriptionResource(Resource):
                 amount=plan.amount,
                 frequency=frequency,
                 frequency_type=frequency_type,
+                back_url=os.environ.get('APP_URL', 'https://www.rcminformatica.tec.br/'),
                 external_reference=str(current_customer.id),
                 metadata={
                     'customer_id': str(current_customer.id),

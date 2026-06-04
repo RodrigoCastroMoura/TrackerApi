@@ -56,9 +56,9 @@ class MercadoPagoService:
                     "email": customer_email
                 },
                 "back_urls": {
-                    "success": f"{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/success",
-                    "failure": f"{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/failure",
-                    "pending": f"{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/pending"
+                    "success": f"https://{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/success",
+                    "failure": f"https://{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/failure",
+                    "pending": f"https://{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/pending"
                 },
                 "auto_return": "approved",
                 "metadata": metadata or {}
@@ -151,7 +151,7 @@ class MercadoPagoService:
                     "transaction_amount": float(amount),
                     "currency_id": "BRL"
                 },
-                "back_url": f"{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/success",
+                "back_url": f"https://{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/success",
             }
             
             plan_response = sdk.preapproval_plan().create(plan_data)
@@ -340,17 +340,17 @@ class MercadoPagoService:
             if not sdk:
                 return None
             
-
-            filtro  = {
-              "status": f"{subscription_id}"
-            }
+            sub_response = sdk.preapproval().get(subscription_id)
             
-            sub_response = sdk.preapproval().search()
+            if sub_response.get("status") not in [200, 201]:
+                logger.error(f"Mercado Pago error fetching subscription {subscription_id}: {sub_response.get('response')}")
+                return None
+            
             subscription = sub_response["response"]
             
             return {
                 'id': subscription['id'],
-                'status': subscription['status'],  # pending, authorized, paused, cancelled
+                'status': subscription['status'],
                 'payer_id': subscription.get('payer_id'),
                 'payer_email': subscription.get('payer_email'),
                 'next_payment_date': subscription.get('next_payment_date'),

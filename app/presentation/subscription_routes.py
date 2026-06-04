@@ -56,8 +56,8 @@ class SubscriptionResource(Resource):
             if not mp_plan_id:
                 # Map billing_cycle to Mercado Pago frequency
                 if plan.billing_cycle == 'yearly':
-                    frequency = 1
-                    frequency_type = 'years'
+                    frequency = 12
+                    frequency_type = 'months'
                 else:  # monthly
                     frequency = 1
                     frequency_type = 'months'
@@ -79,10 +79,21 @@ class SubscriptionResource(Resource):
                 plan.mp_preapproval_plan_id = mp_plan_id
                 plan.save()
             
-            # Step 3: Create subscription (preapproval) for the customer
-            mp_subscription = MercadoPagoService.create_subscription(
-                preapproval_plan_id=mp_plan_id,
+            # Step 3: Create pending subscription — generates payment link for the customer
+            if plan.billing_cycle == 'yearly':
+                frequency = 12
+                frequency_type = 'months'
+            else:
+                frequency = 1
+                frequency_type = 'months'
+
+            mp_subscription = MercadoPagoService.create_pending_subscription(
+                reason=plan.name,
                 payer_email=current_customer.email,
+                amount=plan.amount,
+                frequency=frequency,
+                frequency_type=frequency_type,
+                external_reference=str(current_customer.id),
                 metadata={
                     'customer_id': str(current_customer.id),
                     'company_id': str(current_customer.company_id.id),
@@ -90,8 +101,9 @@ class SubscriptionResource(Resource):
                 }
             )
             
-            if not mp_subscription:
-                return {'message': 'Erro ao criar assinatura no Mercado Pago'}, 500
+            if not mp_subscription or mp_subscription.get('error'):
+                error_msg = mp_subscription.get('message', 'Erro ao criar assinatura no Mercado Pago') if mp_subscription else 'Erro ao criar assinatura no Mercado Pago'
+                return {'message': error_msg}, 500
             
             # Step 4: Create subscription record in our database
             subscription = Subscription(

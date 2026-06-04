@@ -121,8 +121,12 @@ class SubscriptionResource(Resource):
             )
             
             if not mp_subscription or mp_subscription.get('error'):
-                error_msg = mp_subscription.get('message', 'Erro ao criar assinatura no Mercado Pago') if mp_subscription else 'Erro ao criar assinatura no Mercado Pago'
-                return {'message': error_msg}, 500
+                mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
+                mp_status = mp_subscription.get('status', 400) if mp_subscription else 400
+                # Restrição de sandbox: payer e collector precisam ser ambos reais ou ambos de teste
+                if 'real or test users' in mp_msg:
+                    return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
+                return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
             
             # Step 4: Create subscription record in our database
             subscription = Subscription(

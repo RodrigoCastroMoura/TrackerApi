@@ -2,6 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import SubscriptionPlan, Company
 from app.presentation.auth_routes import token_required, require_permission
+from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime
 import logging
 
@@ -88,6 +89,20 @@ class SubscriptionPlanListResource(Resource):
                 updated_by=current_user
             )
             plan.save()
+            
+            # Create plan in Mercado Pago
+            mp_result = MercadoPagoService.create_subscription_plan(
+                plan_name=plan.name,
+                amount=plan.amount,
+                frequency=1,
+                frequency_type='months'
+            )
+            if mp_result and mp_result.get('plan_id'):
+                plan.mp_preapproval_plan_id = mp_result['plan_id']
+                plan.save()
+                logger.info(f"Mercado Pago plan created: {mp_result['plan_id']} for plan {plan.name}")
+            else:
+                logger.warning(f"Could not create Mercado Pago plan for {plan.name} — saved locally only")
             
             logger.info(f"Subscription plan created: {plan.name} by user {current_user.email}")
             

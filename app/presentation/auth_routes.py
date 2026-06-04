@@ -131,15 +131,13 @@ def require_permission(resource_type, action_type):
                 return {'message': 'Usuário não autenticado'}, 401
 
             if current_user.role == 'customer':
-                logger.warning(f"Customer '{current_user.email}' tried to access admin-only resource '{permission_name}'")
-                return {'message': 'Permissão insuficiente', 'required_permission': permission_name}, 403
+                current_permissions = ["customer_read", "customer_write", "customer_update"]
             elif current_user.role == 'admin':
                 return f(*args, **kwargs)
             else:
                 current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
 
             if permission_name not in current_permissions:
-                logger.warning(f"User '{current_user.email}' (role={current_user.role}) missing permission '{permission_name}'")
                 return {
                     'message': 'Permissão insuficiente',
                     'required_permission': f'{resource_type}_{action_type}'

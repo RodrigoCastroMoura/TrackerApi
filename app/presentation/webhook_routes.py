@@ -89,8 +89,12 @@ class MercadoPagoWebhook(Resource):
                 
                 logger.info("Webhook signature validated successfully")
             
-            topic = data.get('topic') or data.get('type')
-            resource_id =  data.get('data', {}).get('id')
+            # MP envia type/topic e data.id tanto no body quanto nos query params
+            topic = (data.get('topic') or data.get('type') or data.get('action') or
+                     request.args.get('type') or request.args.get('topic'))
+            resource_id = (data.get('data', {}).get('id') or
+                           request.args.get('data.id') or
+                           request.args.get('id'))
             
             logger.info(f"Received Mercado Pago webhook - Topic: {topic}, ID: {resource_id}")
             

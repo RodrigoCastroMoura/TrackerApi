@@ -43,7 +43,7 @@ class SubscriptionResource(Resource):
             # Check for existing active subscription
             existing_subscription = Subscription.objects(
                 customer_id=current_customer.id,
-                status__in=['active', 'incomplete', 'pending'],
+                status__in=['active', 'incomplete'],
                 visible=True
             ).first()
             
@@ -113,7 +113,7 @@ class SubscriptionResource(Resource):
                 mp_preapproval_plan_id=mp_plan_id,
                 plan_name=plan.name,
                 amount=plan.amount,
-                status='pending',  # Will be updated by webhook when payment is confirmed
+                status='incomplete',  # Will be updated by webhook when payment is confirmed
                 billing_cycle=plan.billing_cycle,
                 currency='BRL',
                 created_by=None,

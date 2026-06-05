@@ -162,8 +162,17 @@ class MercadoPagoService:
                 },
                 "back_url": f"https://{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/success",
             }
+
+            logger.info(
+                f"[MP REQUEST] POST /preapproval_plan | body={plan_data}"
+            )
             
             plan_response = sdk.plan().create(plan_data)
+
+            logger.info(
+                f"[MP RESPONSE] POST /preapproval_plan | status={plan_response.get('status')} | body={plan_response.get('response')}"
+            )
+
             plan = plan_response["response"]
             
             logger.info(f"Created subscription plan: {plan['id']}")
@@ -283,7 +292,15 @@ class MercadoPagoService:
             if metadata:
                 subscription_data["metadata"] = metadata
             
+            logger.info(
+                f"[MP REQUEST] POST /preapproval | body={subscription_data}"
+            )
+
             sub_response = sdk.preapproval().create(subscription_data)
+
+            logger.info(
+                f"[MP RESPONSE] POST /preapproval | status={sub_response.get('status')} | body={sub_response.get('response')}"
+            )
             
             if sub_response.get("status") == 400 or sub_response.get("status") == 401:
                 logger.error(f"Mercado Pago error: {sub_response.get('response')}")

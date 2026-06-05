@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "C2BdlaMZSWB4nQkjoAMIl"
+uri = "file://logs_mercadopago_20260605_000658.txt"
+type = "text"
+title = "Logs cURL - Mercado Pago API"

@@ -1,0 +1,369 @@
+================================================================
+  LOGS DE INTEGRAÇÃO MERCADO PAGO - 05/06/2026 00:06:58
+================================================================
+
+================================================================
+1. CRIAR PLANO DE ASSINATURA (POST /preapproval_plan)
+================================================================
+
+COMANDO:
+curl -s -v -X POST https://api.mercadopago.com/preapproval_plan \
+  -H 'Authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480' \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"Plano Básico","auto_recurring":{"frequency":1,"frequency_type":"months","transaction_amount":49.90,"currency_id":"BRL"},"back_url":"https://www.rcminformatica.tec.br/"}'
+
+RESPOSTA:
+* Host api.mercadopago.com:443 was resolved.
+* IPv6: (none)
+* IPv4: 98.91.107.88, 54.145.243.223, 23.23.231.252, 18.213.212.220
+*   Trying 98.91.107.88:443...
+* ALPN: curl offers h2,http/1.1
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+* TLSv1.3 (IN), TLS handshake, Server hello (2):
+{ [122 bytes data]
+* TLSv1.3 (IN), TLS change cipher, Change cipher spec (1):
+{ [1 bytes data]
+* TLSv1.3 (IN), TLS handshake, Encrypted Extensions (8):
+{ [19 bytes data]
+* TLSv1.3 (IN), TLS handshake, Certificate (11):
+{ [3041 bytes data]
+* TLSv1.3 (IN), TLS handshake, CERT verify (15):
+{ [264 bytes data]
+* TLSv1.3 (IN), TLS handshake, Finished (20):
+{ [36 bytes data]
+* TLSv1.3 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Finished (20):
+} [36 bytes data]
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / x25519 / RSASSA-PSS
+* ALPN: server accepted h2
+* Server certificate:
+*  subject: C=AR; L=Ciudad Aut�noma de Buenos Aires; O=Mercadolibre Inc; CN=api.mercadopago.com
+*  start date: Jul 14 00:00:00 2025 GMT
+*  expire date: Jul 13 23:59:59 2026 GMT
+*  subjectAltName: host "api.mercadopago.com" matched cert's "api.mercadopago.com"
+*  issuer: C=US; O=DigiCert Inc; CN=DigiCert Global G2 TLS RSA SHA256 2020 CA1
+*  SSL certificate verify ok.
+*   Certificate level 0: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+*   Certificate level 1: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+*   Certificate level 2: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+* Connected to api.mercadopago.com (98.91.107.88) port 443
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://api.mercadopago.com/preapproval_plan
+* [HTTP/2] [1] [:method: POST]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: api.mercadopago.com]
+* [HTTP/2] [1] [:path: /preapproval_plan]
+* [HTTP/2] [1] [user-agent: curl/8.14.1]
+* [HTTP/2] [1] [accept: */*]
+* [HTTP/2] [1] [authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480]
+* [HTTP/2] [1] [content-type: application/json]
+* [HTTP/2] [1] [content-length: 180]
+} [5 bytes data]
+> POST /preapproval_plan HTTP/2
+> Host: api.mercadopago.com
+> User-Agent: curl/8.14.1
+> Accept: */*
+> Authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480
+> Content-Type: application/json
+> Content-Length: 180
+> 
+} [180 bytes data]
+* upload completely sent off: 180 bytes
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [157 bytes data]
+< HTTP/2 201 
+< date: Fri, 05 Jun 2026 00:06:59 GMT
+< content-type: application/json
+< x-request-id: f9a24cbe-01b8-4df1-bca3-7e809d1528da
+< x-api-server-segment: legacy
+< vary: Accept-Encoding
+< x-content-type-options: nosniff
+< x-xss-protection: 1; mode=block
+< strict-transport-security: max-age=16070400; includeSubDomains; preload
+< access-control-allow-origin: *
+< access-control-allow-headers: Content-Type
+< access-control-allow-methods: PUT, GET, POST, DELETE, OPTIONS
+< access-control-max-age: 86400
+< timing-allow-origin: *
+< strict-transport-security: max-age=31536000; includeSubDomains
+< 
+{ [542 bytes data]
+* Connection #0 to host api.mercadopago.com left intact
+{"id":"a889ae67aaa6432caa3f041d02212d13","back_url":"https://www.rcminformatica.tec.br/","collector_id":77541480,"application_id":2257806827851801,"reason":"Plano Básico","status":"active","date_created":"2026-06-04T20:06:59.293-04:00","last_modified":"2026-06-04T20:06:59.293-04:00","init_point":"https://www.mercadopago.com.br/subscriptions/checkout?preapproval_plan_id=a889ae67aaa6432caa3f041d02212d13","auto_recurring":{"frequency":1,"frequency_type":"months","transaction_amount":49.90,"currency_id":"BRL"},"payment_methods_allowed":{}}
+
+================================================================
+2. CRIAR ASSINATURA PENDENTE (POST /preapproval)
+================================================================
+
+COMANDO:
+curl -s -v -X POST https://api.mercadopago.com/preapproval \
+  -H 'Authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480' \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"Plano Básico","payer_email":"joaquim_castro_moura@hotmail.com","auto_recurring":{"frequency":1,"frequency_type":"months","transaction_amount":49.90,"currency_id":"BRL"},"status":"pending","back_url":"https://www.rcminformatica.tec.br/","external_reference":"68efc55f005321fbb79e3f6a"}'
+
+RESPOSTA:
+* Host api.mercadopago.com:443 was resolved.
+* IPv6: (none)
+* IPv4: 3.213.74.22, 54.225.177.99
+*   Trying 3.213.74.22:443...
+* ALPN: curl offers h2,http/1.1
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+* TLSv1.3 (IN), TLS handshake, Server hello (2):
+{ [122 bytes data]
+* TLSv1.3 (IN), TLS change cipher, Change cipher spec (1):
+{ [1 bytes data]
+* TLSv1.3 (IN), TLS handshake, Encrypted Extensions (8):
+{ [19 bytes data]
+* TLSv1.3 (IN), TLS handshake, Certificate (11):
+{ [3041 bytes data]
+* TLSv1.3 (IN), TLS handshake, CERT verify (15):
+{ [264 bytes data]
+* TLSv1.3 (IN), TLS handshake, Finished (20):
+{ [36 bytes data]
+* TLSv1.3 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Finished (20):
+} [36 bytes data]
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / x25519 / RSASSA-PSS
+* ALPN: server accepted h2
+* Server certificate:
+*  subject: C=AR; L=Ciudad Aut�noma de Buenos Aires; O=Mercadolibre Inc; CN=api.mercadopago.com
+*  start date: Jul 14 00:00:00 2025 GMT
+*  expire date: Jul 13 23:59:59 2026 GMT
+*  subjectAltName: host "api.mercadopago.com" matched cert's "api.mercadopago.com"
+*  issuer: C=US; O=DigiCert Inc; CN=DigiCert Global G2 TLS RSA SHA256 2020 CA1
+*  SSL certificate verify ok.
+*   Certificate level 0: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+*   Certificate level 1: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+*   Certificate level 2: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+* Connected to api.mercadopago.com (3.213.74.22) port 443
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://api.mercadopago.com/preapproval
+* [HTTP/2] [1] [:method: POST]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: api.mercadopago.com]
+* [HTTP/2] [1] [:path: /preapproval]
+* [HTTP/2] [1] [user-agent: curl/8.14.1]
+* [HTTP/2] [1] [accept: */*]
+* [HTTP/2] [1] [authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480]
+* [HTTP/2] [1] [content-type: application/json]
+* [HTTP/2] [1] [content-length: 296]
+} [5 bytes data]
+> POST /preapproval HTTP/2
+> Host: api.mercadopago.com
+> User-Agent: curl/8.14.1
+> Accept: */*
+> Authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480
+> Content-Type: application/json
+> Content-Length: 296
+> 
+} [296 bytes data]
+* upload completely sent off: 296 bytes
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [157 bytes data]
+< HTTP/2 201 
+< date: Fri, 05 Jun 2026 00:07:00 GMT
+< content-type: application/json
+< x-request-id: 32e8c1c3-9ca2-4f2b-9a8d-d3788ed745ce
+< x-api-server-segment: legacy
+< vary: Accept-Encoding
+< x-content-type-options: nosniff
+< x-xss-protection: 1; mode=block
+< strict-transport-security: max-age=16070400; includeSubDomains; preload
+< access-control-allow-origin: *
+< access-control-allow-headers: Content-Type
+< access-control-allow-methods: PUT, GET, POST, DELETE, OPTIONS
+< access-control-max-age: 86400
+< timing-allow-origin: *
+< strict-transport-security: max-age=31536000; includeSubDomains
+< 
+{ [1024 bytes data]
+* Connection #0 to host api.mercadopago.com left intact
+{"id":"aefa800967704ac3a15df35a98bdb42b","payer_id":1576082461,"payer_email":"","back_url":"https://www.rcminformatica.tec.br/","collector_id":77541480,"application_id":2257806827851801,"status":"pending","reason":"Plano Básico","external_reference":"68efc55f005321fbb79e3f6a","date_created":"2026-06-04T20:06:59.790-04:00","last_modified":"2026-06-04T20:07:00.003-04:00","init_point":"https://www.mercadopago.com.br/subscriptions/checkout?preapproval_id=aefa800967704ac3a15df35a98bdb42b","auto_recurring":{"frequency":1,"frequency_type":"months","transaction_amount":49.90,"currency_id":"BRL","free_trial":null},"summarized":{"quotas":null,"charged_quantity":null,"pending_charge_quantity":null,"charged_amount":null,"pending_charge_amount":null,"semaphore":null,"last_charged_date":null,"last_charged_amount":null},"next_payment_date":"2026-06-04T20:06:59.000-04:00","payment_method_id":null,"payment_method_id_secondary":null,"first_invoice_offset":null,"subscription_id":"aefa800967704ac3a15df35a98bdb42b","owner":null}
+
+================================================================
+3. CRIAR ASSINATURA COM EMAIL DE TESTE (POST /preapproval)
+================================================================
+
+COMANDO:
+curl -s -v -X POST https://api.mercadopago.com/preapproval \
+  -H 'Authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480' \
+  -H 'Content-Type: application/json' \
+  -d '{"reason":"Plano Básico","payer_email":"test_user_123@testuser.com","auto_recurring":{"frequency":1,"frequency_type":"months","transaction_amount":49.90,"currency_id":"BRL"},"status":"pending","back_url":"https://www.rcminformatica.tec.br/"}'
+
+RESPOSTA:
+* Host api.mercadopago.com:443 was resolved.
+* IPv6: (none)
+* IPv4: 3.213.74.22, 54.225.177.99
+*   Trying 3.213.74.22:443...
+* ALPN: curl offers h2,http/1.1
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+* TLSv1.3 (IN), TLS handshake, Server hello (2):
+{ [122 bytes data]
+* TLSv1.3 (IN), TLS change cipher, Change cipher spec (1):
+{ [1 bytes data]
+* TLSv1.3 (IN), TLS handshake, Encrypted Extensions (8):
+{ [19 bytes data]
+* TLSv1.3 (IN), TLS handshake, Certificate (11):
+{ [3041 bytes data]
+* TLSv1.3 (IN), TLS handshake, CERT verify (15):
+{ [264 bytes data]
+* TLSv1.3 (IN), TLS handshake, Finished (20):
+{ [36 bytes data]
+* TLSv1.3 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Finished (20):
+} [36 bytes data]
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / x25519 / RSASSA-PSS
+* ALPN: server accepted h2
+* Server certificate:
+*  subject: C=AR; L=Ciudad Aut�noma de Buenos Aires; O=Mercadolibre Inc; CN=api.mercadopago.com
+*  start date: Jul 14 00:00:00 2025 GMT
+*  expire date: Jul 13 23:59:59 2026 GMT
+*  subjectAltName: host "api.mercadopago.com" matched cert's "api.mercadopago.com"
+*  issuer: C=US; O=DigiCert Inc; CN=DigiCert Global G2 TLS RSA SHA256 2020 CA1
+*  SSL certificate verify ok.
+*   Certificate level 0: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+*   Certificate level 1: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+*   Certificate level 2: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+* Connected to api.mercadopago.com (3.213.74.22) port 443
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://api.mercadopago.com/preapproval
+* [HTTP/2] [1] [:method: POST]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: api.mercadopago.com]
+* [HTTP/2] [1] [:path: /preapproval]
+* [HTTP/2] [1] [user-agent: curl/8.14.1]
+* [HTTP/2] [1] [accept: */*]
+* [HTTP/2] [1] [authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480]
+* [HTTP/2] [1] [content-type: application/json]
+* [HTTP/2] [1] [content-length: 242]
+} [5 bytes data]
+> POST /preapproval HTTP/2
+> Host: api.mercadopago.com
+> User-Agent: curl/8.14.1
+> Accept: */*
+> Authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480
+> Content-Type: application/json
+> Content-Length: 242
+> 
+} [242 bytes data]
+* upload completely sent off: 242 bytes
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [157 bytes data]
+< HTTP/2 500 
+< date: Fri, 05 Jun 2026 00:07:00 GMT
+< content-type: application/json
+< x-request-id: fdb9a6f3-dd30-4149-9160-fb829856469c
+< x-api-server-segment: legacy
+< vary: Accept-Encoding
+< x-content-type-options: nosniff
+< x-xss-protection: 1; mode=block
+< strict-transport-security: max-age=16070400; includeSubDomains; preload
+< access-control-allow-origin: *
+< access-control-allow-headers: Content-Type
+< access-control-allow-methods: PUT, GET, POST, DELETE, OPTIONS
+< access-control-max-age: 86400
+< timing-allow-origin: *
+< strict-transport-security: max-age=31536000; includeSubDomains
+< 
+{ [48 bytes data]
+* Connection #0 to host api.mercadopago.com left intact
+{"message":"Internal server error","status":500}
+
+================================================================
+4. CRIAR USUÁRIO DE TESTE (POST /users/test_user)
+================================================================
+
+RESPOSTA:
+* Host api.mercadopago.com:443 was resolved.
+* IPv6: (none)
+* IPv4: 100.24.221.53, 52.70.219.202, 34.198.128.143, 3.220.145.207
+*   Trying 100.24.221.53:443...
+* ALPN: curl offers h2,http/1.1
+} [5 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Client hello (1):
+} [512 bytes data]
+* TLSv1.3 (IN), TLS handshake, Server hello (2):
+{ [122 bytes data]
+* TLSv1.3 (IN), TLS change cipher, Change cipher spec (1):
+{ [1 bytes data]
+* TLSv1.3 (IN), TLS handshake, Encrypted Extensions (8):
+{ [19 bytes data]
+* TLSv1.3 (IN), TLS handshake, Certificate (11):
+{ [3041 bytes data]
+* TLSv1.3 (IN), TLS handshake, CERT verify (15):
+{ [264 bytes data]
+* TLSv1.3 (IN), TLS handshake, Finished (20):
+{ [36 bytes data]
+* TLSv1.3 (OUT), TLS change cipher, Change cipher spec (1):
+} [1 bytes data]
+* TLSv1.3 (OUT), TLS handshake, Finished (20):
+} [36 bytes data]
+* SSL connection using TLSv1.3 / TLS_AES_128_GCM_SHA256 / x25519 / RSASSA-PSS
+* ALPN: server accepted h2
+* Server certificate:
+*  subject: C=AR; L=Ciudad Aut�noma de Buenos Aires; O=Mercadolibre Inc; CN=api.mercadopago.com
+*  start date: Jul 14 00:00:00 2025 GMT
+*  expire date: Jul 13 23:59:59 2026 GMT
+*  subjectAltName: host "api.mercadopago.com" matched cert's "api.mercadopago.com"
+*  issuer: C=US; O=DigiCert Inc; CN=DigiCert Global G2 TLS RSA SHA256 2020 CA1
+*  SSL certificate verify ok.
+*   Certificate level 0: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+*   Certificate level 1: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+*   Certificate level 2: Public key type RSA (2048/112 Bits/secBits), signed using sha256WithRSAEncryption
+* Connected to api.mercadopago.com (100.24.221.53) port 443
+* using HTTP/2
+* [HTTP/2] [1] OPENED stream for https://api.mercadopago.com/users/test_user
+* [HTTP/2] [1] [:method: POST]
+* [HTTP/2] [1] [:scheme: https]
+* [HTTP/2] [1] [:authority: api.mercadopago.com]
+* [HTTP/2] [1] [:path: /users/test_user]
+* [HTTP/2] [1] [user-agent: curl/8.14.1]
+* [HTTP/2] [1] [accept: */*]
+* [HTTP/2] [1] [authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480]
+* [HTTP/2] [1] [content-type: application/json]
+* [HTTP/2] [1] [content-length: 17]
+} [5 bytes data]
+> POST /users/test_user HTTP/2
+> Host: api.mercadopago.com
+> User-Agent: curl/8.14.1
+> Accept: */*
+> Authorization: Bearer TEST-2257806827851801-060416-4699b91a442a13dc5114eec2bda0ec05-77541480
+> Content-Type: application/json
+> Content-Length: 17
+> 
+} [17 bytes data]
+* upload completely sent off: 17 bytes
+{ [5 bytes data]
+* TLSv1.3 (IN), TLS handshake, Newsession Ticket (4):
+{ [157 bytes data]
+< HTTP/2 403 
+< date: Fri, 05 Jun 2026 00:07:00 GMT
+< content-type: application/json; charset=utf-8
+< content-length: 101
+< x-api-server-segment: legacy
+< x-content-type-options: nosniff
+< x-request-id: 1c8bbf99-4e36-4867-a512-cdf7c2812825
+< x-xss-protection: 1; mode=block
+< strict-transport-security: max-age=16070400; includeSubDomains; preload
+< access-control-allow-origin: *
+< access-control-allow-headers: Content-Type
+< access-control-allow-methods: PUT, GET, POST, DELETE, OPTIONS
+< access-control-max-age: 86400
+< timing-allow-origin: *
+< strict-transport-security: max-age=31536000; includeSubDomains
+< 
+{ [101 bytes data]
+* Connection #0 to host api.mercadopago.com left intact
+{"code":"forbidden","message":"maximum quantity of test user reached for the specified client owner"}

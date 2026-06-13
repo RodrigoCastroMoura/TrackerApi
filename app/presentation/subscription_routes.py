@@ -260,3 +260,113 @@ class PaymentHistory(Resource):
         except Exception as e:
             logger.error(f"Error getting payment history: {str(e)}")
             return {'message': 'Erro ao consultar histórico de pagamentos'}, 500
+
+
+@api.route('/statement')
+class SubscriptionStatement(Resource):
+    
+    @api.doc('get_subscription_statement',
+             params={
+                 'month': {'type': 'string', 'description': 'Mês no formato YYYY-MM (ex: 2026-06)', 'default': ''},
+                 'page': {'type': 'integer', 'default': 1},
+                 'per_page': {'type': 'integer', 'default': 20}
+             })
+    @customer_token_required
+    def get(self, current_customer):
+        """Extrato mensal de pagamentos da assinatura (recorrente)"""
+        try:
+            page = int(request.args.get('page', 1))
+            per_page = int(request.args.get('per_page', 20))
+            month_filter = request.args.get('month', '').strip()
+            
+            if page < 1 or per_page < 1 or per_page > 100:
+                return {'message': 'Parâmetros de paginação inválidos'}, 400
+            
+            # Get subscription
+            subscription = Subscription.objects(
+                customer_id=current_customer.id,
+                visible=True
+            ).order_by('-created_at').first()
+            
+            if not subscription:
+                return {'message': 'Nenhuma assinatura encontrada'}, 404
+            
+            # Build payment query
+            payment_query = {
+                'customer_id': current_customer.id,
+                'visible': True
+            }
+            
+            # Month filter
+            if month_filter:
+                try:
+                    year, month = month_filter.split('-')
+                    start = datetime(int(year), int(month), 1)
+                    if int(month) == 12:
+                        end = datetime(int(year) + 1, 1, 1)
+                    else:
+                        end = datetime(int(year), int(month) + 1, 1)
+                    payment_query['payment_date__gte'] = start
+                    payment_query['payment_date__lt'] = end
+                except ValueError:
+                    return {'message': 'Formato de mês inválido. Use YYYY-MM (ex: 2026-06)'}, 400
+            
+            # Get payments for this month
+            payments = Payment.objects(**payment_query).order_by('-payment_date')
+            
+            # Group by month
+            monthly_summary = {}
+            for p in payments:
+                if p.payment_date:
+                    key = p.payment_date.strftime('%Y-%m')
+                    if key not in monthly_summary:
+                        monthly_summary[key] = {
+                            'month': key,
+                            'month_label': p.payment_date.strftime('%B/%Y').capitalize(),
+                            'total': 0.0,
+                            'payments': [],
+                            'count': 0
+                        }
+                    monthly_summary[key]['total'] += float(p.amount)
+                    monthly_summary[key]['count'] += 1
+                    monthly_summary[key]['payments'].append(p.to_dict())
+            
+            # Sort by month descending
+            sorted_months = sorted(monthly_summary.keys(), reverse=True)
+            
+            # Paginate months
+            total_months = len(sorted_months)
+            total_pages = (total_months + per_page - 1) // per_page
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            paginated_months = sorted_months[start_idx:end_idx]
+            
+            months_data = [monthly_summary[m] for m in paginated_months]
+            
+            # Calculate totals
+            total_paid = sum(m['total'] for m in monthly_summary.values())
+            
+            return {
+                'subscription': subscription.to_dict(),
+                'customer': {
+                    'name': current_customer.name,
+                    'email': current_customer.email
+                },
+                'summary': {
+                    'total_paid': round(total_paid, 2),
+                    'total_months': total_months,
+                    'plan_amount': subscription.amount,
+                    'plan_name': subscription.plan_name,
+                    'status': subscription.status,
+                    'next_payment_date': subscription.current_period_end.isoformat() if subscription.current_period_end else None
+                },
+                'months': months_data,
+                'page': page,
+                'per_page': per_page,
+                'total': total_months,
+                'pages': total_pages
+            }, 200
+            
+        except Exception as e:
+            logger.error(f"Error getting subscription statement: {str(e)}")
+            return {'message': 'Erro ao gerar extrato'}, 500

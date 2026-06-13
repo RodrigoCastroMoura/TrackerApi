@@ -48,8 +48,6 @@ customer_model = api.model('Customer', {
     'city': fields.String(required=True, description='Cidade'),
     'state': fields.String(required=True, description='Estado (sigla)'),
     'postal_code': fields.String(required=True, description='CEP'),
-    'card_brand': fields.String(readonly=True, description='Bandeira do cartão'),
-    'card_last_digits': fields.String(readonly=True, description='Últimos 4 dígitos do cartão'),
     'status': fields.String(readonly=True, description='Status do cliente (gerado automaticamente como active)'),
     'created_at': fields.DateTime(readonly=True),
     'updated_at': fields.DateTime(readonly=True)
@@ -69,11 +67,6 @@ customer_update_model = api.model('CustomerUpdate', {
     'status': fields.String(description='Status do cliente', enum=['active', 'inactive'])
 })
 
-payment_card_model = api.model('PaymentCard', {
-    'card_token': fields.String(required=True, description='Token do cartão no PagSeguro'),
-    'card_brand': fields.String(required=True, description='Bandeira do cartão'),
-    'card_last_digits': fields.String(required=True, description='Últimos 4 dígitos')
-})
 
 pagination_model = api.model('PaginatedCustomers', {
     'customers': fields.List(fields.Nested(customer_model)),
@@ -369,83 +362,6 @@ class CustomerResource(Resource):
             logger.error(f"Error deleting customer: {str(e)}")
             return {'message': 'Erro ao deletar cliente'}, 500
 
-@api.route('/<id>/payment-card')
-@api.param('id', 'Customer identifier')
-class CustomerPaymentCard(Resource):
-    
-    @api.doc('update_payment_card')
-    @api.expect(payment_card_model)
-    @token_required
-    @require_permission('customer', 'update')
-    def post(self, current_user, id):
-        """Atualizar dados do cartão de pagamento"""
-        try:
-            if not ObjectId.is_valid(id):
-                return {'message': 'ID do cliente inválido'}, 400
-            
-            customer = Customer.objects.get(id=id, visible=True, status='active')
-            data = request.get_json()
-            
-            # Validate required fields
-            required_fields = ['card_token', 'card_brand', 'card_last_digits']
-            for field in required_fields:
-                if field not in data or not data[field]:
-                    return {'message': f'Campo {field} é obrigatório'}, 400
-            
-            # Validate last digits (should be 4 digits)
-            digits_pattern = r'^\d{4}$'
-            if not re.match(digits_pattern, data['card_last_digits']):
-                return {'message': 'Últimos dígitos do cartão devem ter 4 números'}, 400
-            
-            # Update card information
-            customer.card_token = data['card_token']
-            customer.card_brand = data['card_brand']
-            customer.card_last_digits = data['card_last_digits']
-            customer.updated_by = current_user
-            customer.save()
-            
-            logger.info(f"Payment card updated for customer {customer.email}")
-            
-            return {
-                'message': 'Cartão de pagamento atualizado com sucesso',
-                'customer_id': str(customer.id),
-                'card_brand': customer.card_brand,
-                'card_last_digits': customer.card_last_digits
-            }, 200
-            
-        except DoesNotExist:
-            return {'message': 'Cliente não encontrado ou inativo'}, 404
-        except Exception as e:
-            logger.error(f"Error updating payment card: {str(e)}")
-            return {'message': 'Erro ao atualizar cartão'}, 500
-    
-    @api.doc('remove_payment_card')
-    @token_required
-    @require_permission('customer', 'update')
-    def delete(self, current_user, id):
-        """Remover cartão de pagamento"""
-        try:
-            if not ObjectId.is_valid(id):
-                return {'message': 'ID do cliente inválido'}, 400
-            
-            customer = Customer.objects.get(id=id, visible=True)
-            
-            # Remove card information
-            customer.card_token = None
-            customer.card_brand = None
-            customer.card_last_digits = None
-            customer.updated_by = current_user
-            customer.save()
-            
-            logger.info(f"Payment card removed for customer {customer.email}")
-            
-            return {'message': 'Cartão removido com sucesso'}, 200
-            
-        except DoesNotExist:
-            return {'message': 'Cliente não encontrado'}, 404
-        except Exception as e:
-            logger.error(f"Error removing payment card: {str(e)}")
-            return {'message': 'Erro ao remover cartão'}, 500
 
 @api.route('/search')
 class CustomerSearch(Resource):

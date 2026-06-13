@@ -118,10 +118,6 @@ class MercadoPagoService:
                 'payer_email': payment['payer']['email'] if 'payer' in payment else None,
                 'payment_method_id': payment.get('payment_method_id'),
                 'payment_type_id': payment.get('payment_type_id'),
-                'card_info': {
-                    'first_six_digits': payment.get('card', {}).get('first_six_digits'),
-                    'last_four_digits': payment.get('card', {}).get('last_four_digits'),
-                } if 'card' in payment else None
             }
             
         except Exception as e:
@@ -190,17 +186,15 @@ class MercadoPagoService:
     def create_subscription(
         preapproval_plan_id: str,
         payer_email: str,
-        card_token_id: Optional[str] = None,
         metadata: Optional[Dict] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Create a subscription (preapproval) for a customer WITH card_token_id.
+        Create a subscription (preapproval) for a customer.
         Use create_pending_subscription for payment link flow.
         
         Args:
             preapproval_plan_id: ID of the preapproval plan
             payer_email: Customer email
-            card_token_id: Card token (REQUIRED when using preapproval_plan_id)
             metadata: Additional metadata
             
         Returns:
@@ -211,14 +205,9 @@ class MercadoPagoService:
             if not sdk:
                 return None
             
-            if not card_token_id:
-                logger.error("card_token_id is required when using preapproval_plan_id")
-                return None
-            
             subscription_data = {
                 "preapproval_plan_id": preapproval_plan_id,
                 "payer_email": payer_email,
-                "card_token_id": card_token_id,
                 "status": "authorized",
                 "metadata": metadata or {}
             }

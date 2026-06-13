@@ -247,11 +247,6 @@ class Customer(BaseDocument):
     state = StringField(required=True)  # SP, RJ, etc.
     postal_code = StringField(required=True)
     
-    # Dados do cartão (se cadastrado)
-    card_token = StringField()  # Token do PagSeguro
-    card_brand = StringField()
-    card_last_digits = StringField()
-    
     # Status
     status = StringField(choices=['active', 'inactive'], default='active')
     visible = BooleanField(default=True)
@@ -328,8 +323,6 @@ class Customer(BaseDocument):
             'city': self.city,
             'state': self.state,
             'postal_code': self.postal_code,
-            'card_brand': self.card_brand,
-            'card_last_digits': self.card_last_digits,
             'status': self.status,
             'visible': self.visible,
             'role': self.role,
@@ -417,10 +410,6 @@ class Subscription(BaseDocument):
     cancel_at_period_end = BooleanField(default=False)
     canceled_at = DateTimeField()
     
-    # Card info (for display only)
-    card_brand = StringField()
-    card_last_digits = StringField()
-    
     visible = BooleanField(default=True)
     
     # Payment deadline
@@ -456,8 +445,6 @@ class Subscription(BaseDocument):
             'access_blocked': self.access_blocked,
             'cancel_at_period_end': self.cancel_at_period_end,
             'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
-            'card_brand': self.card_brand,
-            'card_last_digits': self.card_last_digits,
         })
         return base_dict
 
@@ -486,10 +473,6 @@ class Payment(BaseDocument):
     # Dates
     payment_date = DateTimeField()
     refunded_at = DateTimeField()
-    
-    # Card info (for display only)
-    card_brand = StringField()
-    card_last_digits = StringField()
     
     # Metadata
     payment_method = StringField(default='credit_card')
@@ -524,8 +507,6 @@ class Payment(BaseDocument):
             'failure_message': self.failure_message,
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'refunded_at': self.refunded_at.isoformat() if self.refunded_at else None,
-            'card_brand': self.card_brand,
-            'card_last_digits': self.card_last_digits,
             'payment_method': self.payment_method,
             'receipt_url': self.receipt_url,
         })

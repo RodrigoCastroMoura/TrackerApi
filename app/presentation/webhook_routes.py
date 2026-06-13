@@ -252,10 +252,6 @@ class MercadoPagoWebhook(Resource):
                     customer.mp_status = 'refunded'
                     customer.refunded_at = datetime.utcnow()
                 
-                if payment_info.get('card_info'):
-                    card_info = payment_info['card_info']
-                    customer.card_last_digits = card_info.get('last_four_digits')
-                
                 customer.save()
                 logger.info(f"Customer {customer.id} payment updated - status: {customer.mp_status}")
                 
@@ -276,7 +272,6 @@ class MercadoPagoWebhook(Resource):
                         description=f"Pagamento de assinatura - {customer.name}",
                         status=payment_status,
                         payment_date=datetime.fromisoformat(payment_info['date_created'].replace('Z', '+00:00')) if payment_info.get('date_created') else datetime.utcnow(),
-                        card_last_digits=payment_info.get('card_info', {}).get('last_four_digits') if payment_info.get('card_info') else None,
                         payment_method=payment_info.get('payment_method_id', 'mercadopago'),
                         created_by=None,
                         updated_by=None

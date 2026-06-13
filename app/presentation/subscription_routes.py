@@ -189,7 +189,7 @@ class SubscriptionCancel(Resource):
         try:
             subscription = Subscription.objects(
                 customer_id=current_customer.id,
-                status='active',
+                status__in=['active', 'pending'],
                 visible=True
             ).first()
             

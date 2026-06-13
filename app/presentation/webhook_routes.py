@@ -102,7 +102,7 @@ class MercadoPagoWebhook(Resource):
                 logger.warning("Webhook missing topic or resource ID")
                 return {'message': 'Invalid webhook data'}, 400
             
-            if topic in ['preapproval', 'subscription', 'subscription_preapproval', 'subscription_authorized_payment']:
+            if topic in ['preapproval', 'subscription', 'subscription_preapproval']:
                 subscription_info = MercadoPagoService.get_subscription_info(str(resource_id))
                 
                 if not subscription_info:
@@ -143,6 +143,59 @@ class MercadoPagoWebhook(Resource):
                 customer.save()
                 
                 logger.info(f"Subscription {subscription.id} updated to {subscription.status}, customer {customer.id} updated to {customer.mp_status}")
+            
+            elif topic in ['subscription_authorized_payment']:
+                # Webhook for authorized payment (recurring payment notification)
+                # The resource_id is the authorized_payment ID, not the subscription ID
+                authorized_payment = MercadoPagoService.get_authorized_payment(str(resource_id))
+                
+                if not authorized_payment:
+                    logger.error(f"Failed to get authorized payment for ID: {resource_id}")
+                    return {'message': 'Webhook recebido'}, 200
+                
+                # Get subscription ID from authorized payment
+                mp_subscription_id = authorized_payment.get('subscription_id')
+                if not mp_subscription_id:
+                    logger.warning(f"No subscription_id in authorized payment: {resource_id}")
+                    return {'message': 'Webhook recebido'}, 200
+                
+                # Find subscription by MP subscription ID
+                subscription = Subscription.objects(
+                    mp_subscription_id=mp_subscription_id,
+                    visible=True
+                ).first()
+                
+                if not subscription:
+                    logger.warning(f"Subscription not found for authorized payment: {mp_subscription_id}")
+                    return {'message': 'Webhook recebido'}, 200
+                
+                # Get customer from subscription
+                customer = subscription.customer_id
+                
+                # Record the payment
+                existing_payment = Payment.objects(
+                    mp_payment_id=str(authorized_payment.get('payment_id', resource_id))
+                ).first()
+                
+                if not existing_payment:
+                    payment = Payment(
+                        customer_id=customer,
+                        company_id=customer.company_id,
+                        mp_payment_id=str(authorized_payment.get('payment_id', resource_id)),
+                        amount=authorized_payment.get('transaction_amount', 0),
+                        currency=authorized_payment.get('currency_id', 'BRL'),
+                        description=f"Pagamento recorrente - {subscription.plan_name}",
+                        status='succeeded',
+                        payment_date=datetime.utcnow(),
+                        created_by=None,
+                        updated_by=None
+                    )
+                    payment.save()
+                    logger.info(f"Payment recorded for authorized payment: {payment.id}")
+                else:
+                    logger.info(f"Payment already exists for authorized payment: {existing_payment.id}")
+                
+                logger.info(f"Authorized payment processed for subscription {subscription.id}")
             
             elif topic in ['payment', 'payment.created', 'payment.updated', 'merchant_order']:
                 payment_info = MercadoPagoService.get_payment_info(str(resource_id))

@@ -372,7 +372,7 @@ class MercadoPagoService:
             sub_response = sdk.subscription().get(subscription_id)
 
             if sub_response.get("status") not in [200, 201]:
-                logger.error(f"Mercado Pago error fetching subscription {subscription_id}: {sub_response.get('response')}")
+                logger.error(f"Mercado Pago error fetching subscription {subscription_id}: status={sub_response.get('status')} response={sub_response.get('response')}")
                 return None
 
             subscription = sub_response["response"]
@@ -389,4 +389,49 @@ class MercadoPagoService:
 
         except Exception as e:
             logger.error(f"Error getting subscription info: {str(e)}")
+            return None
+    
+    @staticmethod
+    def get_authorized_payment(authorized_payment_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get authorized payment information by ID.
+        This is used for subscription_authorized_payment webhooks.
+        
+        Args:
+            authorized_payment_id: Mercado Pago authorized payment ID
+            
+        Returns:
+            Dict with preapproval_id (subscription_id) and other data, or None
+        """
+        try:
+            sdk = MercadoPagoService.get_sdk()
+            if not sdk:
+                return None
+            
+            # Use the SDK's http_client to call the authorized_payments endpoint
+            response = sdk.http_client.request(
+                f"https://api.mercadopago.com/authorized_payments/{authorized_payment_id}",
+                "GET",
+                headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
+            )
+            
+            if response.get("status") not in [200, 201]:
+                logger.error(f"Mercado Pago error fetching authorized_payment {authorized_payment_id}: status={response.get('status')} response={response.get('response')}")
+                return None
+            
+            data = response["response"]
+            
+            return {
+                'id': data.get('id'),
+                'subscription_id': data.get('preapproval_id'),  # The subscription ID
+                'payment_id': data.get('payment_id'),
+                'status': data.get('status'),
+                'transaction_amount': data.get('transaction_amount'),
+                'currency_id': data.get('currency_id'),
+                'date_created': data.get('date_created'),
+                'next_retry_date': data.get('next_retry_date'),
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting authorized payment info: {str(e)}")
             return None

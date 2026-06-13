@@ -223,7 +223,7 @@ class MercadoPagoService:
                 "metadata": metadata or {}
             }
             
-            sub_response = sdk.preapproval().create(subscription_data)
+            sub_response = sdk.subscription().create(subscription_data)
             subscription = sub_response["response"]
             
             logger.info(f"Created subscription: {subscription['id']}")
@@ -293,33 +293,34 @@ class MercadoPagoService:
                 subscription_data["metadata"] = metadata
             
             logger.info(
-                f"[MP REQUEST] POST /preapproval | body={subscription_data}"
+                f"[MP REQUEST] POST /subscription | body={subscription_data}"
             )
 
-            sub_response = sdk.preapproval().create(subscription_data)
+            sub_response = sdk.subscription().create(subscription_data)
 
             logger.info(
-                f"[MP RESPONSE] POST /preapproval | status={sub_response.get('status')} | body={sub_response.get('response')}"
+                f"[MP RESPONSE] POST /subscription | status={sub_response.get('status')} | body={sub_response.get('response')}"
             )
-            
-            if sub_response.get("status") == 400 or sub_response.get("status") == 401:
-                logger.error(f"Mercado Pago error: {sub_response.get('response')}")
+
+            if sub_response.get("status") in [400, 401, 403, 404]:
+                resp = sub_response.get('response', {})
+                logger.error(f"Mercado Pago error: {resp}")
                 return {
                     'error': True,
-                    'message': sub_response.get('response', {}).get('message', 'Unknown error'),
+                    'message': resp.get('message', resp.get('error', 'Unknown error')),
                     'status': sub_response.get("status")
                 }
-            
+
             subscription = sub_response["response"]
-            
+
             logger.info(f"Created pending subscription: {subscription['id']}")
-            
+
             return {
                 'subscription_id': subscription['id'],
                 'init_point': subscription.get('init_point'),
                 'status': subscription['status']
             }
-            
+
         except Exception as e:
             logger.error(f"Error creating pending subscription: {str(e)}")
             return None
@@ -344,7 +345,7 @@ class MercadoPagoService:
                 "status": "cancelled"
             }
             
-            sdk.preapproval().update(subscription_id, update_data)
+            sdk.subscription().update(subscription_id, update_data)
             logger.info(f"Canceled subscription: {subscription_id}")
             return True
             
@@ -368,24 +369,24 @@ class MercadoPagoService:
             if not sdk:
                 return None
             
-            sub_response = sdk.preapproval().get(subscription_id)
-            
+            sub_response = sdk.subscription().get(subscription_id)
+
             if sub_response.get("status") not in [200, 201]:
                 logger.error(f"Mercado Pago error fetching subscription {subscription_id}: {sub_response.get('response')}")
                 return None
-            
+
             subscription = sub_response["response"]
-            
+
             return {
                 'id': subscription['id'],
-                'status': subscription['status'],
+                'status': subscription.get('status'),
                 'payer_id': subscription.get('payer_id'),
                 'payer_email': subscription.get('payer_email'),
                 'next_payment_date': subscription.get('next_payment_date'),
                 'date_created': subscription.get('date_created'),
                 'last_modified': subscription.get('last_modified'),
             }
-            
+
         except Exception as e:
             logger.error(f"Error getting subscription info: {str(e)}")
             return None

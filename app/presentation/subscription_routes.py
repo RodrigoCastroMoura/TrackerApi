@@ -346,11 +346,30 @@ class SubscriptionStatement(Resource):
             # Calculate totals
             total_paid = sum(m['total'] for m in monthly_summary.values())
             
+            # Check if payment is overdue
+            now = datetime.utcnow()
+            is_overdue = False
+            days_overdue = 0
+            days_until_block = None
+            
+            if subscription.current_period_end and now > subscription.current_period_end:
+                is_overdue = True
+                days_overdue = (now - subscription.current_period_end).days
+                
+                if subscription.grace_period_end:
+                    if now > subscription.grace_period_end:
+                        days_until_block = 0
+                    else:
+                        days_until_block = (subscription.grace_period_end - now).days
+            
             return {
                 'subscription': subscription.to_dict(),
                 'customer': {
                     'name': current_customer.name,
-                    'email': current_customer.email
+                    'email': current_customer.email,
+                    'subscription_blocked': current_customer.subscription_blocked,
+                    'subscription_blocked_reason': current_customer.subscription_blocked_reason,
+                    'payment_deadline': current_customer.payment_deadline.isoformat() if current_customer.payment_deadline else None
                 },
                 'summary': {
                     'total_paid': round(total_paid, 2),
@@ -358,7 +377,12 @@ class SubscriptionStatement(Resource):
                     'plan_amount': subscription.amount,
                     'plan_name': subscription.plan_name,
                     'status': subscription.status,
-                    'next_payment_date': subscription.current_period_end.isoformat() if subscription.current_period_end else None
+                    'next_payment_date': subscription.current_period_end.isoformat() if subscription.current_period_end else None,
+                    'grace_period_end': subscription.grace_period_end.isoformat() if subscription.grace_period_end else None,
+                    'is_overdue': is_overdue,
+                    'days_overdue': days_overdue,
+                    'days_until_block': days_until_block,
+                    'access_blocked': subscription.access_blocked
                 },
                 'months': months_data,
                 'page': page,

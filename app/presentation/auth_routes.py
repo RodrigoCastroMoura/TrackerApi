@@ -295,6 +295,16 @@ def customer_token_required(f):
                 if current_customer.status != 'active':
                     logger.warning(f"Inactive customer attempted to access: {current_customer.email}")
                     return {'message': 'Cliente inativo', 'error': 'inactive_customer'}, 401
+                
+                # Verificar bloqueio por pagamento atrasado
+                if current_customer.subscription_blocked:
+                    logger.warning(f"Blocked customer attempted to access: {current_customer.email}")
+                    return {
+                        'message': 'Acesso bloqueado. Pagamento atrasado.',
+                        'error': 'subscription_blocked',
+                        'blocked_reason': current_customer.subscription_blocked_reason,
+                        'payment_deadline': current_customer.payment_deadline.isoformat() if current_customer.payment_deadline else None
+                    }, 403
 
                 if current_customer.email != data['email']:
                     logger.warning("Token email mismatch with current customer")
@@ -613,6 +623,29 @@ class LoginCustomer(Resource):
                     logger.warning(f"Login attempt by inactive user: {customer.document}")
                     return {'message': 'Usuário inativo'}, 401
                 
+                # Verificar se acesso está bloqueado por pagamento atrasado
+                if customer.subscription_blocked:
+                    logger.warning(f"Login attempt by blocked customer: {customer.email}")
+                    return {
+                        'message': 'Acesso bloqueado. Pagamento atrasado.',
+                        'error': 'subscription_blocked',
+                        'blocked_reason': customer.subscription_blocked_reason,
+                        'payment_deadline': customer.payment_deadline.isoformat() if customer.payment_deadline else None
+                    }, 403
+                
+                # Verificar se passou do prazo de pagamento (15 dias após vencimento)
+                if customer.payment_deadline and datetime.utcnow() > customer.payment_deadline:
+                    from datetime import datetime
+                    customer.subscription_blocked = True
+                    customer.subscription_blocked_reason = 'Pagamento atrasado. Prazo de 15 dias expirado.'
+                    customer.save()
+                    logger.warning(f"Customer access blocked due to late payment: {customer.email}")
+                    return {
+                        'message': 'Acesso bloqueado. Pagamento atrasado.',
+                        'error': 'subscription_blocked',
+                        'blocked_reason': customer.subscription_blocked_reason,
+                        'payment_deadline': customer.payment_deadline.isoformat() if customer.payment_deadline else None
+                    }, 403
 
                 if not fcm_token:
                     logger.debug(f"FCM token not provided for customer: {customer.email}")

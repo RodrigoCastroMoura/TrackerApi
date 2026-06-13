@@ -280,6 +280,11 @@ class Customer(BaseDocument):
     has_accepted_terms = BooleanField(default=False)
     require_payment_method = BooleanField(default=True)
 
+    # Subscription access blocking
+    subscription_blocked = BooleanField(default=False)  # True = cliente não pode acessar (pagamento atrasado > 15 dias)
+    subscription_blocked_reason = StringField()  # Motivo do bloqueio
+    payment_deadline = DateTimeField()  # Data limite de pagamento para manter acesso
+
     
     meta = {
         'collection': 'customers',
@@ -332,6 +337,9 @@ class Customer(BaseDocument):
             'fcm_token': self.fcm_token,
             'has_accepted_terms': self.has_accepted_terms,
             'require_payment_method': self.require_payment_method,
+            'subscription_blocked': self.subscription_blocked,
+            'subscription_blocked_reason': self.subscription_blocked_reason,
+            'payment_deadline': self.payment_deadline.isoformat() if self.payment_deadline else None,
         })
         return base_dict
 
@@ -405,6 +413,7 @@ class Subscription(BaseDocument):
     )
     current_period_start = DateTimeField()
     current_period_end = DateTimeField()
+    grace_period_end = DateTimeField()  # Prazo de pagamento (15 dias após vencimento)
     cancel_at_period_end = BooleanField(default=False)
     canceled_at = DateTimeField()
     
@@ -413,6 +422,10 @@ class Subscription(BaseDocument):
     card_last_digits = StringField()
     
     visible = BooleanField(default=True)
+    
+    # Payment deadline
+    payment_deadline = DateTimeField()  # Data limite para pagamento (vencimento + 15 dias)
+    access_blocked = BooleanField(default=False)  # Bloqueia acesso após prazo
     
     meta = {
         'collection': 'subscriptions',
@@ -438,6 +451,9 @@ class Subscription(BaseDocument):
             'status': self.status,
             'current_period_start': self.current_period_start.isoformat() if self.current_period_start else None,
             'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,
+            'grace_period_end': self.grace_period_end.isoformat() if self.grace_period_end else None,
+            'payment_deadline': self.payment_deadline.isoformat() if self.payment_deadline else None,
+            'access_blocked': self.access_blocked,
             'cancel_at_period_end': self.cancel_at_period_end,
             'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
             'card_brand': self.card_brand,

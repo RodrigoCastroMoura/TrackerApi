@@ -2,7 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource
 from app.domain.models import Payment, Customer, Subscription
 from app.infrastructure.mercadopago_service import MercadoPagoService
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import hmac
 import hashlib
@@ -125,7 +125,14 @@ class MercadoPagoWebhook(Resource):
                 mp_status = subscription_info['status']
                 if mp_status == 'authorized':
                     subscription.status = 'active'
+                    subscription.current_period_start = datetime.utcnow()
+                    subscription.current_period_end = datetime.utcnow() + timedelta(days=30)
+                    subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
+                    subscription.access_blocked = False
                     customer.mp_status = 'succeeded'
+                    customer.payment_deadline = subscription.grace_period_end
+                    customer.subscription_blocked = False
+                    customer.subscription_blocked_reason = None
                     if not customer.payment_date:
                         customer.payment_date = datetime.utcnow()
                 elif mp_status == 'paused':
@@ -134,7 +141,10 @@ class MercadoPagoWebhook(Resource):
                 elif mp_status == 'cancelled':
                     subscription.status = 'canceled'
                     subscription.canceled_at = datetime.utcnow()
+                    subscription.access_blocked = True
                     customer.mp_status = 'canceled'
+                    customer.subscription_blocked = True
+                    customer.subscription_blocked_reason = 'Assinatura cancelada'
                 elif mp_status == 'pending':
                     subscription.status = 'pending'
                     customer.mp_status = 'pending'
@@ -195,7 +205,21 @@ class MercadoPagoWebhook(Resource):
                 else:
                     logger.info(f"Payment already exists for authorized payment: {existing_payment.id}")
                 
-                logger.info(f"Authorized payment processed for subscription {subscription.id}")
+                # Atualizar período e prazo de pagamento
+                next_payment_date = datetime.utcnow() + timedelta(days=30)
+                grace_period_end = next_payment_date + timedelta(days=15)
+                
+                subscription.current_period_end = next_payment_date
+                subscription.grace_period_end = grace_period_end
+                subscription.access_blocked = False
+                subscription.save()
+                
+                customer.payment_deadline = grace_period_end
+                customer.subscription_blocked = False
+                customer.subscription_blocked_reason = None
+                customer.save()
+                
+                logger.info(f"Authorized payment processed for subscription {subscription.id}. Next payment: {next_payment_date.date()}, Grace period ends: {grace_period_end.date()}")
             
             elif topic in ['payment', 'payment.created', 'payment.updated', 'merchant_order']:
                 payment_info = MercadoPagoService.get_payment_info(str(resource_id))

@@ -1,0 +1,28 @@
+INFO:app.presentation.webhook_routes:Received Mercado Pago webhook - Topic: subscription_preapproval, ID: 0184d29501de4ecbb8fd3dc5409bbb1d
+INFO:app.presentation.webhook_routes:Webhook signature validated successfully
+INFO:app.presentation.webhook_routes:Received Mercado Pago webhook - Topic: subscription_preapproval, ID: 386cc4e96e2b4da1bb9db31df06403cf
+WARNING:app.presentation.webhook_routes:Customer not found for subscription: 0184d29501de4ecbb8fd3dc5409bbb1d
+Starting Gunicorn server for DocSmart API
+Gunicorn server is ready. Spawning workers
+127.0.0.1 - - [13/Jun/2026:16:25:42 -0300] "POST /api/webhooks/mercadopago?data.id=0184d29501de4ecbb8fd3dc5409bbb1d&type=subscription_preapproval HTTP/1.0" 200 32 "https://mercadopago.com.ar" "MercadoPago WebHook v1.0 subscription_preapproval"
+WARNING:app.presentation.webhook_routes:Customer not found for subscription: 386cc4e96e2b4da1bb9db31df06403cf
+Starting Gunicorn server for DocSmart API
+Gunicorn server is ready. Spawning workers
+127.0.0.1 - - [13/Jun/2026:16:25:42 -0300] "POST /api/webhooks/mercadopago?data.id=386cc4e96e2b4da1bb9db31df06403cf&type=subscription_preapproval HTTP/1.0" 200 32 "https://mercadopago.com.ar" "MercadoPago WebHook v1.0 subscription_preapproval"
+INFO:app.presentation.webhook_routes:Webhook signature validated successfully
+INFO:app.presentation.webhook_routes:Received Mercado Pago webhook - Topic: payment, ID: 163986565342
+INFO:app.presentation.webhook_routes:Customer 68efc55f005321fbb79e3f6a payment updated - status: succeeded
+INFO:app.presentation.webhook_routes:Payment recorded: 6a2daeef8a7b1cb01c3f355b
+127.0.0.1 - - [13/Jun/2026:16:26:39 -0300] "POST /api/webhooks/mercadopago?data.id=163986565342&type=payment HTTP/1.0" 200 46 "https://mercadopago.com.ar" "MercadoPago WebHook v1.0 payment"
+INFO:app.presentation.webhook_routes:Webhook signature validated successfully
+INFO:app.presentation.webhook_routes:Received Mercado Pago webhook - Topic: subscription_preapproval, ID: 0fff72318e6c4a8595656784a933fbe6
+WARNING:app.presentation.webhook_routes:Customer not found for subscription: 0fff72318e6c4a8595656784a933fbe6
+127.0.0.1 - - [13/Jun/2026:16:26:41 -0300] "POST /api/webhooks/mercadopago?data.id=0fff72318e6c4a8595656784a933fbe6&type=subscription_preapproval HTTP/1.0" 200 32 "https://mercadopago.com.ar" "MercadoPago WebHook v1.0 subscription_preapproval"
+INFO:app.presentation.webhook_routes:Webhook signature validated successfully
+INFO:app.presentation.webhook_routes:Received Mercado Pago webhook - Topic: subscription_authorized_payment, ID: 7029030737
+Starting Gunicorn server for DocSmart API
+Gunicorn server is ready. Spawning workers
+127.0.0.1 - - [13/Jun/2026:16:28:13 -0300] "POST /api/webhooks/mercadopago?data.id=7029030737&type=subscription_authorized_payment HTTP/1.0" 200 46 "https://mercadopago.com.ar" "MercadoPago WebHook v1.0 subscription_authorized_payment"
+INFO:app.presentation.webhook_routes:Webhook signature validated successfully
+INFO:app.presentation.webhook_routes:Received Mercado Pago webhook - Topic: subscription_authorized_payment, ID: 7029030737
+127.0.0.1 - - [13/Jun/2026:16:28:14 -0300] "POST /api/webhooks/mercadopago?data.id=7029030737&type=subscription_authorized_payment HTTP/1.0" 200 46 "https://mercadopago.com.ar" "MercadoPago WebHook v1.0 subscription_authorized_payment"

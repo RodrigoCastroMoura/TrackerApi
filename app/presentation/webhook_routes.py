@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource
-from app.domain.models import Payment, Customer
+from app.domain.models import Payment, Customer, Subscription
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime
 import logging
@@ -102,43 +102,47 @@ class MercadoPagoWebhook(Resource):
                 logger.warning("Webhook missing topic or resource ID")
                 return {'message': 'Invalid webhook data'}, 400
             
-            if topic in ['preapproval', 'subscription', 'subscription_preapproval']:
+            if topic in ['preapproval', 'subscription', 'subscription_preapproval', 'subscription_authorized_payment']:
                 subscription_info = MercadoPagoService.get_subscription_info(str(resource_id))
                 
                 if not subscription_info:
                     logger.error(f"Failed to get subscription info for ID: {resource_id}")
                     return {'message': 'Webhook recebido'}, 200
                 
-                customer = Customer.objects(
+                # Find subscription by MP subscription ID
+                subscription = Subscription.objects(
                     mp_subscription_id=str(subscription_info['id']),
                     visible=True
                 ).first()
                 
-                if not customer:
-                    payer_email = subscription_info.get('payer_email')
-                    if payer_email:
-                        customer = Customer.objects(email=payer_email, visible=True).first()
-                
-                if not customer:
-                    logger.warning(f"Customer not found for subscription: {subscription_info['id']}")
+                if not subscription:
+                    logger.warning(f"Subscription not found: {subscription_info['id']}")
                     return {'message': 'Webhook recebido'}, 200
+                
+                # Get customer from subscription
+                customer = subscription.customer_id
                 
                 mp_status = subscription_info['status']
                 if mp_status == 'authorized':
+                    subscription.status = 'active'
                     customer.mp_status = 'succeeded'
                     if not customer.payment_date:
                         customer.payment_date = datetime.utcnow()
                 elif mp_status == 'paused':
+                    subscription.status = 'pending'
                     customer.mp_status = 'processing'
                 elif mp_status == 'cancelled':
+                    subscription.status = 'canceled'
+                    subscription.canceled_at = datetime.utcnow()
                     customer.mp_status = 'canceled'
                 elif mp_status == 'pending':
+                    subscription.status = 'pending'
                     customer.mp_status = 'pending'
                 
-                customer.mp_subscription_id = str(subscription_info['id'])
+                subscription.save()
                 customer.save()
                 
-                logger.info(f"Customer {customer.id} updated - status: {customer.mp_status}")
+                logger.info(f"Subscription {subscription.id} updated to {subscription.status}, customer {customer.id} updated to {customer.mp_status}")
             
             elif topic in ['payment', 'payment.created', 'payment.updated', 'merchant_order']:
                 payment_info = MercadoPagoService.get_payment_info(str(resource_id))

@@ -417,7 +417,6 @@ class SubscriptionPayment(EmbeddedDocument):
             'period_end': self.period_end.isoformat() if self.period_end else None,
         }
 
-
 class Subscription(BaseDocument):
     """Subscription model for monthly recurring payments"""
     customer_id = ReferenceField('Customer', required=True)
@@ -450,7 +449,10 @@ class Subscription(BaseDocument):
     # Payment deadline
     payment_deadline = DateTimeField()  # Data limite para pagamento (vencimento + 15 dias)
     access_blocked = BooleanField(default=False)  # Bloqueia acesso após prazo
-    
+
+    # Historical monthly payments
+    payment_history = EmbeddedDocumentListField(SubscriptionPayment, default=list)
+
     meta = {
         'collection': 'subscriptions',
         'indexes': [
@@ -480,6 +482,7 @@ class Subscription(BaseDocument):
             'access_blocked': self.access_blocked,
             'cancel_at_period_end': self.cancel_at_period_end,
             'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
+            'payment_history': [p.to_dict() for p in (self.payment_history or [])],
         })
         return base_dict
 

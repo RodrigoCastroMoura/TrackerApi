@@ -143,9 +143,14 @@ class SubscriptionResource(Resource):
                 updated_by=None
             )
             subscription.save()
-            
+
+            current_customer.mp_subscription_id = mp_subscription['subscription_id']
+            current_customer.mp_preapproval_plan_id = mp_plan_id
+            current_customer.payment_url = mp_subscription['init_point']
+            current_customer.save()
+
             logger.info(f"Recurring subscription created for customer {current_customer.email}, plan: {plan.name}, MP subscription ID: {mp_subscription['subscription_id']}")
-            
+
             return {
                 'message': 'Assinatura recorrente criada com sucesso',
                 'subscription_id': str(subscription.id),

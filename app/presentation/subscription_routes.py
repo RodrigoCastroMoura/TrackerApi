@@ -179,6 +179,156 @@ class SubscriptionResource(Resource):
             logger.error(f"Error getting subscription: {str(e)}")
             return {'message': 'Erro ao consultar assinatura'}, 500
 
+    @api.doc('change_subscription_plan')
+    @api.expect(subscription_create_model)
+    @customer_token_required
+    def put(self, current_customer):
+        """Trocar de plano de assinatura"""
+        try:
+            data = request.get_json()
+            
+            if not data.get('plan_id'):
+                return {'message': 'Campo plan_id é obrigatório'}, 400
+            
+            # Fetch the new subscription plan
+            plan_id_input = data['plan_id']
+            new_plan = None
+            
+            if len(plan_id_input) == 24:
+                try:
+                    new_plan = SubscriptionPlan.objects(
+                        id=plan_id_input,
+                        company_id=current_customer.company_id,
+                        is_active=True,
+                        visible=True
+                    ).first()
+                except Exception:
+                    pass
+            
+            if not new_plan:
+                new_plan = SubscriptionPlan.objects(
+                    mp_preapproval_plan_id=plan_id_input,
+                    company_id=current_customer.company_id,
+                    is_active=True,
+                    visible=True
+                ).first()
+            
+            if not new_plan:
+                return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
+            
+            # Find existing active subscription
+            existing_subscription = Subscription.objects(
+                customer_id=current_customer.id,
+                status__in=['active', 'pending'],
+                visible=True
+            ).first()
+            
+            if not existing_subscription:
+                return {'message': 'Nenhuma assinatura ativa encontrada para alterar. Crie uma assinatura primeiro.'}, 404
+            
+            # Cancel old subscription on Mercado Pago
+            if existing_subscription.mp_subscription_id:
+                success = MercadoPagoService.cancel_subscription(existing_subscription.mp_subscription_id)
+                if not success:
+                    logger.warning(f"Failed to cancel old subscription on Mercado Pago: {existing_subscription.mp_subscription_id}")
+            
+            # Mark old subscription as canceled
+            existing_subscription.status = 'canceled'
+            existing_subscription.canceled_at = datetime.utcnow()
+            existing_subscription.cancel_at_period_end = True
+            existing_subscription.updated_by = None
+            existing_subscription.save()
+            
+            # Ensure MP plan ID exists
+            mp_plan_id = new_plan.mp_preapproval_plan_id
+            if not mp_plan_id:
+                if new_plan.billing_cycle == 'yearly':
+                    frequency = 12
+                    frequency_type = 'months'
+                else:
+                    frequency = 1
+                    frequency_type = 'months'
+                
+                mp_plan = MercadoPagoService.create_subscription_plan(
+                    plan_name=new_plan.name,
+                    amount=new_plan.amount,
+                    frequency=frequency,
+                    frequency_type=frequency_type
+                )
+                if not mp_plan:
+                    return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
+                
+                mp_plan_id = mp_plan['plan_id']
+                new_plan.mp_preapproval_plan_id = mp_plan_id
+                new_plan.save()
+            
+            # Create new pending subscription
+            if new_plan.billing_cycle == 'yearly':
+                frequency = 12
+                frequency_type = 'months'
+            else:
+                frequency = 1
+                frequency_type = 'months'
+            
+            mp_subscription = MercadoPagoService.create_pending_subscription(
+                reason=new_plan.name,
+                payer_email=current_customer.email,
+                amount=new_plan.amount,
+                frequency=frequency,
+                frequency_type=frequency_type,
+                back_url=os.environ.get('APP_URL', 'https://www.rcminformatica.tec.br/'),
+                external_reference=str(current_customer.id),
+                metadata={
+                    'customer_id': str(current_customer.id),
+                    'company_id': str(current_customer.company_id.id),
+                    'plan_id': str(new_plan.id),
+                }
+            )
+            
+            if not mp_subscription or mp_subscription.get('error'):
+                mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
+                mp_status = mp_subscription.get('status', 400) if mp_subscription else 400
+                if 'real or test users' in mp_msg:
+                    return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
+                return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
+            
+            # Create new subscription record
+            subscription = Subscription(
+                customer_id=current_customer,
+                company_id=current_customer.company_id,
+                mp_subscription_id=mp_subscription['subscription_id'],
+                mp_preapproval_plan_id=mp_plan_id,
+                plan_name=new_plan.name,
+                amount=new_plan.amount,
+                status='pending',
+                billing_cycle=new_plan.billing_cycle,
+                currency='BRL',
+                created_by=None,
+                updated_by=None
+            )
+            subscription.save()
+            
+            # Update customer with new subscription info
+            current_customer.mp_subscription_id = mp_subscription['subscription_id']
+            current_customer.mp_preapproval_plan_id = mp_plan_id
+            current_customer.payment_url = mp_subscription['init_point']
+            current_customer.save()
+            
+            logger.info(f"Subscription plan changed for customer {current_customer.email}, new plan: {new_plan.name}, MP subscription ID: {mp_subscription['subscription_id']}")
+            
+            return {
+                'message': 'Plano alterado com sucesso. Acesse o link para autorizar os pagamentos.',
+                'subscription_id': str(subscription.id),
+                'plan_name': new_plan.name,
+                'amount': new_plan.amount,
+                'payment_url': mp_subscription['init_point'],
+                'mp_subscription_id': mp_subscription['subscription_id'],
+            }, 200
+            
+        except Exception as e:
+            logger.error(f"Error changing subscription plan: {str(e)}")
+            return {'message': 'Erro ao trocar de plano'}, 500
+
 @api.route('/cancel')
 class SubscriptionCancel(Resource):
     

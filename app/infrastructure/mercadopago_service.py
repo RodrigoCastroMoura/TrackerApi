@@ -1,4 +1,5 @@
 import os
+import json
 import mercadopago
 import logging
 from typing import Optional, Dict, Any
@@ -393,22 +394,17 @@ class MercadoPagoService:
             Dict with preapproval_id (subscription_id) and other data, or None
         """
         try:
-            sdk = MercadoPagoService.get_sdk()
-            if not sdk:
+            if not MP_ACCESS_TOKEN:
+                logger.error("MERCADOPAGO_ACCESS_TOKEN not configured")
                 return None
             
-            # Use the SDK's http_client to call the authorized_payments endpoint
-            response = sdk.http_client.request(
-                f"https://api.mercadopago.com/authorized_payments/{authorized_payment_id}",
-                "GET",
-                headers={"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
-            )
+            url = f"https://api.mercadopago.com/authorized_payments/{authorized_payment_id}"
+            headers = {"Authorization": f"Bearer {MP_ACCESS_TOKEN}"}
             
-            if response.get("status") not in [200, 201]:
-                logger.error(f"Mercado Pago error fetching authorized_payment {authorized_payment_id}: status={response.get('status')} response={response.get('response')}")
-                return None
-            
-            data = response["response"]
+            import urllib.request
+            req = urllib.request.Request(url, headers=headers, method='GET')
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
             
             return {
                 'id': data.get('id'),

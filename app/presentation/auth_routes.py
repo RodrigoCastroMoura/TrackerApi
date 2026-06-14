@@ -634,8 +634,7 @@ class LoginCustomer(Resource):
                     }, 403
                 
                 # Verificar se passou do prazo de pagamento (15 dias após vencimento)
-                if customer.payment_deadline and datetime.utcnow() > customer.payment_deadline:
-                    from datetime import datetime
+                if customer.payment_deadline and datetime.datetime.utcnow() > customer.payment_deadline:
                     customer.subscription_blocked = True
                     customer.subscription_blocked_reason = 'Pagamento atrasado. Prazo de 15 dias expirado.'
                     customer.save()

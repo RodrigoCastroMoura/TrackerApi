@@ -279,6 +279,12 @@ class Customer(BaseDocument):
     subscription_blocked = BooleanField(default=False)  # True = cliente não pode acessar (pagamento atrasado > 15 dias)
     subscription_blocked_reason = StringField()  # Motivo do bloqueio
     payment_deadline = DateTimeField()  # Data limite de pagamento para manter acesso
+    
+    # Plan change tracking
+    current_plan_name = StringField()  # Nome do plano atual
+    previous_plan_name = StringField()  # Nome do plano anterior
+    previous_plan_amount = FloatField()  # Valor do plano anterior
+    plan_changed_at = DateTimeField()  # Data da última troca de plano
 
     
     meta = {
@@ -333,6 +339,10 @@ class Customer(BaseDocument):
             'subscription_blocked': self.subscription_blocked,
             'subscription_blocked_reason': self.subscription_blocked_reason,
             'payment_deadline': self.payment_deadline.isoformat() if self.payment_deadline else None,
+            'current_plan_name': self.current_plan_name,
+            'previous_plan_name': self.previous_plan_name,
+            'previous_plan_amount': self.previous_plan_amount,
+            'plan_changed_at': self.plan_changed_at.isoformat() if self.plan_changed_at else None,
         })
         return base_dict
 
@@ -417,6 +427,12 @@ class Subscription(BaseDocument):
     payment_deadline = DateTimeField()  # Data limite para pagamento (vencimento + 15 dias)
     access_blocked = BooleanField(default=False)  # Bloqueia acesso após prazo
     
+    # Plan change tracking
+    previous_plan_name = StringField()  # Nome do plano anterior (quando troca de plano)
+    previous_amount = FloatField()  # Valor do plano anterior
+    changed_at = DateTimeField()  # Data da troca de plano
+    change_reason = StringField()  # Motivo da troca
+    
     meta = {
         'collection': 'subscriptions',
         'indexes': [
@@ -446,6 +462,10 @@ class Subscription(BaseDocument):
             'access_blocked': self.access_blocked,
             'cancel_at_period_end': self.cancel_at_period_end,
             'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
+            'previous_plan_name': self.previous_plan_name,
+            'previous_amount': self.previous_amount,
+            'changed_at': self.changed_at.isoformat() if self.changed_at else None,
+            'change_reason': self.change_reason,
         })
         return base_dict
 

@@ -686,6 +686,10 @@ class LoginCustomer(Resource):
                     'has_accepted_terms': customer.has_accepted_terms,
                     'require_payment_method': customer.require_payment_method,
                     'requires_password_change': not customer.password_changed,
+                    'current_plan_name': customer.current_plan_name,
+                    'previous_plan_name': customer.previous_plan_name,
+                    'previous_plan_amount': customer.previous_plan_amount,
+                    'plan_changed_at': customer.plan_changed_at.isoformat() if customer.plan_changed_at else None,
                     'user': {
                         'id': str(customer.id),
                         'name': customer.name,

@@ -239,6 +239,10 @@ class SubscriptionResource(Resource):
             existing_subscription.updated_by = None
             existing_subscription.save()
             
+            # Get old plan name for tracking
+            old_plan_name = existing_subscription.plan_name
+            old_plan_amount = existing_subscription.amount
+            
             # Ensure MP plan ID exists
             mp_plan_id = new_plan.mp_preapproval_plan_id
             if not mp_plan_id:
@@ -292,7 +296,7 @@ class SubscriptionResource(Resource):
                     return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
                 return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
             
-            # Create new subscription record
+            # Create new subscription record with plan change tracking
             subscription = Subscription(
                 customer_id=current_customer,
                 company_id=current_customer.company_id,
@@ -303,15 +307,23 @@ class SubscriptionResource(Resource):
                 status='pending',
                 billing_cycle=new_plan.billing_cycle,
                 currency='BRL',
+                previous_plan_name=old_plan_name,
+                previous_amount=old_plan_amount,
+                changed_at=datetime.utcnow(),
+                change_reason='customer_requested',
                 created_by=None,
                 updated_by=None
             )
             subscription.save()
             
-            # Update customer with new subscription info
+            # Update customer with new subscription info and plan change tracking
             current_customer.mp_subscription_id = mp_subscription['subscription_id']
             current_customer.mp_preapproval_plan_id = mp_plan_id
             current_customer.payment_url = mp_subscription['init_point']
+            current_customer.current_plan_name = new_plan.name
+            current_customer.previous_plan_name = old_plan_name
+            current_customer.previous_plan_amount = old_plan_amount
+            current_customer.plan_changed_at = datetime.utcnow()
             current_customer.save()
             
             logger.info(f"Subscription plan changed for customer {current_customer.email}, new plan: {new_plan.name}, MP subscription ID: {mp_subscription['subscription_id']}")
@@ -323,6 +335,11 @@ class SubscriptionResource(Resource):
                 'amount': new_plan.amount,
                 'payment_url': mp_subscription['init_point'],
                 'mp_subscription_id': mp_subscription['subscription_id'],
+                'previous_plan': {
+                    'plan_name': old_plan_name,
+                    'amount': old_plan_amount
+                },
+                'changed_at': subscription.changed_at.isoformat() if subscription.changed_at else None
             }, 200
             
         except Exception as e:

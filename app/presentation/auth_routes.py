@@ -296,21 +296,6 @@ def customer_token_required(f):
                     logger.warning(f"Inactive customer attempted to access: {current_customer.email}")
                     return {'message': 'Cliente inativo', 'error': 'inactive_customer'}, 401
                 
-                # Verificar se o cliente precisa de assinatura e não tem nenhuma
-                if current_customer.require_payment_method:
-                    active_subscription = Subscription.objects(
-                        customer_id=current_customer.id,
-                        status__in=['active', 'pending'],
-                        visible=True
-                    ).first()
-                    if not active_subscription:
-                        logger.warning(f"Customer {current_customer.email} requires payment but has no active subscription")
-                        return {
-                            'message': 'Assinatura necessária. Ative uma assinatura para continuar.',
-                            'error': 'subscription_required',
-                            'payment_url': current_customer.payment_url
-                        }, 403
-
                 # Verificar bloqueio por pagamento atrasado
                 if current_customer.subscription_blocked:
                     logger.warning(f"Blocked customer attempted to access: {current_customer.email}")

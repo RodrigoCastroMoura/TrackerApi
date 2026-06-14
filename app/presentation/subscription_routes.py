@@ -1,7 +1,7 @@
 import os
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Customer, Subscription, Payment, SubscriptionPlan
+from app.domain.models import Customer, Subscription, SubscriptionPlan
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from app.presentation.auth_routes import customer_token_required
 from mongoengine import DoesNotExist
@@ -329,43 +329,6 @@ class SubscriptionResource(Resource):
             logger.error(f"Error changing subscription plan: {str(e)}")
             return {'message': 'Erro ao trocar de plano'}, 500
 
-@api.route('/check')
-class SubscriptionCheckResource(Resource):
-    @api.doc('check_subscription_status')
-    @customer_token_required
-    def get(self, current_customer):
-        """Verificar status da assinatura do cliente autenticado"""
-        try:
-            subscription = Subscription.objects(
-                customer_id=current_customer.id,
-                visible=True
-            ).order_by('-created_at').first()
-
-            if not subscription:
-                return {
-                    'has_subscription': False,
-                    'message': 'Nenhuma assinatura encontrada'
-                }, 200
-
-            return {
-                'has_subscription': True,
-                'subscription_id': str(subscription.id),
-                'plan_name': subscription.plan_name,
-                'amount': subscription.amount,
-                'status': subscription.status,
-                'current_period_end': subscription.current_period_end.isoformat() if subscription.current_period_end else None,
-                'grace_period_end': subscription.grace_period_end.isoformat() if subscription.grace_period_end else None,
-                'payment_deadline': current_customer.payment_deadline.isoformat() if current_customer.payment_deadline else None,
-                'subscription_blocked': current_customer.subscription_blocked,
-                'subscription_blocked_reason': current_customer.subscription_blocked_reason,
-                'payment_url': current_customer.payment_url,
-                'access_blocked': subscription.access_blocked,
-            }, 200
-
-        except Exception as e:
-            logger.error(f"Error checking subscription status: {str(e)}")
-            return {'message': 'Erro ao verificar assinatura'}, 500
-
 @api.route('/cancel')
 class SubscriptionCancel(Resource):
     
@@ -410,64 +373,18 @@ class SubscriptionCancel(Resource):
             logger.error(f"Error canceling subscription: {str(e)}")
             return {'message': 'Erro ao cancelar assinatura'}, 500
 
-@api.route('/payments')
-class PaymentHistory(Resource):
-    
-    @api.doc('get_payment_history')
-    @customer_token_required
-    def get(self, current_customer):
-        """Histórico de pagamentos do customer autenticado"""
-        try:
-            page = int(request.args.get('page', 1))
-            per_page = int(request.args.get('per_page', 20))
-            
-            if page < 1 or per_page < 1 or per_page > 100:
-                return {'message': 'Parâmetros de paginação inválidos'}, 400
-            
-            skip = (page - 1) * per_page
-            
-            payments = Payment.objects(
-                customer_id=current_customer.id,
-                visible=True
-            ).order_by('-payment_date').skip(skip).limit(per_page)
-            
-            total = Payment.objects(
-                customer_id=current_customer.id,
-                visible=True
-            ).count()
-            
-            return {
-                'payments': [p.to_dict() for p in payments],
-                'page': page,
-                'per_page': per_page,
-                'total': total,
-                'pages': (total + per_page - 1) // per_page
-            }, 200
-            
-        except Exception as e:
-            logger.error(f"Error getting payment history: {str(e)}")
-            return {'message': 'Erro ao consultar histórico de pagamentos'}, 500
-
-
 @api.route('/statement')
 class SubscriptionStatement(Resource):
     
     @api.doc('get_subscription_statement',
              params={
                  'month': {'type': 'string', 'description': 'Mês no formato YYYY-MM (ex: 2026-06)', 'default': ''},
-                 'page': {'type': 'integer', 'default': 1},
-                 'per_page': {'type': 'integer', 'default': 20}
              })
     @customer_token_required
     def get(self, current_customer):
-        """Extrato mensal de pagamentos da assinatura (recorrente)"""
+        """Resumo da assinatura ativa do cliente"""
         try:
-            page = int(request.args.get('page', 1))
-            per_page = int(request.args.get('per_page', 20))
             month_filter = request.args.get('month', '').strip()
-            
-            if page < 1 or per_page < 1 or per_page > 100:
-                return {'message': 'Parâmetros de paginação inválidos'}, 400
             
             # Get subscription
             subscription = Subscription.objects(
@@ -477,61 +394,6 @@ class SubscriptionStatement(Resource):
             
             if not subscription:
                 return {'message': 'Nenhuma assinatura encontrada'}, 404
-            
-            # Build payment query
-            payment_query = {
-                'customer_id': current_customer.id,
-                'visible': True
-            }
-            
-            # Month filter
-            if month_filter:
-                try:
-                    year, month = month_filter.split('-')
-                    start = datetime(int(year), int(month), 1)
-                    if int(month) == 12:
-                        end = datetime(int(year) + 1, 1, 1)
-                    else:
-                        end = datetime(int(year), int(month) + 1, 1)
-                    payment_query['payment_date__gte'] = start
-                    payment_query['payment_date__lt'] = end
-                except ValueError:
-                    return {'message': 'Formato de mês inválido. Use YYYY-MM (ex: 2026-06)'}, 400
-            
-            # Get payments for this month
-            payments = Payment.objects(**payment_query).order_by('-payment_date')
-            
-            # Group by month
-            monthly_summary = {}
-            for p in payments:
-                if p.payment_date:
-                    key = p.payment_date.strftime('%Y-%m')
-                    if key not in monthly_summary:
-                        monthly_summary[key] = {
-                            'month': key,
-                            'month_label': p.payment_date.strftime('%B/%Y').capitalize(),
-                            'total': 0.0,
-                            'payments': [],
-                            'count': 0
-                        }
-                    monthly_summary[key]['total'] += float(p.amount)
-                    monthly_summary[key]['count'] += 1
-                    monthly_summary[key]['payments'].append(p.to_dict())
-            
-            # Sort by month descending
-            sorted_months = sorted(monthly_summary.keys(), reverse=True)
-            
-            # Paginate months
-            total_months = len(sorted_months)
-            total_pages = (total_months + per_page - 1) // per_page
-            start_idx = (page - 1) * per_page
-            end_idx = start_idx + per_page
-            paginated_months = sorted_months[start_idx:end_idx]
-            
-            months_data = [monthly_summary[m] for m in paginated_months]
-            
-            # Calculate totals
-            total_paid = sum(m['total'] for m in monthly_summary.values())
             
             # Check if payment is overdue
             now = datetime.utcnow()
@@ -559,8 +421,6 @@ class SubscriptionStatement(Resource):
                     'payment_deadline': current_customer.payment_deadline.isoformat() if current_customer.payment_deadline else None
                 },
                 'summary': {
-                    'total_paid': round(total_paid, 2),
-                    'total_months': total_months,
                     'plan_amount': subscription.amount,
                     'plan_name': subscription.plan_name,
                     'status': subscription.status,
@@ -570,12 +430,7 @@ class SubscriptionStatement(Resource):
                     'days_overdue': days_overdue,
                     'days_until_block': days_until_block,
                     'access_blocked': subscription.access_blocked
-                },
-                'months': months_data,
-                'page': page,
-                'per_page': per_page,
-                'total': total_months,
-                'pages': total_pages
+                }
             }, 200
             
         except Exception as e:

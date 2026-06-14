@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource
-from app.domain.models import Payment, Customer, Subscription
+from app.domain.models import Customer, Subscription
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime, timedelta
 import logging
@@ -183,29 +183,6 @@ class MercadoPagoWebhook(Resource):
                 # Get customer from subscription
                 customer = subscription.customer_id
                 
-                # Record the payment
-                existing_payment = Payment.objects(
-                    mp_payment_id=str(authorized_payment.get('payment_id', resource_id))
-                ).first()
-                
-                if not existing_payment:
-                    payment = Payment(
-                        customer_id=customer,
-                        company_id=customer.company_id,
-                        mp_payment_id=str(authorized_payment.get('payment_id', resource_id)),
-                        amount=authorized_payment.get('transaction_amount', 0),
-                        currency=authorized_payment.get('currency_id', 'BRL'),
-                        description=f"Pagamento recorrente - {subscription.plan_name}",
-                        status='succeeded',
-                        payment_date=datetime.utcnow(),
-                        created_by=None,
-                        updated_by=None
-                    )
-                    payment.save()
-                    logger.info(f"Payment recorded for authorized payment: {payment.id}")
-                else:
-                    logger.info(f"Payment already exists for authorized payment: {existing_payment.id}")
-                
                 # Atualizar período e prazo de pagamento
                 next_payment_date = datetime.utcnow() + timedelta(days=30)
                 grace_period_end = next_payment_date + timedelta(days=15)
@@ -256,41 +233,6 @@ class MercadoPagoWebhook(Resource):
                 customer.save()
                 logger.info(f"Customer {customer.id} payment updated - status: {customer.mp_status}")
                 
-                existing_payment = Payment.objects(mp_payment_id=str(payment_info['id'])).first()
-                
-                if not existing_payment:
-                    payment_status = 'succeeded' if mp_status == 'approved' else (
-                        'processing' if mp_status in ['pending', 'in_process'] else (
-                        'failed' if mp_status in ['rejected', 'cancelled'] else (
-                        'refunded' if mp_status == 'refunded' else 'pending')))
-                    
-                    payment = Payment(
-                        customer_id=customer,
-                        company_id=customer.company_id,
-                        mp_payment_id=str(payment_info['id']),
-                        amount=payment_info['transaction_amount'],
-                        currency=payment_info['currency_id'],
-                        description=f"Pagamento de assinatura - {customer.name}",
-                        status=payment_status,
-                        payment_date=datetime.fromisoformat(payment_info['date_created'].replace('Z', '+00:00')) if payment_info.get('date_created') else datetime.utcnow(),
-                        payment_method=payment_info.get('payment_method_id', 'mercadopago'),
-                        created_by=None,
-                        updated_by=None
-                    )
-                    
-                    if mp_status in ['rejected', 'cancelled']:
-                        payment.failure_message = payment_info.get('status_detail', 'Pagamento rejeitado')
-                    
-                    payment.save()
-                    logger.info(f"Payment recorded: {payment.id}")
-                else:
-                    existing_payment.status = 'succeeded' if mp_status == 'approved' else (
-                        'processing' if mp_status in ['pending', 'in_process'] else (
-                        'failed' if mp_status in ['rejected', 'cancelled'] else (
-                        'refunded' if mp_status == 'refunded' else 'pending')))
-                    existing_payment.save()
-                    logger.info(f"Payment updated: {existing_payment.id}")
-            
             return {'message': 'Webhook processado com sucesso'}, 200
             
         except Exception as e:

@@ -133,6 +133,7 @@ class MercadoPagoWebhook(Resource):
                     customer.payment_deadline = subscription.grace_period_end
                     customer.subscription_blocked = False
                     customer.subscription_blocked_reason = None
+                    customer.require_payment_method = False
                     if not customer.payment_date:
                         customer.payment_date = datetime.utcnow()
                 elif mp_status == 'paused':

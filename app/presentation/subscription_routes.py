@@ -329,6 +329,43 @@ class SubscriptionResource(Resource):
             logger.error(f"Error changing subscription plan: {str(e)}")
             return {'message': 'Erro ao trocar de plano'}, 500
 
+@api.route('/check')
+class SubscriptionCheckResource(Resource):
+    @api.doc('check_subscription_status')
+    @customer_token_required
+    def get(self, current_customer):
+        """Verificar status da assinatura do cliente autenticado"""
+        try:
+            subscription = Subscription.objects(
+                customer_id=current_customer.id,
+                visible=True
+            ).order_by('-created_at').first()
+
+            if not subscription:
+                return {
+                    'has_subscription': False,
+                    'message': 'Nenhuma assinatura encontrada'
+                }, 200
+
+            return {
+                'has_subscription': True,
+                'subscription_id': str(subscription.id),
+                'plan_name': subscription.plan_name,
+                'amount': subscription.amount,
+                'status': subscription.status,
+                'current_period_end': subscription.current_period_end.isoformat() if subscription.current_period_end else None,
+                'grace_period_end': subscription.grace_period_end.isoformat() if subscription.grace_period_end else None,
+                'payment_deadline': current_customer.payment_deadline.isoformat() if current_customer.payment_deadline else None,
+                'subscription_blocked': current_customer.subscription_blocked,
+                'subscription_blocked_reason': current_customer.subscription_blocked_reason,
+                'payment_url': current_customer.payment_url,
+                'access_blocked': subscription.access_blocked,
+            }, 200
+
+        except Exception as e:
+            logger.error(f"Error checking subscription status: {str(e)}")
+            return {'message': 'Erro ao verificar assinatura'}, 500
+
 @api.route('/cancel')
 class SubscriptionCancel(Resource):
     

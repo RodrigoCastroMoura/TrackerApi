@@ -384,22 +384,44 @@ class SubscriptionPlan(BaseDocument):
         })
         return base_dict
 
+class SubscriptionPayment(EmbeddedDocument):
+    """Registro de um pagamento mensal da assinatura"""
+    mp_authorized_payment_id = StringField(required=True)
+    amount = FloatField(required=True)
+    currency = StringField(default='BRL')
+    status = StringField(choices=['approved', 'rejected', 'pending'], default='pending')
+    paid_at = DateTimeField()
+    period_start = DateTimeField()
+    period_end = DateTimeField()
+
+    def to_dict(self):
+        return {
+            'mp_authorized_payment_id': self.mp_authorized_payment_id,
+            'amount': self.amount,
+            'currency': self.currency,
+            'status': self.status,
+            'paid_at': self.paid_at.isoformat() if self.paid_at else None,
+            'period_start': self.period_start.isoformat() if self.period_start else None,
+            'period_end': self.period_end.isoformat() if self.period_end else None,
+        }
+
+
 class Subscription(BaseDocument):
     """Subscription model for monthly recurring payments"""
     customer_id = ReferenceField('Customer', required=True)
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
-    
+
     # Mercado Pago data
     mp_subscription_id = StringField(unique=True, sparse=True)
     mp_payer_id = StringField()  # Mercado Pago customer/payer ID
     mp_preapproval_plan_id = StringField()  # Preapproval plan ID
-    
+
     # Subscription details
     plan_name = StringField(required=True)  # Nome do plano
     amount = FloatField(required=True)  # Valor mensal em reais
     currency = StringField(default='BRL')
     billing_cycle = StringField(choices=['monthly', 'weekly', 'yearly'], default='monthly')
-    
+
     # Status and dates
     status = StringField(
         choices=['active', 'canceled', 'past_due', 'unpaid', 'incomplete', 'pending'],
@@ -410,13 +432,16 @@ class Subscription(BaseDocument):
     grace_period_end = DateTimeField()  # Prazo de pagamento (15 dias após vencimento)
     cancel_at_period_end = BooleanField(default=False)
     canceled_at = DateTimeField()
-    
+
     visible = BooleanField(default=True)
-    
+
     # Payment deadline
     payment_deadline = DateTimeField()  # Data limite para pagamento (vencimento + 15 dias)
     access_blocked = BooleanField(default=False)  # Bloqueia acesso após prazo
-    
+
+    # Historical monthly payments
+    payment_history = EmbeddedDocumentListField(SubscriptionPayment, default=list)
+
     meta = {
         'collection': 'subscriptions',
         'indexes': [
@@ -426,7 +451,7 @@ class Subscription(BaseDocument):
             {'fields': ['status']},
         ]
     }
-    
+
     def to_dict(self):
         """Convert to dictionary for API responses"""
         base_dict = super(Subscription, self).to_dict()
@@ -446,6 +471,7 @@ class Subscription(BaseDocument):
             'access_blocked': self.access_blocked,
             'cancel_at_period_end': self.cancel_at_period_end,
             'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
+            'payment_history': [p.to_dict() for p in (self.payment_history or [])],
         })
         return base_dict
 

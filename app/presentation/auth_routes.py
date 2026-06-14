@@ -1,7 +1,7 @@
 import logging
 from flask import request, jsonify
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import SubscriptionPlan, User, Customer, Vehicle, Subscription
+from app.domain.models import User, Customer, Subscription
 from functools import wraps
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -9,7 +9,6 @@ import jwt
 import datetime
 from mongoengine.errors import DoesNotExist
 from mongoengine import Document, StringField, DateTimeField
-from app.infrastructure.mercadopago_service import MercadoPagoService
 from config import Config
 import os
 import string
@@ -303,14 +302,16 @@ def customer_token_required(f):
                         status__in=['active', 'pending'],
                         visible=True
                     ).first()
-                    if not active_subscription:
-                        logger.warning(f"Customer {current_customer.email} requires payment but has no active subscription")
-                        return {
-                            'message': 'Assinatura necessária. Ative uma assinatura para continuar.',
-                            'error': 'subscription_required',
-                            'payment_url': current_customer.payment_url
-                        }, 403
+                    if active_subscription:
 
+                        if active_subscription.status == 'pending':
+                            logger.info(f"Customer {current_customer.email} has pending subscription")
+                            return {
+                                'message': 'Assinatura pendente. Aguarde a confirmação do pagamento.',
+                                'error': 'subscription_pending',
+                                'payment_url': current_customer.payment_url
+                            }, 403
+                    
                 # Verificar bloqueio por pagamento atrasado
                 if current_customer.subscription_blocked:
                     logger.warning(f"Blocked customer attempted to access: {current_customer.email}")
@@ -338,52 +339,6 @@ def customer_token_required(f):
             return {'message': 'Erro na validação do token', 'error': 'validation_error'}, 500
 
     return decorated
-
-def create_subscription(customer)->StringField:
-    """Cria uma assinatura padrão para o customer via link de pagamento"""
-    try:
-
-        total_vehicles = Vehicle.objects(customer_id=customer.id, visible=True).count()
-
-        default_plan = SubscriptionPlan.objects(
-            max_vehicles__gte=total_vehicles,
-            is_active=True,
-            visible=True
-        ).order_by('max_vehicles', 'amount').first()
-        
-        if not default_plan:
-            logger.error(f"No active subscription plan found for {customer.id} matching {total_vehicles} vehicles")
-            return None
-        
-           
-        mp_subscription = MercadoPagoService.create_pending_subscription(
-            reason=f"Assinatura - {default_plan.name}",
-            payer_email=customer.email,
-            amount=default_plan.amount,
-            frequency=1,
-            frequency_type='months',
-            back_url=f"https://www.rcminformatica.tec.br/",
-            external_reference=str(customer.id)
-        )
-            
-        if not mp_subscription:
-            logger.error(f"Failed to create Mercado Pago subscription for customer {customer.id}")
-            return None
-        
-        if mp_subscription.get('error'):
-            logger.error(f"Mercado Pago error: {mp_subscription.get('message')}")
-            return None
-       
-        customer.mp_subscription_id = mp_subscription['subscription_id']
-        customer.mp_preapproval_plan_id = default_plan.mp_preapproval_plan_id
-        customer.payment_url = mp_subscription['init_point']
-        customer.save()
-
-        return mp_subscription['init_point']
-
-    except Exception as e:
-        logger.error(f"Error creating subscription for customer {customer.email}: {str(e)}")
-        return None
 
 @api.route('/login')
 class Login(Resource):
@@ -668,13 +623,6 @@ class LoginCustomer(Resource):
                     customer.save()
                     logger.debug(f"FCM token updated for customer: {customer.email}")
 
-                if customer.require_payment_method:
-                    logger.info(f"Customer {customer.email} requires payment method")
-                    payment_url = create_subscription(customer)
-                else:                    
-                    payment_url = None
-                
-
                 access_token = create_token(customer, 'customer')
                 refresh_token = create_token(customer, 'refresh')
 
@@ -695,10 +643,6 @@ class LoginCustomer(Resource):
                         'phone': customer.phone
                     }
                 }
-
-                # Só adiciona se existir
-                if payment_url:
-                    response['payment_url'] = payment_url
 
                 return response, 200
 

@@ -61,12 +61,12 @@ class SubscriptionResource(Resource):
             # Check for existing active subscription
             existing_subscription = Subscription.objects(
                 customer_id=current_customer.id,
-                status__in=['active', 'incomplete', 'pending'],
+                status__in=['active'],
                 visible=True
             ).first()
             
             if existing_subscription:
-                return {'message': 'Cliente já possui uma assinatura ativa ou pendente'}, 400
+                return {'message': 'Cliente já possui uma assinatura ativa'}, 400
             
             # Step 2: Create or reuse Mercado Pago preapproval plan
             mp_plan_id = plan.mp_preapproval_plan_id
@@ -375,42 +375,41 @@ class SubscriptionCancel(Resource):
 
 @api.route('/statement')
 class SubscriptionStatement(Resource):
-    
-    @api.doc('get_subscription_statement',
-             params={
-                 'month': {'type': 'string', 'description': 'Mês no formato YYYY-MM (ex: 2026-06)', 'default': ''},
-             })
+
+    @api.doc('get_subscription_statement')
     @customer_token_required
     def get(self, current_customer):
-        """Resumo da assinatura ativa do cliente"""
+        """Resumo e histórico de pagamentos da assinatura ativa do cliente"""
         try:
-            month_filter = request.args.get('month', '').strip()
-            
-            # Get subscription
             subscription = Subscription.objects(
                 customer_id=current_customer.id,
                 visible=True
             ).order_by('-created_at').first()
-            
+
             if not subscription:
                 return {'message': 'Nenhuma assinatura encontrada'}, 404
-            
-            # Check if payment is overdue
+
             now = datetime.utcnow()
             is_overdue = False
             days_overdue = 0
             days_until_block = None
-            
+
             if subscription.current_period_end and now > subscription.current_period_end:
                 is_overdue = True
                 days_overdue = (now - subscription.current_period_end).days
-                
+
                 if subscription.grace_period_end:
                     if now > subscription.grace_period_end:
                         days_until_block = 0
                     else:
                         days_until_block = (subscription.grace_period_end - now).days
-            
+
+            payment_history = sorted(
+                [p.to_dict() for p in (subscription.payment_history or [])],
+                key=lambda p: p['paid_at'] or '',
+                reverse=True
+            )
+
             return {
                 'subscription': subscription.to_dict(),
                 'customer': {
@@ -430,9 +429,13 @@ class SubscriptionStatement(Resource):
                     'days_overdue': days_overdue,
                     'days_until_block': days_until_block,
                     'access_blocked': subscription.access_blocked
+                },
+                'payment_history': {
+                    'total_payments': len(payment_history),
+                    'payments': payment_history
                 }
             }, 200
-            
+
         except Exception as e:
             logger.error(f"Error getting subscription statement: {str(e)}")
             return {'message': 'Erro ao gerar extrato'}, 500

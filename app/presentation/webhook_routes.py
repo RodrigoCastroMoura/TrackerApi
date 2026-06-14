@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource
-from app.domain.models import Customer, Subscription
+from app.domain.models import Customer, Subscription, SubscriptionPayment
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime, timedelta
 import logging
@@ -184,12 +184,31 @@ class MercadoPagoWebhook(Resource):
                 customer = subscription.customer_id
                 
                 # Atualizar período e prazo de pagamento
-                next_payment_date = datetime.utcnow() + timedelta(days=30)
+                now = datetime.utcnow()
+                next_payment_date = now + timedelta(days=30)
                 grace_period_end = next_payment_date + timedelta(days=15)
-                
+
                 subscription.current_period_end = next_payment_date
                 subscription.grace_period_end = grace_period_end
                 subscription.access_blocked = False
+
+                # Registrar pagamento no histórico (dedup por mp_authorized_payment_id)
+                already_registered = any(
+                    p.mp_authorized_payment_id == str(resource_id)
+                    for p in subscription.payment_history
+                )
+                if not already_registered:
+                    payment_entry = SubscriptionPayment(
+                        mp_authorized_payment_id=str(resource_id),
+                        amount=authorized_payment.get('transaction_amount', subscription.amount),
+                        currency=authorized_payment.get('currency_id', 'BRL'),
+                        status='approved' if authorized_payment.get('status') == 'approved' else authorized_payment.get('status', 'pending'),
+                        paid_at=now,
+                        period_start=now,
+                        period_end=next_payment_date,
+                    )
+                    subscription.payment_history.append(payment_entry)
+
                 subscription.save()
                 
                 customer.payment_deadline = grace_period_end

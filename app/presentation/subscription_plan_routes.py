@@ -205,3 +205,24 @@ class SubscriptionPlanResource(Resource):
         except Exception as e:
             logger.error(f"Error deleting subscription plan: {str(e)}")
             return {'message': 'Error deleting subscription plan'}, 500
+
+api.route('/int/<max_vehicles>')
+@api.param('max_vehicles', 'The maximum number of vehicles for the subscription plan')
+class SubscriptionPlanMaxVehiclesResource(Resource):
+    @api.doc('get_subscription_plan', security=None)
+    @api.marshal_with(subscription_plan_response)
+    def get(self, max_vehicles):
+        """Get subscription plan details (public endpoint)"""
+        try:
+            plan = SubscriptionPlan.objects(max_vehicles=max_vehicles, visible=True).first()
+            
+            if not plan:
+                return {'message': 'Subscription plan not found'}, 404
+            
+            return plan.to_dict(), 200
+            
+        except Exception as e:
+            logger.error(f"Error getting subscription plan: {str(e)}")
+            return {'message': 'Error getting subscription plan'}, 500
+    
+

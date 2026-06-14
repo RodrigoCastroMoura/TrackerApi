@@ -363,7 +363,8 @@ class SubscriptionPlan(BaseDocument):
             {'fields': ['company_id']},
             {'fields': ['is_active']},
             {'fields': ['mp_preapproval_plan_id'], 'unique': True, 'sparse': True},
-        ]
+        ],
+        'strict': False  # Allow extra fields from old schema versions
     }
     
     def to_dict(self):

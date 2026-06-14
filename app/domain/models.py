@@ -285,6 +285,7 @@ class Customer(BaseDocument):
     previous_plan_name = StringField()  # Nome do plano anterior
     previous_plan_amount = FloatField()  # Valor do plano anterior
     plan_changed_at = DateTimeField()  # Data da última troca de plano
+    can_change_plan = BooleanField(default=False)  # Flag que indica se o usuario pode trocar de plano
 
     
     meta = {
@@ -343,6 +344,7 @@ class Customer(BaseDocument):
             'previous_plan_name': self.previous_plan_name,
             'previous_plan_amount': self.previous_plan_amount,
             'plan_changed_at': self.plan_changed_at.isoformat() if self.plan_changed_at else None,
+            'can_change_plan': self.can_change_plan,
         })
         return base_dict
 

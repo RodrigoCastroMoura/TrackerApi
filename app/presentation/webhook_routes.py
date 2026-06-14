@@ -134,6 +134,7 @@ class MercadoPagoWebhook(Resource):
                     customer.subscription_blocked = False
                     customer.subscription_blocked_reason = None
                     customer.require_payment_method = False
+                    customer.can_change_plan = True
                     if not customer.payment_date:
                         customer.payment_date = datetime.utcnow()
                 elif mp_status == 'paused':
@@ -146,6 +147,7 @@ class MercadoPagoWebhook(Resource):
                     customer.mp_status = 'canceled'
                     customer.subscription_blocked = True
                     customer.subscription_blocked_reason = 'Assinatura cancelada'
+                    customer.can_change_plan = False
                 elif mp_status == 'pending':
                     subscription.status = 'pending'
                     customer.mp_status = 'pending'

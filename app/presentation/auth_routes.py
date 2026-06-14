@@ -326,6 +326,14 @@ def customer_token_required(f):
                     logger.warning("Token email mismatch with current customer")
                     return {'message': 'Token inválido', 'error': 'email_mismatch'}, 401
 
+                # Verificar se pode trocar de plano
+                active_subscription = Subscription.objects(
+                    customer_id=current_customer.id,
+                    status='active',
+                    visible=True
+                ).first()
+                current_customer.can_change_plan = active_subscription is not None
+
                 if len(args) > 0 and isinstance(args[0], Resource):
                     return f(args[0], current_customer=current_customer, *args[1:], **kwargs)
                 return f(current_customer, *args, **kwargs)
@@ -634,6 +642,11 @@ class LoginCustomer(Resource):
                     'has_accepted_terms': customer.has_accepted_terms,
                     'require_payment_method': customer.require_payment_method,
                     'requires_password_change': not customer.password_changed,
+                    'current_plan_name': customer.current_plan_name,
+                    'previous_plan_name': customer.previous_plan_name,
+                    'previous_plan_amount': customer.previous_plan_amount,
+                    'plan_changed_at': customer.plan_changed_at.isoformat() if customer.plan_changed_at else None,
+                    'can_change_plan': customer.can_change_plan,
                     'user': {
                         'id': str(customer.id),
                         'name': customer.name,

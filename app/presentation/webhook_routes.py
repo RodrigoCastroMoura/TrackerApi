@@ -259,6 +259,22 @@ class MercadoPagoWebhook(Resource):
                         subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
                         subscription.access_blocked = False
                         customer.payment_deadline = subscription.grace_period_end
+
+                        already_registered = any(
+                            p.mp_authorized_payment_id == str(resource_id)
+                            for p in subscription.payment_history
+                        )
+                        if not already_registered:
+                            subscription.payment_history.append(SubscriptionPayment(
+                                mp_authorized_payment_id=str(resource_id),
+                                amount=payment_info.get('transaction_amount', subscription.amount),
+                                currency=payment_info.get('currency_id', 'BRL'),
+                                status='approved',
+                                paid_at=now,
+                                period_start=now,
+                                period_end=subscription.current_period_end,
+                            ))
+
                         subscription.save()
                         logger.info(f"Subscription {subscription.id} activated via payment webhook")
 

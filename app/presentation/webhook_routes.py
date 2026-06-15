@@ -154,7 +154,6 @@ class MercadoPagoWebhook(Resource):
                     subscription.access_blocked = False
                     if not subscription.payment_date:
                         subscription.payment_date = now
-                    customer.payment_deadline = subscription.grace_period_end
                     customer.subscription_blocked = False
                     customer.subscription_blocked_reason = None
                     customer.require_payment_method = False
@@ -235,7 +234,6 @@ class MercadoPagoWebhook(Resource):
 
                 subscription.save()
                 
-                customer.payment_deadline = grace_period_end
                 customer.subscription_blocked = False
                 customer.subscription_blocked_reason = None
                 customer.save()
@@ -281,7 +279,6 @@ class MercadoPagoWebhook(Resource):
                             subscription.current_period_end = now + timedelta(days=30)
                             subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
                             subscription.access_blocked = False
-                            customer.payment_deadline = subscription.grace_period_end
 
                         already_registered = any(
                             p.mp_authorized_payment_id == str(resource_id)

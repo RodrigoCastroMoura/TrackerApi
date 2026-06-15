@@ -314,12 +314,16 @@ def customer_token_required(f):
                     
                 # Verificar bloqueio por pagamento atrasado
                 if current_customer.subscription_blocked:
+                    blocked_sub = Subscription.objects(
+                        customer_id=current_customer.id,
+                        visible=True
+                    ).order_by('-created_at').first()
                     logger.warning(f"Blocked customer attempted to access: {current_customer.email}")
                     return {
                         'message': 'Acesso bloqueado. Pagamento atrasado.',
                         'error': 'subscription_blocked',
                         'blocked_reason': current_customer.subscription_blocked_reason,
-                        'payment_deadline': current_customer.payment_deadline.isoformat() if current_customer.payment_deadline else None
+                        'payment_deadline': blocked_sub.grace_period_end.isoformat() if blocked_sub and blocked_sub.grace_period_end else None
                     }, 403
 
                 if current_customer.email != data['email']:
@@ -602,17 +606,22 @@ class LoginCustomer(Resource):
                     return {'message': 'Usuário inativo'}, 401
                 
                 # Verificar se acesso está bloqueado por pagamento atrasado
+                active_sub = Subscription.objects(
+                    customer_id=customer.id,
+                    visible=True
+                ).order_by('-created_at').first()
+
                 if customer.subscription_blocked:
                     logger.warning(f"Login attempt by blocked customer: {customer.email}")
                     return {
                         'message': 'Acesso bloqueado. Pagamento atrasado.',
                         'error': 'subscription_blocked',
                         'blocked_reason': customer.subscription_blocked_reason,
-                        'payment_deadline': customer.payment_deadline.isoformat() if customer.payment_deadline else None
+                        'payment_deadline': active_sub.grace_period_end.isoformat() if active_sub and active_sub.grace_period_end else None
                     }, 403
-                
+
                 # Verificar se passou do prazo de pagamento (15 dias após vencimento)
-                if customer.payment_deadline and datetime.datetime.utcnow() > customer.payment_deadline:
+                if active_sub and active_sub.grace_period_end and datetime.datetime.now(datetime.timezone.utc) > active_sub.grace_period_end.replace(tzinfo=datetime.timezone.utc):
                     customer.subscription_blocked = True
                     customer.subscription_blocked_reason = 'Pagamento atrasado. Prazo de 15 dias expirado.'
                     customer.save()
@@ -621,7 +630,7 @@ class LoginCustomer(Resource):
                         'message': 'Acesso bloqueado. Pagamento atrasado.',
                         'error': 'subscription_blocked',
                         'blocked_reason': customer.subscription_blocked_reason,
-                        'payment_deadline': customer.payment_deadline.isoformat() if customer.payment_deadline else None
+                        'payment_deadline': active_sub.grace_period_end.isoformat()
                     }, 403
 
                 if not fcm_token:

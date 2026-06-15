@@ -429,7 +429,7 @@ class SubscriptionStatement(Resource):
                     'email': current_customer.email,
                     'subscription_blocked': current_customer.subscription_blocked,
                     'subscription_blocked_reason': current_customer.subscription_blocked_reason,
-                    'payment_deadline': current_customer.payment_deadline.isoformat() if current_customer.payment_deadline else None
+                    'payment_deadline': subscription.grace_period_end.isoformat() if subscription.grace_period_end else None
                 },
                 'summary': {
                     'plan_amount': subscription.amount,

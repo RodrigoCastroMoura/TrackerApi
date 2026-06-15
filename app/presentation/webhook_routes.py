@@ -239,9 +239,29 @@ class MercadoPagoWebhook(Resource):
                 
                 mp_status = payment_info['status']
                 if mp_status == 'approved':
+                    now = datetime.utcnow()
                     customer.mp_status = 'succeeded'
-                    customer.payment_date = datetime.utcnow()
+                    customer.payment_date = now
                     customer.failure_message = None
+                    customer.require_payment_method = False
+                    customer.subscription_blocked = False
+                    customer.subscription_blocked_reason = None
+
+                    subscription = Subscription.objects(
+                        customer_id=customer.id,
+                        status__in=['pending', 'incomplete'],
+                        visible=True
+                    ).first()
+                    if subscription:
+                        subscription.status = 'active'
+                        subscription.current_period_start = now
+                        subscription.current_period_end = now + timedelta(days=30)
+                        subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
+                        subscription.access_blocked = False
+                        customer.payment_deadline = subscription.grace_period_end
+                        subscription.save()
+                        logger.info(f"Subscription {subscription.id} activated via payment webhook")
+
                 elif mp_status in ['pending', 'in_process']:
                     customer.mp_status = 'processing'
                 elif mp_status in ['rejected', 'cancelled']:
@@ -250,7 +270,7 @@ class MercadoPagoWebhook(Resource):
                 elif mp_status == 'refunded':
                     customer.mp_status = 'refunded'
                     customer.refunded_at = datetime.utcnow()
-                
+
                 customer.save()
                 logger.info(f"Customer {customer.id} payment updated - status: {customer.mp_status}")
                 

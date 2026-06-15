@@ -309,7 +309,7 @@ def customer_token_required(f):
                             return {
                                 'message': 'Assinatura pendente. Aguarde a confirmação do pagamento.',
                                 'error': 'subscription_pending',
-                                'payment_url': current_customer.payment_url
+                                'payment_url': active_subscription.payment_url
                             }, 403
                     
                 # Verificar bloqueio por pagamento atrasado

@@ -138,8 +138,6 @@ class MercadoPagoWebhook(Resource):
                         status='pending',
                     )
                     subscription.save()
-                    customer.mp_subscription_id = subscription_info['id']
-                    customer.save()
                     logger.info(f"Auto-linked orphan MP subscription {subscription_info['id']} to customer {customer.id}")
 
                 # Get customer from subscription
@@ -147,38 +145,39 @@ class MercadoPagoWebhook(Resource):
                 
                 mp_status = subscription_info['status']
                 if mp_status == 'authorized':
+                    now = datetime.now(timezone.utc)
                     subscription.status = 'active'
-                    subscription.current_period_start = datetime.now(timezone.utc)
-                    subscription.current_period_end = datetime.now(timezone.utc) + timedelta(days=30)
+                    subscription.mp_status = 'succeeded'
+                    subscription.current_period_start = now
+                    subscription.current_period_end = now + timedelta(days=30)
                     subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
                     subscription.access_blocked = False
-                    customer.mp_status = 'succeeded'
+                    if not subscription.payment_date:
+                        subscription.payment_date = now
                     customer.payment_deadline = subscription.grace_period_end
                     customer.subscription_blocked = False
                     customer.subscription_blocked_reason = None
                     customer.require_payment_method = False
-                    customer.can_change_plan = True
-                    if not customer.payment_date:
-                        customer.payment_date = datetime.now(timezone.utc)
+                    customer.can_change_plan = False
                 elif mp_status == 'paused':
                     subscription.status = 'pending'
-                    customer.mp_status = 'processing'
+                    subscription.mp_status = 'processing'
                 elif mp_status == 'cancelled':
                     subscription.status = 'canceled'
+                    subscription.mp_status = 'canceled'
                     subscription.canceled_at = datetime.now(timezone.utc)
                     subscription.access_blocked = True
-                    customer.mp_status = 'canceled'
                     customer.subscription_blocked = True
                     customer.subscription_blocked_reason = 'Assinatura cancelada'
                     customer.can_change_plan = False
                 elif mp_status == 'pending':
                     subscription.status = 'pending'
-                    customer.mp_status = 'pending'
-                
+                    subscription.mp_status = 'pending'
+
                 subscription.save()
                 customer.save()
-                
-                logger.info(f"Subscription {subscription.id} updated to {subscription.status}, customer {customer.id} updated to {customer.mp_status}")
+
+                logger.info(f"Subscription {subscription.id} updated to {subscription.status} / mp_status={subscription.mp_status}")
             
             elif topic in ['subscription_authorized_payment']:
                 # Webhook for authorized payment (recurring payment notification)
@@ -260,28 +259,29 @@ class MercadoPagoWebhook(Resource):
                     logger.warning(f"Customer not found for email: {payer_email}")
                     return {'message': 'Webhook recebido'}, 200
                 
+                subscription = Subscription.objects(
+                    customer_id=customer.id,
+                    visible=True
+                ).order_by('-created_at').first()
+
                 mp_status = payment_info['status']
                 if mp_status == 'approved':
                     now = datetime.now(timezone.utc)
-                    customer.mp_status = 'succeeded'
-                    customer.payment_date = now
-                    customer.failure_message = None
                     customer.require_payment_method = False
                     customer.subscription_blocked = False
                     customer.subscription_blocked_reason = None
 
-                    subscription = Subscription.objects(
-                        customer_id=customer.id,
-                        status__in=['pending', 'incomplete'],
-                        visible=True
-                    ).first()
                     if subscription:
-                        subscription.status = 'active'
-                        subscription.current_period_start = now
-                        subscription.current_period_end = now + timedelta(days=30)
-                        subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
-                        subscription.access_blocked = False
-                        customer.payment_deadline = subscription.grace_period_end
+                        subscription.mp_status = 'succeeded'
+                        subscription.payment_date = now
+                        subscription.failure_message = None
+                        if subscription.status in ['pending', 'incomplete']:
+                            subscription.status = 'active'
+                            subscription.current_period_start = now
+                            subscription.current_period_end = now + timedelta(days=30)
+                            subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
+                            subscription.access_blocked = False
+                            customer.payment_deadline = subscription.grace_period_end
 
                         already_registered = any(
                             p.mp_authorized_payment_id == str(resource_id)
@@ -297,21 +297,26 @@ class MercadoPagoWebhook(Resource):
                                 period_start=now,
                                 period_end=subscription.current_period_end,
                             ))
-
                         subscription.save()
                         logger.info(f"Subscription {subscription.id} activated via payment webhook")
 
                 elif mp_status in ['pending', 'in_process']:
-                    customer.mp_status = 'processing'
+                    if subscription:
+                        subscription.mp_status = 'processing'
+                        subscription.save()
                 elif mp_status in ['rejected', 'cancelled']:
-                    customer.mp_status = 'failed'
-                    customer.failure_message = payment_info.get('status_detail', 'Pagamento rejeitado')
+                    if subscription:
+                        subscription.mp_status = 'failed'
+                        subscription.failure_message = payment_info.get('status_detail', 'Pagamento rejeitado')
+                        subscription.save()
                 elif mp_status == 'refunded':
-                    customer.mp_status = 'refunded'
-                    customer.refunded_at = datetime.now(timezone.utc)
+                    if subscription:
+                        subscription.mp_status = 'refunded'
+                        subscription.refunded_at = datetime.now(timezone.utc)
+                        subscription.save()
 
                 customer.save()
-                logger.info(f"Customer {customer.id} payment updated - status: {customer.mp_status}")
+                logger.info(f"Customer {customer.id} payment webhook - mp_status={mp_status}")
                 
             return {'message': 'Webhook processado com sucesso'}, 200
             

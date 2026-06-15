@@ -136,18 +136,15 @@ class SubscriptionResource(Resource):
                 mp_preapproval_plan_id=mp_plan_id,
                 plan_name=plan.name,
                 amount=plan.amount,
-                status='pending',  # Will be updated by webhook when payment is confirmed
+                status='pending',
+                mp_status='pending',
                 billing_cycle=plan.billing_cycle,
                 currency='BRL',
+                payment_url=mp_subscription['init_point'],
                 created_by=None,
                 updated_by=None
             )
             subscription.save()
-
-            current_customer.mp_subscription_id = mp_subscription['subscription_id']
-            current_customer.mp_preapproval_plan_id = mp_plan_id
-            current_customer.payment_url = mp_subscription['init_point']
-            current_customer.save()
 
             logger.info(f"Recurring subscription created for customer {current_customer.email}, plan: {plan.name}, MP subscription ID: {mp_subscription['subscription_id']}")
 
@@ -301,7 +298,6 @@ class SubscriptionResource(Resource):
                     return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
                 return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
             
-            # Create new subscription record with plan change tracking
             subscription = Subscription(
                 customer_id=current_customer,
                 company_id=current_customer.company_id,
@@ -310,21 +306,15 @@ class SubscriptionResource(Resource):
                 plan_name=new_plan.name,
                 amount=new_plan.amount,
                 status='pending',
+                mp_status='pending',
                 billing_cycle=new_plan.billing_cycle,
                 currency='BRL',
-                previous_plan_name=old_plan_name,
-                previous_amount=old_plan_amount,
-                changed_at=datetime.utcnow(),
-                change_reason='customer_requested',
+                payment_url=mp_subscription['init_point'],
                 created_by=None,
                 updated_by=None
             )
             subscription.save()
-            
-            # Update customer with new subscription info and plan change tracking
-            current_customer.mp_subscription_id = mp_subscription['subscription_id']
-            current_customer.mp_preapproval_plan_id = mp_plan_id
-            current_customer.payment_url = mp_subscription['init_point']
+
             current_customer.current_plan_name = new_plan.name
             current_customer.previous_plan_name = old_plan_name
             current_customer.previous_plan_amount = old_plan_amount

@@ -257,18 +257,6 @@ class Customer(BaseDocument):
     password_changed = BooleanField(default=False)  # Indica se o cliente já trocou a senha inicial
     must_change_password = BooleanField(default=False)  # Força troca de senha no próximo login
 
-    # Mercado Pago data
-    mp_subscription_id = StringField(unique=True, sparse=True)
-    mp_preapproval_plan_id = StringField()  # Preapproval plan ID
-    mp_status = StringField(
-        choices=['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded'],
-        default='pending'
-    )
-    failure_message = StringField()  # Error message if payment failed
-    payment_url = StringField()  # URL para pagamento da assinatura
-    payment_date = DateTimeField()
-    refunded_at = DateTimeField()
-    
     # FCM Token para notificações push
     fcm_token = StringField(max_length=500)
 
@@ -424,8 +412,16 @@ class Subscription(BaseDocument):
 
     # Mercado Pago data
     mp_subscription_id = StringField(unique=True, sparse=True)
-    mp_payer_id = StringField()  # Mercado Pago customer/payer ID
-    mp_preapproval_plan_id = StringField()  # Preapproval plan ID
+    mp_payer_id = StringField()
+    mp_preapproval_plan_id = StringField()
+    mp_status = StringField(
+        choices=['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded'],
+        default='pending'
+    )
+    payment_url = StringField()
+    payment_date = DateTimeField()
+    failure_message = StringField()
+    refunded_at = DateTimeField()
 
     # Subscription details
     plan_name = StringField(required=True)  # Nome do plano
@@ -470,6 +466,12 @@ class Subscription(BaseDocument):
             'customer_id': str(self.customer_id.id) if self.customer_id else None,
             'company_id': str(self.company_id.id) if self.company_id else None,
             'mp_subscription_id': self.mp_subscription_id,
+            'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
+            'mp_status': self.mp_status,
+            'payment_url': self.payment_url,
+            'payment_date': self.payment_date.isoformat() if self.payment_date else None,
+            'failure_message': self.failure_message,
+            'refunded_at': self.refunded_at.isoformat() if self.refunded_at else None,
             'plan_name': self.plan_name,
             'amount': self.amount,
             'currency': self.currency,

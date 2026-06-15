@@ -2,7 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource
 from app.domain.models import Customer, Subscription, SubscriptionPayment
 from app.infrastructure.mercadopago_service import MercadoPagoService
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import hmac
 import hashlib
@@ -116,17 +116,40 @@ class MercadoPagoWebhook(Resource):
                 ).first()
                 
                 if not subscription:
-                    logger.warning(f"Subscription not found: {subscription_info['id']}")
-                    return {'message': 'Webhook recebido'}, 200
-                
+                    # Tenta auto-linkar usando external_reference (customer_id) ou payer_email
+                    customer = None
+                    ext_ref = subscription_info.get('external_reference')
+                    if ext_ref:
+                        customer = Customer.objects(id=ext_ref, visible=True).first()
+                    if not customer and subscription_info.get('payer_email'):
+                        customer = Customer.objects(email=subscription_info['payer_email'], visible=True).first()
+
+                    if not customer:
+                        logger.warning(f"Subscription not found and customer not resolvable: {subscription_info['id']}")
+                        return {'message': 'Webhook recebido'}, 200
+
+                    subscription = Subscription(
+                        customer_id=customer,
+                        company_id=customer.company_id,
+                        mp_subscription_id=subscription_info['id'],
+                        plan_name=subscription_info.get('reason') or 'Assinatura',
+                        amount=subscription_info.get('amount') or 0.0,
+                        currency=subscription_info.get('currency_id', 'BRL'),
+                        status='pending',
+                    )
+                    subscription.save()
+                    customer.mp_subscription_id = subscription_info['id']
+                    customer.save()
+                    logger.info(f"Auto-linked orphan MP subscription {subscription_info['id']} to customer {customer.id}")
+
                 # Get customer from subscription
                 customer = subscription.customer_id
                 
                 mp_status = subscription_info['status']
                 if mp_status == 'authorized':
                     subscription.status = 'active'
-                    subscription.current_period_start = datetime.utcnow()
-                    subscription.current_period_end = datetime.utcnow() + timedelta(days=30)
+                    subscription.current_period_start = datetime.now(timezone.utc)
+                    subscription.current_period_end = datetime.now(timezone.utc) + timedelta(days=30)
                     subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
                     subscription.access_blocked = False
                     customer.mp_status = 'succeeded'
@@ -136,13 +159,13 @@ class MercadoPagoWebhook(Resource):
                     customer.require_payment_method = False
                     customer.can_change_plan = True
                     if not customer.payment_date:
-                        customer.payment_date = datetime.utcnow()
+                        customer.payment_date = datetime.now(timezone.utc)
                 elif mp_status == 'paused':
                     subscription.status = 'pending'
                     customer.mp_status = 'processing'
                 elif mp_status == 'cancelled':
                     subscription.status = 'canceled'
-                    subscription.canceled_at = datetime.utcnow()
+                    subscription.canceled_at = datetime.now(timezone.utc)
                     subscription.access_blocked = True
                     customer.mp_status = 'canceled'
                     customer.subscription_blocked = True
@@ -186,7 +209,7 @@ class MercadoPagoWebhook(Resource):
                 customer = subscription.customer_id
                 
                 # Atualizar período e prazo de pagamento
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 next_payment_date = now + timedelta(days=30)
                 grace_period_end = next_payment_date + timedelta(days=15)
 
@@ -239,7 +262,7 @@ class MercadoPagoWebhook(Resource):
                 
                 mp_status = payment_info['status']
                 if mp_status == 'approved':
-                    now = datetime.utcnow()
+                    now = datetime.now(timezone.utc)
                     customer.mp_status = 'succeeded'
                     customer.payment_date = now
                     customer.failure_message = None
@@ -285,7 +308,7 @@ class MercadoPagoWebhook(Resource):
                     customer.failure_message = payment_info.get('status_detail', 'Pagamento rejeitado')
                 elif mp_status == 'refunded':
                     customer.mp_status = 'refunded'
-                    customer.refunded_at = datetime.utcnow()
+                    customer.refunded_at = datetime.now(timezone.utc)
 
                 customer.save()
                 logger.info(f"Customer {customer.id} payment updated - status: {customer.mp_status}")

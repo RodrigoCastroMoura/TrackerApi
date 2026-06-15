@@ -367,11 +367,16 @@ class MercadoPagoService:
 
             subscription = sub_response["response"]
 
+            auto_recurring = subscription.get('auto_recurring', {})
             return {
                 'id': subscription['id'],
                 'status': subscription.get('status'),
                 'payer_id': subscription.get('payer_id'),
                 'payer_email': subscription.get('payer_email'),
+                'external_reference': subscription.get('external_reference'),
+                'reason': subscription.get('reason'),
+                'amount': auto_recurring.get('transaction_amount'),
+                'currency_id': auto_recurring.get('currency_id', 'BRL'),
                 'next_payment_date': subscription.get('next_payment_date'),
                 'date_created': subscription.get('date_created'),
                 'last_modified': subscription.get('last_modified'),

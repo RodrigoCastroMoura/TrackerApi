@@ -12,6 +12,19 @@ BILLING_CYCLE_PARAMS = {
     'yearly':    {'frequency': 12, 'frequency_type': 'months', 'period_days': 365},
 }
 
+# Aliases para valores legados no banco
+_BILLING_CYCLE_ALIASES = {
+    'semanal': 'weekly', 'semana': 'weekly',
+    'mensal': 'monthly', 'mes': 'monthly',
+    'trimestral': 'quarterly', 'trimestre': 'quarterly',
+    'anual': 'yearly', 'annual': 'yearly', 'ano': 'yearly',
+}
+
+def normalize_billing_cycle(value: str) -> str:
+    """Normaliza variações de billing_cycle para o valor canônico."""
+    v = (value or 'monthly').lower().strip()
+    return _BILLING_CYCLE_ALIASES.get(v, v)
+
 class TipoVeiculo(Enum):
     """Vehicle type enum with numeric and string values"""
     CARRO = (1, 'carro')

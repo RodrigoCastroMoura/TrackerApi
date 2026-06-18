@@ -1,7 +1,7 @@
 import os
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Customer, Subscription, SubscriptionPlan
+from app.domain.models import Customer, Subscription, SubscriptionPlan, BILLING_CYCLE_PARAMS
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from app.presentation.auth_routes import customer_token_required
 from mongoengine import DoesNotExist
@@ -69,48 +69,31 @@ class SubscriptionResource(Resource):
                 return {'message': 'Cliente já possui uma assinatura ativa'}, 400
             
             # Step 2: Create or reuse Mercado Pago preapproval plan
+            cycle = BILLING_CYCLE_PARAMS.get(plan.billing_cycle, BILLING_CYCLE_PARAMS['monthly'])
             mp_plan_id = plan.mp_preapproval_plan_id
-            
+
             if not mp_plan_id:
-                # Map billing_cycle to Mercado Pago frequency
-                if plan.billing_cycle == 'yearly':
-                    frequency = 12
-                    frequency_type = 'months'
-                else:  # monthly
-                    frequency = 1
-                    frequency_type = 'months'
-                
-                # Create new plan in Mercado Pago
                 mp_plan = MercadoPagoService.create_subscription_plan(
                     plan_name=plan.name,
                     amount=plan.amount,
-                    frequency=frequency,
-                    frequency_type=frequency_type
+                    frequency=cycle['frequency'],
+                    frequency_type=cycle['frequency_type']
                 )
-                
+
                 if not mp_plan:
                     return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
-                
+
                 mp_plan_id = mp_plan['plan_id']
-                
-                # Save MP plan ID for future reuse
                 plan.mp_preapproval_plan_id = mp_plan_id
                 plan.save()
-            
-            # Step 3: Create pending subscription — generates payment link for the customer
-            if plan.billing_cycle == 'yearly':
-                frequency = 12
-                frequency_type = 'months'
-            else:
-                frequency = 1
-                frequency_type = 'months'
 
+            # Step 3: Create pending subscription — generates payment link for the customer
             mp_subscription = MercadoPagoService.create_pending_subscription(
                 reason=plan.name,
                 payer_email=current_customer.email,
                 amount=plan.amount,
-                frequency=frequency,
-                frequency_type=frequency_type,
+                frequency=cycle['frequency'],
+                frequency_type=cycle['frequency_type'],
                 back_url=os.environ.get('APP_URL', 'https://www.rcminformatica.tec.br/'),
                 external_reference=str(current_customer.id),
                 metadata={
@@ -119,11 +102,9 @@ class SubscriptionResource(Resource):
                     'plan_id': str(plan.id),
                 }
             )
-            
+
             if not mp_subscription or mp_subscription.get('error'):
                 mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
-                mp_status = mp_subscription.get('status', 400) if mp_subscription else 400
-                # Restrição de sandbox: payer e collector precisam ser ambos reais ou ambos de teste
                 if 'real or test users' in mp_msg:
                     return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
                 return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
@@ -246,42 +227,29 @@ class SubscriptionResource(Resource):
             old_plan_amount = existing_subscription.amount
             
             # Ensure MP plan ID exists
+            new_cycle = BILLING_CYCLE_PARAMS.get(new_plan.billing_cycle, BILLING_CYCLE_PARAMS['monthly'])
             mp_plan_id = new_plan.mp_preapproval_plan_id
+
             if not mp_plan_id:
-                if new_plan.billing_cycle == 'yearly':
-                    frequency = 12
-                    frequency_type = 'months'
-                else:
-                    frequency = 1
-                    frequency_type = 'months'
-                
                 mp_plan = MercadoPagoService.create_subscription_plan(
                     plan_name=new_plan.name,
                     amount=new_plan.amount,
-                    frequency=frequency,
-                    frequency_type=frequency_type
+                    frequency=new_cycle['frequency'],
+                    frequency_type=new_cycle['frequency_type']
                 )
                 if not mp_plan:
                     return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
-                
+
                 mp_plan_id = mp_plan['plan_id']
                 new_plan.mp_preapproval_plan_id = mp_plan_id
                 new_plan.save()
-            
-            # Create new pending subscription
-            if new_plan.billing_cycle == 'yearly':
-                frequency = 12
-                frequency_type = 'months'
-            else:
-                frequency = 1
-                frequency_type = 'months'
-            
+
             mp_subscription = MercadoPagoService.create_pending_subscription(
                 reason=new_plan.name,
                 payer_email=current_customer.email,
                 amount=new_plan.amount,
-                frequency=frequency,
-                frequency_type=frequency_type,
+                frequency=new_cycle['frequency'],
+                frequency_type=new_cycle['frequency_type'],
                 back_url=os.environ.get('APP_URL', 'https://www.rcminformatica.tec.br/'),
                 external_reference=str(current_customer.id),
                 metadata={
@@ -290,10 +258,9 @@ class SubscriptionResource(Resource):
                     'plan_id': str(new_plan.id),
                 }
             )
-            
+
             if not mp_subscription or mp_subscription.get('error'):
                 mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
-                mp_status = mp_subscription.get('status', 400) if mp_subscription else 400
                 if 'real or test users' in mp_msg:
                     return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
                 return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400

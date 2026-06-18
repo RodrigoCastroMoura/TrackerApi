@@ -4,6 +4,14 @@ from mongoengine import *
 from enum import Enum
 from config import Config
 
+# Mapa canônico de ciclos de cobrança → parâmetros do Mercado Pago e dias do período
+BILLING_CYCLE_PARAMS = {
+    'weekly':    {'frequency': 7,  'frequency_type': 'days',   'period_days': 7},
+    'monthly':   {'frequency': 1,  'frequency_type': 'months', 'period_days': 30},
+    'quarterly': {'frequency': 3,  'frequency_type': 'months', 'period_days': 90},
+    'yearly':    {'frequency': 12, 'frequency_type': 'months', 'period_days': 365},
+}
+
 class TipoVeiculo(Enum):
     """Vehicle type enum with numeric and string values"""
     CARRO = (1, 'carro')
@@ -343,8 +351,8 @@ class SubscriptionPlan(BaseDocument):
     description = StringField(max_length=500)
     amount = FloatField(required=True)  # Monthly amount in BRL
     currency = StringField(default='BRL')
-    billing_cycle = StringField(choices=['monthly', 'weekly', 'yearly'], default='monthly')
-    
+    billing_cycle = StringField(choices=['weekly', 'monthly', 'quarterly', 'yearly'], default='monthly')
+
     # Mercado Pago integration
     mp_preapproval_plan_id = StringField(unique=True, sparse=True)  # Mercado Pago plan ID
     
@@ -425,7 +433,7 @@ class Subscription(BaseDocument):
     plan_name = StringField(required=True)  # Nome do plano
     amount = FloatField(required=True)  # Valor mensal em reais
     currency = StringField(default='BRL')
-    billing_cycle = StringField(choices=['monthly', 'weekly', 'yearly'], default='monthly')
+    billing_cycle = StringField(choices=['weekly', 'monthly', 'quarterly', 'yearly'], default='monthly')
 
     # Status and dates
     status = StringField(

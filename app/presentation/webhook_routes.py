@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource
-from app.domain.models import Customer, Subscription, SubscriptionPayment
+from app.domain.models import Customer, Subscription, SubscriptionPayment, BILLING_CYCLE_PARAMS
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime, timedelta, timezone
 import logging
@@ -146,10 +146,11 @@ class MercadoPagoWebhook(Resource):
                 mp_status = subscription_info['status']
                 if mp_status == 'authorized':
                     now = datetime.now(timezone.utc)
+                    period_days = BILLING_CYCLE_PARAMS.get(subscription.billing_cycle, BILLING_CYCLE_PARAMS['monthly'])['period_days']
                     subscription.status = 'active'
                     subscription.mp_status = 'succeeded'
                     subscription.current_period_start = now
-                    subscription.current_period_end = now + timedelta(days=30)
+                    subscription.current_period_end = now + timedelta(days=period_days)
                     subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
                     subscription.access_blocked = False
                     if not subscription.payment_date:
@@ -208,7 +209,8 @@ class MercadoPagoWebhook(Resource):
                 
                 # Atualizar período e prazo de pagamento
                 now = datetime.now(timezone.utc)
-                next_payment_date = now + timedelta(days=30)
+                period_days = BILLING_CYCLE_PARAMS.get(subscription.billing_cycle, BILLING_CYCLE_PARAMS['monthly'])['period_days']
+                next_payment_date = now + timedelta(days=period_days)
                 grace_period_end = next_payment_date + timedelta(days=15)
 
                 subscription.current_period_end = next_payment_date
@@ -274,9 +276,10 @@ class MercadoPagoWebhook(Resource):
                         subscription.payment_date = now
                         subscription.failure_message = None
                         if subscription.status in ['pending', 'incomplete']:
+                            period_days = BILLING_CYCLE_PARAMS.get(subscription.billing_cycle, BILLING_CYCLE_PARAMS['monthly'])['period_days']
                             subscription.status = 'active'
                             subscription.current_period_start = now
-                            subscription.current_period_end = now + timedelta(days=30)
+                            subscription.current_period_end = now + timedelta(days=period_days)
                             subscription.grace_period_end = subscription.current_period_end + timedelta(days=15)
                             subscription.access_blocked = False
 

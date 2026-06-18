@@ -314,19 +314,26 @@ def customer_token_required(f):
                                     'payment_url': active_subscription.payment_url
                                 }, 403
                     
-                # Verificar bloqueio por pagamento atrasado
+                # Verificar bloqueio por pagamento atrasado — só bloqueia se assinatura ativa estiver vencida
                 if current_customer.subscription_blocked and not request.path.startswith('/api/subscriptions'):
-                    blocked_sub = Subscription.objects(
+                    latest_sub = Subscription.objects(
                         customer_id=current_customer.id,
                         visible=True
                     ).order_by('-created_at').first()
-                    logger.warning(f"Blocked customer attempted to access: {current_customer.email}")
-                    return {
-                        'message': 'Acesso bloqueado. Pagamento atrasado.',
-                        'error': 'subscription_blocked',
-                        'blocked_reason': current_customer.subscription_blocked_reason,
-                        'payment_deadline': blocked_sub.grace_period_end.isoformat() if blocked_sub and blocked_sub.grace_period_end else None
-                    }, 403
+
+                    if latest_sub and latest_sub.status == 'pending':
+                        # Tem assinatura pendente nova — desbloqueia automaticamente
+                        current_customer.subscription_blocked = False
+                        current_customer.subscription_blocked_reason = None
+                        current_customer.save()
+                    else:
+                        logger.warning(f"Blocked customer attempted to access: {current_customer.email}")
+                        return {
+                            'message': 'Acesso bloqueado. Pagamento atrasado.',
+                            'error': 'subscription_blocked',
+                            'blocked_reason': current_customer.subscription_blocked_reason,
+                            'payment_deadline': latest_sub.grace_period_end.isoformat() if latest_sub and latest_sub.grace_period_end else None
+                        }, 403
 
                 if current_customer.email != data['email']:
                     logger.warning("Token email mismatch with current customer")
@@ -622,8 +629,10 @@ class LoginCustomer(Resource):
                         'payment_deadline': active_sub.grace_period_end.isoformat() if active_sub and active_sub.grace_period_end else None
                     }, 403
 
-                # Verificar se passou do prazo de pagamento (15 dias após vencimento)
-                if active_sub and active_sub.grace_period_end and datetime.datetime.now(datetime.timezone.utc) > active_sub.grace_period_end.replace(tzinfo=datetime.timezone.utc):
+                # Bloqueia só se assinatura está active E passou do prazo de pagamento
+                if (active_sub and active_sub.status == 'active'
+                        and active_sub.grace_period_end
+                        and datetime.datetime.now(datetime.timezone.utc) > active_sub.grace_period_end.replace(tzinfo=datetime.timezone.utc)):
                     customer.subscription_blocked = True
                     customer.subscription_blocked_reason = 'Pagamento atrasado. Prazo de 15 dias expirado.'
                     customer.save()

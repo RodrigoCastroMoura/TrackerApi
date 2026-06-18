@@ -78,10 +78,8 @@ class SubscriptionResource(Resource):
             if pending_subscription:
                 if pending_subscription.mp_subscription_id:
                     MercadoPagoService.cancel_subscription(pending_subscription.mp_subscription_id)
-                pending_subscription.status = 'canceled'
-                pending_subscription.canceled_at = datetime.now(timezone.utc)
-                pending_subscription.save()
-                logger.info(f"Canceled previous pending subscription {pending_subscription.id} before creating new one")
+                pending_subscription.delete()
+                logger.info(f"Deleted previous pending subscription {pending_subscription.id} before creating new one")
             
             # Step 2: Create or reuse Mercado Pago preapproval plan
             billing_cycle = normalize_billing_cycle(plan.billing_cycle)

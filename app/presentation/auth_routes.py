@@ -315,7 +315,7 @@ def customer_token_required(f):
                                 }, 403
                     
                 # Verificar bloqueio por pagamento atrasado
-                if current_customer.subscription_blocked:
+                if current_customer.subscription_blocked and not request.path.startswith('/api/subscriptions'):
                     blocked_sub = Subscription.objects(
                         customer_id=current_customer.id,
                         visible=True

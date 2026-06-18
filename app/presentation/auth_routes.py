@@ -306,11 +306,13 @@ def customer_token_required(f):
 
                         if active_subscription.status == 'pending':
                             logger.info(f"Customer {current_customer.email} has pending subscription")
-                            return {
-                                'message': 'Assinatura pendente. Aguarde a confirmação do pagamento.',
-                                'error': 'subscription_pending',
-                                'payment_url': active_subscription.payment_url
-                            }, 403
+                            # Libera endpoints de gerenciamento de assinatura mesmo com pendente
+                            if not request.path.startswith('/api/subscriptions'):
+                                return {
+                                    'message': 'Assinatura pendente. Aguarde a confirmação do pagamento.',
+                                    'error': 'subscription_pending',
+                                    'payment_url': active_subscription.payment_url
+                                }, 403
                     
                 # Verificar bloqueio por pagamento atrasado
                 if current_customer.subscription_blocked:

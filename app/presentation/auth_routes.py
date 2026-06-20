@@ -620,30 +620,6 @@ class LoginCustomer(Resource):
                     visible=True
                 ).order_by('-created_at').first()
 
-                if customer.subscription_blocked:
-                    logger.warning(f"Login attempt by blocked customer: {customer.email}")
-                    return {
-                        'message': 'Acesso bloqueado. Pagamento atrasado.',
-                        'error': 'subscription_blocked',
-                        'blocked_reason': customer.subscription_blocked_reason,
-                        'payment_deadline': active_sub.grace_period_end.isoformat() if active_sub and active_sub.grace_period_end else None
-                    }, 403
-
-                # Bloqueia só se assinatura está active E passou do prazo de pagamento
-                if (active_sub and active_sub.status == 'active'
-                        and active_sub.grace_period_end
-                        and datetime.datetime.now(datetime.timezone.utc) > active_sub.grace_period_end.replace(tzinfo=datetime.timezone.utc)):
-                    customer.subscription_blocked = True
-                    customer.subscription_blocked_reason = 'Pagamento atrasado. Prazo de 15 dias expirado.'
-                    customer.save()
-                    logger.warning(f"Customer access blocked due to late payment: {customer.email}")
-                    return {
-                        'message': 'Acesso bloqueado. Pagamento atrasado.',
-                        'error': 'subscription_blocked',
-                        'blocked_reason': customer.subscription_blocked_reason,
-                        'payment_deadline': active_sub.grace_period_end.isoformat()
-                    }, 403
-
                 if not fcm_token:
                     logger.debug(f"FCM token not provided for customer: {customer.email}")
                 else:
@@ -856,6 +832,75 @@ class LoginCustomerChatBot(Resource):
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
             return {'message': 'Erro ao realizar login'}, 500
+
+def require_valid_subscription(f):
+    """Verifica se o cliente possui assinatura ativa e dentro do prazo de validade."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        current_customer = kwargs.get('current_customer')
+
+        # Tenta resolver pelo token JWT quando não disponível via kwargs
+        if current_customer is None:
+            try:
+                auth_header = request.headers.get('Authorization', '').strip()
+                if not auth_header:
+                    return {'message': 'Token não fornecido', 'error': 'missing_token'}, 401
+
+                token = auth_header.split(' ')[-1]
+                secret_key = Config.SECRET_KEY
+                data = jwt.decode(token, secret_key, algorithms=["HS256"])
+
+                if data.get('role') != 'customer':
+                    return {'message': 'Acesso negado. Apenas clientes podem acessar este recurso.', 'error': 'not_customer'}, 403
+
+                current_customer = Customer.objects(id=data['user_id']).first()
+            except jwt.ExpiredSignatureError:
+                return {'message': 'Token expirado', 'error': 'token_expired'}, 401
+            except jwt.InvalidTokenError:
+                return {'message': 'Token inválido', 'error': 'invalid_token'}, 401
+            except Exception as e:
+                logger.error(f"require_valid_subscription token error: {str(e)}")
+                return {'message': 'Erro na validação do token', 'error': 'validation_error'}, 500
+
+        if not current_customer:
+            return {'message': 'Cliente não encontrado', 'error': 'customer_not_found'}, 404
+
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+        active_subscription = Subscription.objects(
+            customer_id=current_customer.id,
+            status='active',
+            visible=True
+        ).first()
+
+        if not active_subscription:
+            return {
+                'message': 'Nenhuma assinatura ativa encontrada.',
+                'error': 'no_active_subscription'
+            }, 403
+
+        if active_subscription.access_blocked:
+            return {
+                'message': 'Acesso bloqueado devido a pagamento pendente.',
+                'error': 'access_blocked'
+            }, 403
+
+        if active_subscription.current_period_end and active_subscription.current_period_end < now:
+            grace_end = active_subscription.grace_period_end
+            if grace_end and grace_end >= now:
+                # Dentro do prazo de carência — permite acesso
+                return f(*args, **kwargs)
+            return {
+                'message': 'Assinatura expirada. Realize o pagamento para continuar.',
+                'error': 'subscription_expired',
+                'expired_at': active_subscription.current_period_end.isoformat(),
+                'grace_period_end': grace_end.isoformat() if grace_end else None
+            }, 403
+        
+        return f(*args, **kwargs)
+
+    return decorated
+
 
 def cleanup_blacklist():
     try:

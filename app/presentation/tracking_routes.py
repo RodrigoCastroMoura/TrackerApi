@@ -189,9 +189,12 @@ class VehicleCurrentLocation(Resource):
             if not vehicle_dict:
                 # Busca no banco
                 vehicle_obj = Vehicle.objects.get(IMEI=id, visible=True, company_id=current_user.company_id)
-                
+
+                if not vehicle_obj:
+                    return {'message': 'Veículo não encontrado'}, 404
+                vehicle_obj = vehicle_obj.to_dict()  # converte para dict para cache e resposta 
                 # Tenta salvar no cache (se Redis estiver up)
-                vehicle_cache.set_vehicle(id, vehicle_obj.to_dict())
+                vehicle_cache.set_vehicle(id, vehicle_obj)
 
             if vehicle_dict:
                 vehicle = vehicle_dict

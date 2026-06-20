@@ -1,7 +1,7 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Vehicle, VehicleData
-from app.presentation.auth_routes import token_required, require_permission
+from app.presentation.auth_routes import token_required, require_permission, require_valid_subscription
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging
 from bson.objectid import ObjectId
@@ -328,6 +328,7 @@ class VehicleBlock(Resource):
     @api.expect(block_command_model)
     @token_required
     @require_permission('customer', 'update')
+    @require_valid_subscription
     def post(self, current_user, id):
         """Enviar comando de bloqueio/desbloqueio"""
         try:
@@ -380,8 +381,6 @@ class VehicleBlock(Resource):
             logger.error(f"Error sending block command: {str(e)}")
             return {'message': 'Erro ao enviar comando'}, 500
 
-
-    
     @api.doc('get_vehicle_location',
              params={
                  'limit': {'type': 'integer', 'default': 10, 'description': 'Número de posições'},
@@ -390,6 +389,7 @@ class VehicleBlock(Resource):
              })
     @token_required
     @require_permission('vehicle', 'read')
+    @require_valid_subscription
     def get(self, current_user, id):
         """Obter histórico de localização do veículo"""
         try:

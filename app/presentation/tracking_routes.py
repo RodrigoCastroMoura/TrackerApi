@@ -1,7 +1,7 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Vehicle
-from app.presentation.auth_routes import token_required, require_permission
+from app.presentation.auth_routes import token_required, require_permission, require_valid_subscription
 from app.infrastructure.geocoding_service import (
     get_google_geocoding_service,
     get_geocoding_service
@@ -177,6 +177,7 @@ class VehicleCurrentLocation(Resource):
     @api.marshal_with(vehicle_location_response_model)
     @token_required
     @require_permission('customer', 'read')
+    @require_valid_subscription
     def get(self, current_user, id):
         """Retorna a localização atual de um veículo específico"""
         try:
@@ -192,14 +193,14 @@ class VehicleCurrentLocation(Resource):
 
                 if not vehicle_obj:
                     return {'message': 'Veículo não encontrado'}, 404
-                vehicle_obj = vehicle_obj.to_dict()  # converte para dict para cache e resposta 
+                
                 # Tenta salvar no cache (se Redis estiver up)
                 vehicle_cache.set_vehicle(id, vehicle_obj)
 
             if vehicle_dict:
                 vehicle = vehicle_dict
             elif vehicle_obj:
-                vehicle = vehicle_obj.to_dict()  #
+                vehicle = vehicle_obj.to_mongo().to_dict()
 
             # Get best geocoding service (Google Maps with Nominatim fallback)
             geocoding = get_best_geocoding_service()

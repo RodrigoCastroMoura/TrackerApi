@@ -368,7 +368,6 @@ class SubscriptionStatus(Resource):
                 'billing_cycle': subscription.billing_cycle,
                 'payment_url': subscription.payment_url,
                 'require_payment_method': current_customer.require_payment_method,
-                'subscription_blocked': current_customer.subscription_blocked,
                 'current_period_end': subscription.current_period_end.isoformat() if subscription.current_period_end else None,
             }, 200
 
@@ -463,8 +462,6 @@ class SubscriptionStatement(Resource):
                 'customer': {
                     'name': current_customer.name,
                     'email': current_customer.email,
-                    'subscription_blocked': current_customer.subscription_blocked,
-                    'subscription_blocked_reason': current_customer.subscription_blocked_reason,
                     'payment_deadline': subscription.grace_period_end.isoformat() if subscription.grace_period_end else None
                 },
                 'summary': {

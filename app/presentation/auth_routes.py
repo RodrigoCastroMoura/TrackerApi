@@ -314,27 +314,6 @@ def customer_token_required(f):
                                     'payment_url': active_subscription.payment_url
                                 }, 403
                     
-                # Verificar bloqueio por pagamento atrasado — só bloqueia se assinatura ativa estiver vencida
-                if current_customer.subscription_blocked and not request.path.startswith('/api/subscriptions'):
-                    latest_sub = Subscription.objects(
-                        customer_id=current_customer.id,
-                        visible=True
-                    ).order_by('-created_at').first()
-
-                    if latest_sub and latest_sub.status == 'pending':
-                        # Tem assinatura pendente nova — desbloqueia automaticamente
-                        current_customer.subscription_blocked = False
-                        current_customer.subscription_blocked_reason = None
-                        current_customer.save()
-                    else:
-                        logger.warning(f"Blocked customer attempted to access: {current_customer.email}")
-                        return {
-                            'message': 'Acesso bloqueado. Pagamento atrasado.',
-                            'error': 'subscription_blocked',
-                            'blocked_reason': current_customer.subscription_blocked_reason,
-                            'payment_deadline': latest_sub.grace_period_end.isoformat() if latest_sub and latest_sub.grace_period_end else None
-                        }, 403
-
                 if current_customer.email != data['email']:
                     logger.warning("Token email mismatch with current customer")
                     return {'message': 'Token inválido', 'error': 'email_mismatch'}, 401
@@ -885,11 +864,8 @@ def require_valid_subscription(f):
                 'error': 'access_blocked'
             }, 403
 
-        if active_subscription.current_period_end and active_subscription.current_period_end < now:
+        if active_subscription.grace_period_end and active_subscription.grace_period_end < now:
             grace_end = active_subscription.grace_period_end
-            if grace_end and grace_end >= now:
-                # Dentro do prazo de carência — permite acesso
-                return f(*args, **kwargs)
             return {
                 'message': 'Assinatura expirada. Realize o pagamento para continuar.',
                 'error': 'subscription_expired',
@@ -900,7 +876,6 @@ def require_valid_subscription(f):
         return f(*args, **kwargs)
 
     return decorated
-
 
 def cleanup_blacklist():
     try:

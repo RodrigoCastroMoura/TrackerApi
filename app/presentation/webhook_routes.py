@@ -155,8 +155,6 @@ class MercadoPagoWebhook(Resource):
                     subscription.access_blocked = False
                     if not subscription.payment_date:
                         subscription.payment_date = now
-                    customer.subscription_blocked = False
-                    customer.subscription_blocked_reason = None
                     customer.require_payment_method = False
                     customer.can_change_plan = False
                 elif mp_status == 'paused':
@@ -167,8 +165,6 @@ class MercadoPagoWebhook(Resource):
                     subscription.mp_status = 'canceled'
                     subscription.canceled_at = datetime.now(timezone.utc)
                     subscription.access_blocked = True
-                    customer.subscription_blocked = True
-                    customer.subscription_blocked_reason = 'Assinatura cancelada'
                     customer.can_change_plan = False
                 elif mp_status == 'pending':
                     subscription.status = 'pending'
@@ -236,10 +232,8 @@ class MercadoPagoWebhook(Resource):
 
                 subscription.save()
                 
-                customer.subscription_blocked = False
-                customer.subscription_blocked_reason = None
                 customer.save()
-                
+
                 logger.info(f"Authorized payment processed for subscription {subscription.id}. Next payment: {next_payment_date.date()}, Grace period ends: {grace_period_end.date()}")
             
             elif topic in ['payment', 'payment.created', 'payment.updated', 'merchant_order']:
@@ -268,8 +262,6 @@ class MercadoPagoWebhook(Resource):
                 if mp_status == 'approved':
                     now = datetime.now(timezone.utc)
                     customer.require_payment_method = False
-                    customer.subscription_blocked = False
-                    customer.subscription_blocked_reason = None
 
                     if subscription:
                         subscription.mp_status = 'succeeded'

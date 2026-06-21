@@ -848,7 +848,7 @@ def require_valid_subscription(f):
 
         active_subscription = Subscription.objects(
             customer_id=current_customer.id,
-            status='active',
+            status__in=['active', 'cancelled'],
             visible=True
         ).first()
 

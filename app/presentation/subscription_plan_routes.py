@@ -209,24 +209,22 @@ class SubscriptionPlanResource(Resource):
 @api.route('/int/<max_vehicles>')
 @api.param('max_vehicles', 'The maximum number of vehicles for the subscription plan')
 class SubscriptionPlanMaxVehiclesResource(Resource):
-    @api.doc('get_subscription_plan', security=None)
+    @api.doc('list_subscription_plans_by_max_vehicles', security=None)
+    @api.marshal_list_with(subscription_plan_response)
     def get(self, max_vehicles):
-        """Get subscription plan details (public endpoint)"""
+        """List subscription plans by max_vehicles (public endpoint)"""
         try:
             try:
                 max_vehicles_int = int(max_vehicles)
             except (ValueError, TypeError):
                 return {'message': 'Invalid max_vehicles value. Must be an integer.'}, 400
 
-            plan = SubscriptionPlan.objects(max_vehicles=max_vehicles_int, visible=True).first()
-            
-            if not plan:
-                return {'message': 'Subscription plan not found'}, 404
-            
-            return plan.to_dict(), 200
-            
+            plans = SubscriptionPlan.objects(max_vehicles=max_vehicles_int, visible=True)
+
+            return [plan.to_dict() for plan in plans], 200
+
         except Exception as e:
-            logger.error(f"Error getting subscription plan: {str(e)}")
-            return {'message': 'Error getting subscription plan'}, 500
+            logger.error(f"Error listing subscription plans by max_vehicles: {str(e)}")
+            return {'message': 'Error listing subscription plans'}, 500
     
 

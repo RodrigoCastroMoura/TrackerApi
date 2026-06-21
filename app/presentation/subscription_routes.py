@@ -375,7 +375,6 @@ class SubscriptionStatus(Resource):
             logger.error(f"Error getting subscription status: {str(e)}")
             return {'message': 'Erro ao consultar status'}, 500
 
-
 @api.route('/cancel')
 class SubscriptionCancel(Resource):
     
@@ -436,7 +435,7 @@ class SubscriptionStatement(Resource):
             if not subscription:
                 return {'message': 'Nenhuma assinatura encontrada'}, 404
 
-            now = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             is_overdue = False
             days_overdue = 0
             days_until_block = None
@@ -458,12 +457,6 @@ class SubscriptionStatement(Resource):
             )
 
             return {
-                'subscription': subscription.to_dict(),
-                'customer': {
-                    'name': current_customer.name,
-                    'email': current_customer.email,
-                    'payment_deadline': subscription.grace_period_end.isoformat() if subscription.grace_period_end else None
-                },
                 'summary': {
                     'plan_amount': subscription.amount,
                     'plan_name': subscription.plan_name,

@@ -39,15 +39,17 @@ vehicle_update_model = api.model('VehicleUpdate', {
     'ano': fields.Integer(description='Ano do veículo')
 })
 
-vehicle_data_model = api.model('VehicleData', {
-    'id': fields.String(readonly=True),
-    'imei': fields.String(required=True),
+vehicle_location_model = api.model('VehicleLocation', {
     'longitude': fields.String(description='Longitude'),
     'latitude': fields.String(description='Latitude'),
     'altitude': fields.String(description='Altitude'),
+})
+
+vehicle_data_model = api.model('VehicleData', {
+    'id': fields.String(readonly=True),
+    'imei': fields.String(required=True),
     'timestamp': fields.DateTime(description='Data do servidor'),
-    'deviceTimestamp': fields.DateTime(description='Data do dispositivo'),
-    'mensagem_raw': fields.String(description='Mensagem original')
+    'location': fields.Nested(vehicle_location_model, description='Localização GPS'),
 })
 
 pagination_model = api.model('PaginatedVehicles', {
@@ -388,15 +390,13 @@ class VehicleBlock(Resource):
                  'end_date': {'type': 'string', 'description': 'Data final (ISO format)'}
              })
     @token_required
-    @require_permission('vehicle', 'read')
+    @require_permission('customer', 'read')
     @require_valid_subscription
     def get(self, current_user, id):
         """Obter histórico de localização do veículo"""
         try:
-            if not ObjectId.is_valid(id):
-                return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
+            vehicle = Vehicle.objects.get(IMEI=id, visible=True, company_id=current_user.company_id)
             
             # Build query for vehicle data
             query = {'imei': vehicle.IMEI}
@@ -404,16 +404,16 @@ class VehicleBlock(Resource):
             # Date filters
             if request.args.get('start_date'):
                 start = datetime.fromisoformat(request.args.get('start_date'))
-                query['deviceTimestamp__gte'] = start
+                query['timestamp__gte'] = start
             
             if request.args.get('end_date'):
                 end = datetime.fromisoformat(request.args.get('end_date'))
-                query['deviceTimestamp__lte'] = end
+                query['timestamp__lte'] = end
             
             limit = min(100, int(request.args.get('limit', 10)))
             
             # Get location data
-            locations = VehicleData.objects(**query).order_by('-deviceTimestamp').limit(limit)
+            locations = VehicleData.objects(**query).order_by('-timestamp').limit(limit)
             
             return {
                 'vehicle_id': str(vehicle.id),

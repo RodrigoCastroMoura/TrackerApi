@@ -80,9 +80,9 @@ class VehicleReport(Resource):
             # Get location history
             locations_data = VehicleData.objects(
                 imei=vehicle.IMEI,
-                deviceTimestamp__gte=start,
-                deviceTimestamp__lte=end
-            ).order_by('deviceTimestamp')
+                timestamp__gte=start,
+                timestamp__lte=end
+            ).order_by('timestamp')
             
             # Calculate statistics
             total_distance = 0.0
@@ -98,12 +98,12 @@ class VehicleReport(Resource):
             is_moving = False
             
             for loc in locations_data:
-                if not loc.latitude or not loc.longitude:
+                if not loc.location or not loc.location.latitude or not loc.location.longitude:
                     continue
-                
-                lat = float(loc.latitude)
-                lng = float(loc.longitude)
-                current_time = loc.deviceTimestamp
+
+                lat = float(loc.location.latitude)
+                lng = float(loc.location.longitude)
+                current_time = loc.timestamp
                 
                 if prev_loc:
                     # Calculate distance
@@ -252,8 +252,8 @@ class CompanySummaryReport(Resource):
                 # Get location data for this vehicle
                 locations_count = VehicleData.objects(
                     imei=vehicle.IMEI,
-                    deviceTimestamp__gte=start,
-                    deviceTimestamp__lte=end
+                    timestamp__gte=start,
+                    timestamp__lte=end
                 ).count()
                 
                 if locations_count > 0:
@@ -262,21 +262,21 @@ class CompanySummaryReport(Resource):
                     # Calculate distance (simplified)
                     locations = VehicleData.objects(
                         imei=vehicle.IMEI,
-                        deviceTimestamp__gte=start,
-                        deviceTimestamp__lte=end
-                    ).order_by('deviceTimestamp')
+                        timestamp__gte=start,
+                        timestamp__lte=end
+                    ).order_by('timestamp')
                     
                     distance = 0.0
                     prev_loc = None
                     
                     for loc in locations:
-                        if loc.latitude and loc.longitude and prev_loc:
-                            lat_diff = float(loc.latitude) - prev_loc[0]
-                            lng_diff = float(loc.longitude) - prev_loc[1]
+                        if loc.location and loc.location.latitude and loc.location.longitude and prev_loc:
+                            lat_diff = float(loc.location.latitude) - prev_loc[0]
+                            lng_diff = float(loc.location.longitude) - prev_loc[1]
                             distance += ((lat_diff ** 2) + (lng_diff ** 2)) ** 0.5 * 111
-                        
-                        if loc.latitude and loc.longitude:
-                            prev_loc = [float(loc.latitude), float(loc.longitude)]
+
+                        if loc.location and loc.location.latitude and loc.location.longitude:
+                            prev_loc = [float(loc.location.latitude), float(loc.location.longitude)]
                     
                     total_distance_all += distance
                     

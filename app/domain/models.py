@@ -217,37 +217,37 @@ class Vehicle(BaseDocument):
         })
         return base_dict
     
+class VehicleLocation(EmbeddedDocument):
+    longitude = StringField(max_length=20)
+    latitude = StringField(max_length=20)
+    altitude = StringField(max_length=20)
+
+
 class VehicleData(BaseDocument):
     """Vehicle tracking data model - apenas dados de localização"""
 
     imei = StringField(required=True, max_length=50)
-    longitude = StringField(max_length=20)  # Mantido como string conforme original
-    latitude = StringField(max_length=20)   # Mantido como string conforme original
-    altitude = StringField(max_length=20)   # Mantido como string conforme original
-    timestamp = DateTimeField()  # Data do servidor
-    deviceTimestamp = DateTimeField()  # Data do dispositivo convertida para datetime
-    mensagem_raw = StringField()  # Mensagem original recebida
-    
+    timestamp = DateTimeField()
+    location = EmbeddedDocumentField(VehicleLocation)
+
     meta = {
         'collection': 'vehicle_data',
         'indexes': [
-          
+            'imei',
             'timestamp',
-            'deviceTimestamp',  # Índice composto para consultas eficientes
         ]
     }
 
     def to_dict(self):
-        """Convert to dictionary for API responses"""
         base_dict = super(VehicleData, self).to_dict()
         base_dict.update({
             'imei': self.imei,
-            'longitude': self.longitude,
-            'latitude': self.latitude,
-            'altitude': self.altitude,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
-            'deviceTimestamp': self.deviceTimestamp.isoformat() if self.deviceTimestamp else None,
-            'mensagem_raw': self.mensagem_raw,
+            'location': {
+                'longitude': self.location.longitude if self.location else None,
+                'latitude': self.location.latitude if self.location else None,
+                'altitude': self.location.altitude if self.location else None,
+            } if self.location else None,
         })
         return base_dict
 

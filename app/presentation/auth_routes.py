@@ -48,7 +48,7 @@ def _get_limiter_storage_uri():
 
 limiter = Limiter(
     key_func=get_remote_address,
-    default_limits=["200 per day", "50 per hour"],
+    default_limits=[],
     storage_uri=_get_limiter_storage_uri()
 )
 

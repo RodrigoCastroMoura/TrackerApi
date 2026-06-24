@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Vehicle
+from app.domain.models import Vehicle, VehicleData
 from app.presentation.auth_routes import token_required, require_permission, require_valid_subscription
 from app.infrastructure.geocoding_service import (
     get_google_geocoding_service,
@@ -10,6 +10,7 @@ from mongoengine.errors import DoesNotExist
 import logging
 from bson.objectid import ObjectId
 from app.infrastructure.redis_cache import vehicle_cache
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -168,8 +169,7 @@ class VehicleTrackingList(Resource):
             logger.error(f"Error listing vehicle tracking: {str(e)}")
             return {'message': 'Erro ao listar rastreamento de veículos'}, 500
 
-
-@api.route('/vehicles/<id>/location')
+@api.route('/vehicles/<imei>/location')
 @api.param('id', 'Vehicle identifier')
 class VehicleCurrentLocation(Resource):
     
@@ -178,24 +178,24 @@ class VehicleCurrentLocation(Resource):
     @token_required
     @require_permission('customer', 'read')
     @require_valid_subscription
-    def get(self, current_user, id):
+    def get(self, current_user, imei):
         """Retorna a localização atual de um veículo específico"""
         try:
-            if not id:
-                return {'message': 'ID do veículo não fornecido'}, 400
+            if not imei:
+                return {'message': 'IMEI do veículo não fornecido'}, 400
             
             vehicle_obj = None
-            vehicle_dict = vehicle_cache.get_vehicle(id)  # tenta cache
+            vehicle_dict = vehicle_cache.get_vehicle(imei)  # tenta cache
 
             if not vehicle_dict:
                 # Busca no banco
-                vehicle_obj = Vehicle.objects.get(IMEI=id, visible=True, company_id=current_user.company_id)
+                vehicle_obj = Vehicle.objects.get(IMEI=imei, visible=True, company_id=current_user.company_id)
 
                 if not vehicle_obj:
                     return {'message': 'Veículo não encontrado'}, 404
                 
                 # Tenta salvar no cache (se Redis estiver up)
-                vehicle_cache.set_vehicle(id, vehicle_obj)
+                vehicle_cache.set_vehicle(imei, vehicle_obj)
 
             if vehicle_dict:
                 vehicle = vehicle_dict
@@ -239,3 +239,49 @@ class VehicleCurrentLocation(Resource):
         except Exception as e:
             logger.error(f"Error getting vehicle location: {str(e)}")
             return {'message': 'Erro ao buscar localização do veículo'}, 500
+
+@api.route('/vehicles/history/<imei>')
+@api.param('imei', 'Vehicle IMEI')
+class VehicleHistory(Resource):
+    @api.doc('get_vehicle_location',
+             params={
+                 'limit': {'type': 'integer', 'default': 10, 'description': 'Número de posições'},
+                 'start_date': {'type': 'string', 'description': 'Data inicial (ISO format)'},
+                 'end_date': {'type': 'string', 'description': 'Data final (ISO format)'}
+             })
+    @token_required
+    @require_permission('customer', 'read')
+    @require_valid_subscription
+    def get(self, current_user, imei):
+        """Obter histórico de localização do veículo"""
+        try:
+            
+            # Build query for vehicle data
+            query = {'imei': imei}
+            
+            # Date filters
+            if request.args.get('start_date'):
+                start = datetime.fromisoformat(request.args.get('start_date'))
+                query['timestamp__gte'] = start
+            
+            if request.args.get('end_date'):
+                end = datetime.fromisoformat(request.args.get('end_date'))
+                query['timestamp__lte'] = end
+            
+            limit = min(100, int(request.args.get('limit', 10)))
+            
+            # Get location data
+            locations = VehicleData.objects(**query).order_by('-timestamp').limit(limit)
+            
+            return {
+                'locations': [loc.to_dict() for loc in locations],
+                'total': len(locations)
+            }, 200
+            
+        except DoesNotExist:
+            return {'message': 'Veículo não encontrado'}, 404
+        except Exception as e:
+            logger.error(f"Error getting vehicle location: {str(e)}")
+            return {'message': 'Erro ao buscar localização'}, 500
+
+

@@ -340,9 +340,6 @@ class VehicleBlock(Resource):
              # Build query - filter by company (multi-tenancy)
             query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
 
-            if current_user.role != 'admin':
-                query['customer_id'] = current_user.id
-
             vehicle = Vehicle.objects.get(**query)
 
             data = request.get_json()
@@ -361,7 +358,7 @@ class VehicleBlock(Resource):
 
             vehicle.save()
 
-            imei = vehicle.imei
+            imei = vehicle.IMEI 
             updates = {
                 "comandobloqueo": vehicle.comandobloqueo,
                 "updated_by": vehicle.updated_by,
@@ -383,16 +380,7 @@ class VehicleBlock(Resource):
             logger.error(f"Error sending block command: {str(e)}")
             return {'message': 'Erro ao enviar comando'}, 500
 
-    @api.doc('get_vehicle_location',
-             params={
-                 'limit': {'type': 'integer', 'default': 10, 'description': 'Número de posições'},
-                 'start_date': {'type': 'string', 'description': 'Data inicial (ISO format)'},
-                 'end_date': {'type': 'string', 'description': 'Data final (ISO format)'}
-             })
-    @token_required
-    @require_permission('customer', 'read')
-    @require_valid_subscription
-    def get(self, current_user, id):
+ 
         """Obter histórico de localização do veículo"""
         try:
             

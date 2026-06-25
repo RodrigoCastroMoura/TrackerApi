@@ -110,6 +110,7 @@ class BusinessService:
                     id=str(v.id),
                     plate=v.dsplaca or "N/A",
                     model=v.dsmodelo or "N/A",
+                    imei=v.IMEI or "N/A",
                     is_blocked=v.bloqueado or False
                 )
                 vehicles.append(vehicle)
@@ -122,15 +123,24 @@ class BusinessService:
 
     def get_vehicle_location(self, chat_vehicle: ChatVehicle, session: ChatSession) -> Optional[dict]:
         try:
-            vehicle = Vehicle.objects.get(
-                id=chat_vehicle.id,
-                visible=True,
-                customer_id=session.user.id,
-                company_id=session.user.company_id
-            )
+            vehicle_obj = None
+            vehicle_dict = vehicle_cache.get_vehicle(chat_vehicle.imei)  # tenta cache
 
-            lat = float(vehicle.latitude) if vehicle.latitude else 0.0
-            lng = float(vehicle.longitude) if vehicle.longitude else 0.0
+            if not vehicle_dict:
+                # Busca no banco
+                vehicle_obj = Vehicle.objects.get(
+                    id=chat_vehicle.id,
+                    visible=True,
+                    customer_id=session.user.id,
+                    company_id=session.user.company_id
+                )
+            if vehicle_dict:
+                vehicle = vehicle_dict
+            elif vehicle_obj:
+                vehicle = vehicle_obj.to_mongo().to_dict()
+
+            lat = float(vehicle.get('latitude')) if vehicle.get('latitude') else 0.0
+            lng = float(vehicle.get('longitude')) if vehicle.get('longitude') else 0.0
 
             address = "Endereco nao disponivel"
             if lat != 0.0 and lng != 0.0:
@@ -141,13 +151,13 @@ class BusinessService:
                     logger.warning(f"[BIZ] Geocoding failed: {str(e)}")
 
             last_update = "Nao disponivel"
-            if vehicle.tsusermanu:
+            if vehicle.get('tsusermanu'):
                 try:
                     br_tz = timezone(timedelta())
-                    dt_br = vehicle.tsusermanu.replace(tzinfo=timezone.utc).astimezone(br_tz)
+                    dt_br = vehicle.get('tsusermanu').replace(tzinfo=timezone.utc).astimezone(br_tz)
                     last_update = dt_br.strftime("%d/%m/%Y as %H:%M")
                 except Exception:
-                    last_update = vehicle.tsusermanu.strftime("%d/%m/%Y as %H:%M")
+                    last_update = vehicle.get('tsusermanu').strftime("%d/%m/%Y as %H:%M")
 
             return {
                 "latitude": lat,

@@ -14,6 +14,7 @@ class ChatVehicle:
     id: str
     plate: str
     model: str
+    imei: str
     is_blocked: bool = False
 
 
@@ -58,6 +59,7 @@ class ChatSession:
                     "id": v.id,
                     "plate": v.plate,
                     "model": v.model,
+                    "imei": v.imei,
                     "is_blocked": v.is_blocked,
                 })
             data["user"] = {
@@ -77,6 +79,7 @@ class ChatSession:
                 "id": self.selected_vehicle.id,
                 "plate": self.selected_vehicle.plate,
                 "model": self.selected_vehicle.model,
+                "imei": self.selected_vehicle.imei,
                 "is_blocked": self.selected_vehicle.is_blocked,
             }
         else:
@@ -94,6 +97,7 @@ class ChatSession:
                     id=v["id"],
                     plate=v["plate"],
                     model=v["model"],
+                    imei=v.get("imei", ""),
                     is_blocked=v.get("is_blocked", False),
                 )
                 for v in u.get("vehicles", [])
@@ -115,6 +119,7 @@ class ChatSession:
                 id=sv["id"],
                 plate=sv["plate"],
                 model=sv["model"],
+                imei=sv.get("imei", ""),
                 is_blocked=sv.get("is_blocked", False),
             )
 

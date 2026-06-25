@@ -180,10 +180,10 @@ class Vehicle(BaseDocument):
 
     meta = {
         'collection': 'vehicles',
+        'auto_create_index': False,
         'indexes': [
-            # Use explicit names to avoid conflicts
-            {'fields': ['IMEI'], 'unique': True, 'name': 'idx_vehicle_imei_unique'},
-            {'fields': ['dsplaca'], 'unique': True, 'name': 'idx_vehicle_placa_unique', 'sparse': True},
+            {'fields': ['IMEI'], 'unique': True, 'name': 'idx_v_imei'},
+            {'fields': ['dsplaca'], 'unique': True, 'name': 'idx_v_placa', 'sparse': True},
         ]
     }
     

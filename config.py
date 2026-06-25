@@ -4,7 +4,7 @@ import secrets
 from dotenv import load_dotenv
 
 # Carregar variáveis do .env
-load_dotenv()
+load_dotenv(override=True)
 
 class Config:
     # Critical Security: SECRET_KEY must be set

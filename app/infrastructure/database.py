@@ -13,6 +13,15 @@ try:
         logger.error("MONGODB_URI not set in configuration")
         raise ValueError("MONGODB_URI not set in configuration")
     
+    # Log masked URI so we can confirm which DB is being used at startup
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(mongodb_uri)
+        masked = f"{parsed.scheme}://***@{parsed.hostname}:{parsed.port}{parsed.path}"
+    except Exception:
+        masked = "URI inválida"
+    logger.info(f"[DB] Conectando em: {masked}")
+
     # Connect to MongoDB using MongoEngine with resilient settings
     db = connect(
         host=mongodb_uri,

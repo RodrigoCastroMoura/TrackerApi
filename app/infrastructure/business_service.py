@@ -124,20 +124,18 @@ class BusinessService:
     def get_vehicle_location(self, chat_vehicle: ChatVehicle, session: ChatSession) -> Optional[dict]:
         try:
             vehicle_obj = None
-            vehicle_dict = vehicle_cache.get_vehicle(chat_vehicle.imei)  # tenta cache
+            #vehicle_dict = vehicle_cache.get_vehicle(chat_vehicle.imei)  # tenta cache
 
-            if not vehicle_dict:
+            #if not vehicle_dict:
                 # Busca no banco
-                vehicle_obj = Vehicle.objects.get(
-                    id=chat_vehicle.id,
-                    visible=True,
-                    customer_id=session.user.id,
-                    company_id=session.user.company_id
-                )
-            if vehicle_dict:
-                vehicle = vehicle_dict
-            elif vehicle_obj:
-                vehicle = vehicle_obj.to_mongo().to_dict()
+            vehicle_obj = Vehicle.objects.get(
+                id=chat_vehicle.id,
+                visible=True,
+                customer_id=session.user.id,
+                company_id=session.user.company_id
+            )
+            
+            vehicle = vehicle_obj.to_mongo().to_dict()
 
             lat = float(vehicle.get('latitude')) if vehicle.get('latitude') else 0.0
             lng = float(vehicle.get('longitude')) if vehicle.get('longitude') else 0.0

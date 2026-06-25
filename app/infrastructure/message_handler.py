@@ -231,7 +231,13 @@ class MessageHandler:
 
         logger.info(f"[ACTION] {session.phone_number} | Veiculo: {vehicle.plate} | Acao: '{msg_lower}'")
 
-        if message_type == "interactive":
+        _action_commands = {
+            "localizacao", "loc", "l",
+            "bloquear", "block", "b",
+            "desbloquear", "unblock", "d",
+            "voltar", "back", "menu", "sair", "exit", "quit"
+        }
+        if message_type == "interactive" and msg_lower not in _action_commands:
             new_vehicle = self._get_vehicle_by_id(session, message)
             if new_vehicle and new_vehicle.id != vehicle.id:
                 logger.info(f"[ACTION] Trocando veiculo para: {new_vehicle.plate}")

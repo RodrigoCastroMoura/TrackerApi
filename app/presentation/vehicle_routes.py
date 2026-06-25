@@ -336,44 +336,54 @@ class VehicleBlock(Resource):
         try:
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
-            
-             # Build query - filter by company (multi-tenancy)
+
+            data = request.get_json()
+            if not data or 'comando' not in data:
+                return {'message': 'Comando não especificado'}, 400
+
+            if data['comando'] not in ('bloquear', 'desbloquear'):
+                return {'message': 'Comando inválido. Use "bloquear" ou "desbloquear"'}, 400
+
+            # Verifica Redis antes de ir ao banco
+            cached = vehicle_cache.get_vehicle_by_id(id)
+
+            # Build query - filter by company (multi-tenancy)
             query = {'id': id, 'visible': True, 'company_id': current_user.company_id}
+            if current_user.role != 'admin':
+                query['customer_id'] = current_user.id
 
             vehicle = Vehicle.objects.get(**query)
 
-            data = request.get_json()
-            
-            if 'comando' not in data:
-                return {'message': 'Comando não especificado'}, 400
-            
+            # Armazena no Redis com índice por ID se ainda não estava cacheado
+            if not cached:
+                vehicle_cache.set_vehicle(vehicle.IMEI, vehicle, vehicle_id=str(vehicle.id))
+
+            # True = bloquear, False = desbloquear (conforme modelo)
             if data['comando'] == 'bloquear':
-                vehicle.comandobloqueo = False
+                vehicle.comandobloqueo = True
                 message = 'Comando de bloqueio enviado'
             else:
-                vehicle.comandobloqueo = True
+                vehicle.comandobloqueo = False
                 message = 'Comando de desbloqueio enviado'
-            
-            vehicle.updated_by = current_user.id
 
+            vehicle.updated_by = current_user
             vehicle.save()
 
-            imei = vehicle.IMEI 
-            updates = {
-                "comandobloqueo": vehicle.comandobloqueo,
-                "updated_by": vehicle.updated_by,
-            }
-            vehicle_cache.update_vehicle_fields(imei, updates)
-            
+            vehicle_cache.update_vehicle_fields(vehicle.IMEI, {
+                'comandobloqueo': vehicle.comandobloqueo,
+                'updated_by': str(current_user.id),
+            })
+
             logger.info(f"Block command sent to vehicle {vehicle.IMEI}: {data['comando']}")
-            
+
             return {
                 'message': message,
                 'id': str(vehicle.id),
                 'IMEI': vehicle.IMEI,
-                'comando': data['comando']
+                'comando': data['comando'],
+                'comandobloqueo': vehicle.comandobloqueo
             }, 200
-            
+
         except DoesNotExist:
             return {'message': 'Veículo não encontrado ou inativo'}, 404
         except Exception as e:

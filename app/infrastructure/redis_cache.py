@@ -41,7 +41,10 @@ class RedisVehicleCache:
     
     def _vehicle_key(self, imei: str) -> str:
         return f"vehicle:{imei}"
-    
+
+    def _vehicle_id_key(self, vehicle_id: str) -> str:
+        return f"vehicle:id:{vehicle_id}"
+
     def _serialize_vehicle(self, vehicle_data: Any) -> str:
         # Se for objeto MongoEngine, converte para dict via to_mongo()
         if hasattr(vehicle_data, 'to_mongo'):
@@ -90,27 +93,53 @@ class RedisVehicleCache:
             logger.error(f"Redis get error for IMEI {imei}: {e}")
             return None
     
-    def set_vehicle(self, imei: str, vehicle_data: Dict[str, Any]):
+    def get_vehicle_by_id(self, vehicle_id: str) -> Optional[Dict[str, Any]]:
+        if not self.enabled or not self.client:
+            return None
+        try:
+            imei = self.client.get(self._vehicle_id_key(vehicle_id))
+            if imei:
+                logger.debug(f"Redis HIT vehicle by ID {vehicle_id} -> IMEI {imei}")
+                return self.get_vehicle(imei)
+            logger.debug(f"Redis MISS vehicle by ID {vehicle_id}")
+            return None
+        except Exception as e:
+            logger.error(f"Redis get_by_id error for {vehicle_id}: {e}")
+            return None
+
+    def set_vehicle(self, imei: str, vehicle_data: Any, vehicle_id: str = None):
         if not self.enabled or not self.client:
             return
-        
+
         try:
             serialized = self._serialize_vehicle(vehicle_data)
             self.client.setex(self._vehicle_key(imei), self.ttl, serialized)
+            if vehicle_id:
+                self.client.setex(self._vehicle_id_key(vehicle_id), self.ttl, imei)
             logger.debug(f"Redis SET vehicle IMEI {imei} (TTL: {self.ttl}s)")
         except Exception as e:
             logger.error(f"Redis set error for IMEI {imei}: {e}")
-    
+
     def invalidate_vehicle(self, imei: str):
         if not self.enabled or not self.client:
             return
-        
+
         try:
             self.client.delete(self._vehicle_key(imei))
             logger.debug(f"Redis INVALIDATE vehicle IMEI {imei}")
         except Exception as e:
             logger.error(f"Redis invalidate error for IMEI {imei}: {e}")
-    
+
+    def invalidate_vehicle_by_id(self, vehicle_id: str):
+        if not self.enabled or not self.client:
+            return
+
+        try:
+            self.client.delete(self._vehicle_id_key(vehicle_id))
+            logger.debug(f"Redis INVALIDATE vehicle ID {vehicle_id}")
+        except Exception as e:
+            logger.error(f"Redis invalidate by ID error for {vehicle_id}: {e}")
+
     def update_vehicle_fields(self, imei: str, updates: Dict[str, Any]):
         if not self.enabled or not self.client:
             return

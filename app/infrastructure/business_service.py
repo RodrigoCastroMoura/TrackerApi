@@ -203,9 +203,9 @@ class BusinessService:
             }
             vehicle_cache.update_vehicle_fields(imei, updates)
 
-            msg = f"Comando de {comando} enviado para \n\n"
-            msg += f"Veiculo: {vehicle.plate}\n"
-            msg += f"Modelo: {vehicle.model}"
+            msg = f"Comando de {comando} enviado para: \n"
+            msg += f"Veiculo de placa: {vehicle.dsplaca}\n"
+            msg += f"Modelo: {vehicle.dsmodelo}\n"
            
             return True, msg
 

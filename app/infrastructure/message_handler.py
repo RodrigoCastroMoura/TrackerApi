@@ -15,6 +15,7 @@ class MessageHandler:
         self.business = business
         self.handlers = {
             "UNAUTHENTICATED": self._handle_unauthenticated,
+            "WAITING_CPF": self._handle_waiting_cpf,
             "WAITING_PASSWORD": self._handle_waiting_password,
             "AUTHENTICATED": self._handle_authenticated,
             "VEHICLE_SELECTED": self._handle_vehicle_action
@@ -96,6 +97,10 @@ class MessageHandler:
             self._reset_session(session)
             return
 
+        if msg_lower in ["outraconta"]:
+            self._switch_account(session)
+            return
+
         action_commands = ["localizacao", "loc", "l", "bloquear", "block", "b",
                            "desbloquear", "unblock", "d", "voltar", "back", "menu"]
         if msg_lower in action_commands and session.selected_vehicle:
@@ -165,7 +170,7 @@ class MessageHandler:
                     {"id": "localizacao", "title": "Localizacao"},
                     {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
                      "title": "Bloquear" if not vehicle.is_blocked else "Desbloquear"},
-                    {"id": "sair", "title": "Sair"}
+                    {"id": "outraconta", "title": "Outra Conta"}
                 ]
             )
         else:
@@ -198,16 +203,23 @@ class MessageHandler:
 
         logger.info(f"[OPTIONS] Mostrando opcoes para: {vehicle.plate}")
 
-        buttons = [
-            {"id": "localizacao", "title": "Localizacao"},
-            {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
-             "title": "Bloquear" if not vehicle.is_blocked else "Desbloquear"}
-        ]
-
+        # WhatsApp limite: 3 botões por mensagem
         if len(session.user.vehicles) > 1:
-            buttons.append({"id": "menu", "title": "Menu"})
-
-        buttons.append({"id": "sair", "title": "Sair"})
+            # [Localizacao, Bloquear, Menu] — Sair via texto ou voltando ao menu
+            buttons = [
+                {"id": "localizacao", "title": "Localizacao"},
+                {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
+                 "title": "Bloquear" if not vehicle.is_blocked else "Desbloquear"},
+                {"id": "menu", "title": "Menu"},
+            ]
+        else:
+            # [Localizacao, Bloquear, Sair]
+            buttons = [
+                {"id": "localizacao", "title": "Localizacao"},
+                {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
+                 "title": "Bloquear" if not vehicle.is_blocked else "Desbloquear"},
+                {"id": "sair", "title": "Sair"},
+            ]
 
         self.whatsapp.send_interactive_buttons(
             session.phone_number,
@@ -235,7 +247,8 @@ class MessageHandler:
             "localizacao", "loc", "l",
             "bloquear", "block", "b",
             "desbloquear", "unblock", "d",
-            "voltar", "back", "menu", "sair", "exit", "quit"
+            "voltar", "back", "menu", "sair", "exit", "quit",
+            "outraconta"
         }
         if message_type == "interactive" and msg_lower not in _action_commands:
             new_vehicle = self._get_vehicle_by_id(session, message)
@@ -303,6 +316,10 @@ class MessageHandler:
             session.selected_vehicle = None
             self._show_vehicles(session)
 
+        elif msg_lower in ["outraconta"]:
+            logger.info(f"[ACTION] Troca de conta solicitada por {session.phone_number}")
+            self._switch_account(session)
+
         elif msg_lower in ["sair", "exit", "quit"]:
             logger.info(f"[ACTION] Saindo do sistema")
             self._reset_session(session)
@@ -331,6 +348,31 @@ class MessageHandler:
 
         logger.warning(f"[ID_SEARCH] Nenhum veiculo encontrado com ID: '{vehicle_id}'")
         return None
+
+    def _handle_waiting_cpf(self, session: ChatSession, message: str, _message_type: str = "text") -> None:
+        identifier = message.strip()
+        logger.info(f"[WAITING_CPF] {session.phone_number}: identificador recebido")
+
+        session.pending_identifier = identifier
+        session.state = "WAITING_PASSWORD"
+
+        self.whatsapp.send_message(
+            session.phone_number,
+            "Agora, por favor, digite sua *senha*:"
+        )
+
+    def _switch_account(self, session: ChatSession) -> None:
+        logger.info(f"[SWITCH] Trocando conta para {session.phone_number}")
+
+        session.user = None
+        session.state = "WAITING_CPF"
+        session.selected_vehicle = None
+        session.pending_identifier = None
+
+        self.whatsapp.send_message(
+            session.phone_number,
+            "Para acessar outra conta, por favor, digite o *CPF*:"
+        )
 
     def _reset_session(self, session: ChatSession) -> None:
         logger.info(f"[RESET] Resetando sessao de {session.phone_number}")

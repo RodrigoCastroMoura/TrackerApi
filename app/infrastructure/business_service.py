@@ -203,7 +203,11 @@ class BusinessService:
             }
             vehicle_cache.update_vehicle_fields(imei, updates)
 
-            return True, f"Comando de {comando} enviado para {chat_vehicle.plate}."
+            msg = f"Comando de {comando} enviado para \n\n"
+            msg += f"Veiculo: {vehicle.plate}\n"
+            msg += f"Modelo: {vehicle.model}"
+           
+            return True, msg
 
         except Exception as e:
             logger.error(f"[BIZ] Block command error: {str(e)}")

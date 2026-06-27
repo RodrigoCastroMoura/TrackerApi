@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Vehicle, VehicleData
+from app.domain.models import Vehicle, VehicleData, User
 from app.presentation.auth_routes import token_required, require_permission, require_valid_subscription
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging
@@ -366,7 +366,8 @@ class VehicleBlock(Resource):
                 vehicle.comandobloqueo = False
                 message = 'Comando de desbloqueio enviado'
 
-            vehicle.updated_by = current_user
+            if isinstance(current_user, User):
+                vehicle.updated_by = current_user
             vehicle.save()
 
             vehicle_cache.update_vehicle_fields(vehicle.IMEI, {

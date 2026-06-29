@@ -8,6 +8,7 @@ from config import Config
 logger = logging.getLogger(__name__)
 
 MP_ACCESS_TOKEN = Config.MERCADOPAGO_ACCESS_TOKEN
+MP_URL_RETURN = Config.MERCADOPAGO_URL_RETURN
 
 class MercadoPagoService:
     """Service for handling Mercado Pago payment operations"""
@@ -157,12 +158,10 @@ class MercadoPagoService:
                     "transaction_amount": float(amount),
                     "currency_id": "BRL"
                 },
-                "back_url": f"https://{os.environ.get('REPLIT_DEV_DOMAIN', 'localhost')}/subscription/success",
+                "back_url": Config.MERCADOPAGO_URL_RETURN,
             }
 
-            logger.info(
-                f"[MP REQUEST] POST /preapproval_plan | body={plan_data}"
-            )
+            logger.info(f"[MP REQUEST] POST /preapproval_plan | body={plan_data}")
             
             plan_response = sdk.plan().create(plan_data)
 

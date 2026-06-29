@@ -59,6 +59,7 @@ class Config:
     # IMPORTANT: Configure this in production to validate webhook signatures
     MERCADOPAGO_WEBHOOK_SECRET = os.environ.get('MERCADOPAGO_WEBHOOK_SECRET')
     MERCADOPAGO_ACCESS_TOKEN = os.environ.get('MERCADOPAGO_ACCESS_TOKEN')
+    MERCADOPAGO_URL_RETURN = os.environ.get('MERCADOPAGO_URL_RETURN')
 
     PASSWORG_CHATBOT_SALT = os.environ.get('PASSWORG_CHATBOT_SALT', 'default_salt_for_chatbot')
 

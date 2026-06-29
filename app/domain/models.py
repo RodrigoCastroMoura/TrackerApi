@@ -358,7 +358,8 @@ class SubscriptionPlan(BaseDocument):
     description = StringField(max_length=500)
     amount = FloatField(required=True)  # Monthly amount in BRL
     currency = StringField(default='BRL')
-    billing_cycle = StringField(choices=['weekly', 'monthly', 'quarterly', 'yearly'], default='monthly')
+    frequency = IntField(default=1)
+    frequency_type = StringField(default='months')
 
     # Mercado Pago integration
     mp_preapproval_plan_id = StringField(unique=True, sparse=True)  # Mercado Pago plan ID
@@ -389,7 +390,8 @@ class SubscriptionPlan(BaseDocument):
             'description': self.description,
             'amount': self.amount,
             'currency': self.currency,
-            'billing_cycle': self.billing_cycle,
+            'frequency': self.frequency,
+            'frequency_type': self.frequency_type,
             'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
             'features': self.features or [],
             'max_vehicles': self.max_vehicles,
@@ -440,7 +442,7 @@ class Subscription(BaseDocument):
     plan_name = StringField(required=True)  # Nome do plano
     amount = FloatField(required=True)  # Valor mensal em reais
     currency = StringField(default='BRL')
-    billing_cycle = StringField(choices=['weekly', 'monthly', 'quarterly', 'yearly'], default='monthly')
+    billing_cycle = StringField(default='months')
 
     # Status and dates
     status = StringField(

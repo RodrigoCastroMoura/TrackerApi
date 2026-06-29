@@ -1,12 +1,13 @@
 import os
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Customer, Subscription, SubscriptionPlan, BILLING_CYCLE_PARAMS, normalize_billing_cycle
+from app.domain.models import Customer, Subscription, SubscriptionPlan
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from app.presentation.auth_routes import customer_token_required
 from mongoengine import DoesNotExist
 from datetime import datetime, timedelta, timezone
 import logging
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -82,16 +83,16 @@ class SubscriptionResource(Resource):
                 logger.info(f"Deleted previous pending subscription {pending_subscription.id} before creating new one")
             
             # Step 2: Create or reuse Mercado Pago preapproval plan
-            billing_cycle = normalize_billing_cycle(plan.billing_cycle)
-            cycle = BILLING_CYCLE_PARAMS.get(billing_cycle, BILLING_CYCLE_PARAMS['monthly'])
+            frequency = plan.frequency or 1
+            frequency_type = plan.frequency_type or 'months'
             mp_plan_id = plan.mp_preapproval_plan_id
 
             if not mp_plan_id:
                 mp_plan = MercadoPagoService.create_subscription_plan(
                     plan_name=plan.name,
                     amount=plan.amount,
-                    frequency=cycle['frequency'],
-                    frequency_type=cycle['frequency_type']
+                    frequency=frequency,
+                    frequency_type=frequency_type
                 )
 
                 if not mp_plan:
@@ -106,9 +107,9 @@ class SubscriptionResource(Resource):
                 reason=plan.name,
                 payer_email=current_customer.email,
                 amount=plan.amount,
-                frequency=cycle['frequency'],
-                frequency_type=cycle['frequency_type'],
-                back_url=os.environ.get('APP_URL', 'https://www.rcminformatica.tec.br/'),
+                frequency=frequency,
+                frequency_type=frequency_type,
+                back_url=Config.MERCADOPAGO_URL_RETURN,
                 external_reference=str(current_customer.id),
                 metadata={
                     'customer_id': str(current_customer.id),
@@ -135,7 +136,7 @@ class SubscriptionResource(Resource):
                     amount=plan.amount,
                     status='pending',
                     mp_status='pending',
-                    billing_cycle=billing_cycle,
+                    billing_cycle=frequency_type,
                     currency='BRL',
                     payment_url=mp_subscription['init_point'],
                     created_by=None,
@@ -154,7 +155,7 @@ class SubscriptionResource(Resource):
                 'subscription_id': str(subscription.id),
                 'plan_name': plan.name,
                 'amount': plan.amount,
-                'billing_cycle': billing_cycle,
+                'billing_cycle': frequency_type,
                 'payment_url': mp_subscription['init_point'],
                 'mp_subscription_id': mp_sub_id,
                 'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
@@ -234,16 +235,16 @@ class SubscriptionResource(Resource):
             old_plan_amount = existing_subscription.amount
 
             # Step 1: Ensure MP plan ID exists for the new plan
-            new_billing_cycle = normalize_billing_cycle(new_plan.billing_cycle)
-            new_cycle = BILLING_CYCLE_PARAMS.get(new_billing_cycle, BILLING_CYCLE_PARAMS['monthly'])
+            new_frequency = new_plan.frequency or 1
+            new_frequency_type = new_plan.frequency_type or 'months'
             mp_plan_id = new_plan.mp_preapproval_plan_id
 
             if not mp_plan_id:
                 mp_plan = MercadoPagoService.create_subscription_plan(
                     plan_name=new_plan.name,
                     amount=new_plan.amount,
-                    frequency=new_cycle['frequency'],
-                    frequency_type=new_cycle['frequency_type']
+                    frequency=new_frequency,
+                    frequency_type=new_frequency_type
                 )
                 if not mp_plan:
                     return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
@@ -257,8 +258,8 @@ class SubscriptionResource(Resource):
                 reason=new_plan.name,
                 payer_email=current_customer.email,
                 amount=new_plan.amount,
-                frequency=new_cycle['frequency'],
-                frequency_type=new_cycle['frequency_type'],
+                frequency=new_frequency,
+                frequency_type=new_frequency_type,
                 back_url=os.environ.get('APP_URL', 'https://www.rcminformatica.tec.br/'),
                 external_reference=str(current_customer.id),
                 metadata={
@@ -286,7 +287,7 @@ class SubscriptionResource(Resource):
                     amount=new_plan.amount,
                     status='pending',
                     mp_status='pending',
-                    billing_cycle=new_billing_cycle,
+                    billing_cycle=new_frequency_type,
                     currency='BRL',
                     payment_url=mp_subscription['init_point'],
                     created_by=None,

@@ -41,6 +41,7 @@ subscription_plan_response = api.model('SubscriptionPlanResponse', {
     'features': fields.List(fields.String, description='List of features'),
     'max_vehicles': fields.Integer(description='Maximum number of vehicles'),
     'is_active': fields.Boolean(description='If plan is active'),
+    'visible': fields.Boolean(description='If plan is visible'),
     'created_at': fields.String(description='Creation date'),
     'updated_at': fields.String(description='Last update date')
 })
@@ -54,7 +55,7 @@ class SubscriptionPlanListResource(Resource):
         try:
             company_id = request.args.get('company_id')
 
-            query = {'visible': True, 'is_active': True}
+            query = {'visible': True}
             if company_id:
                 company = Company.objects(id=company_id, visible=True).first()
                 if not company:
@@ -237,7 +238,7 @@ class SubscriptionPlanMaxVehiclesResource(Resource):
             except (ValueError, TypeError):
                 return {'message': 'Invalid max_vehicles value. Must be an integer.'}, 400
 
-            plans = SubscriptionPlan.objects(max_vehicles=max_vehicles_int, visible=True)
+            plans = SubscriptionPlan.objects(max_vehicles=max_vehicles_int, is_active=True)
 
             return [plan.to_dict() for plan in plans], 200
 

@@ -222,7 +222,6 @@ class VehicleLocation(EmbeddedDocument):
     latitude = StringField(max_length=20)
     altitude = StringField(max_length=20)
 
-
 class VehicleData(BaseDocument):
     """Vehicle tracking data model - apenas dados de localização"""
 
@@ -396,6 +395,7 @@ class SubscriptionPlan(BaseDocument):
             'features': self.features or [],
             'max_vehicles': self.max_vehicles,
             'is_active': self.is_active,
+            'visible': self.visible 
         })
         return base_dict
 
@@ -419,6 +419,77 @@ class SubscriptionPayment(EmbeddedDocument):
             'period_start': self.period_start.isoformat() if self.period_start else None,
             'period_end': self.period_end.isoformat() if self.period_end else None,
         }
+
+class Bairro(Document):
+    """Bairro para enriquecimento da busca de CEP"""
+    bai_nu_sequencial = IntField()
+    loc_nu_sequencial = IntField()
+    ufe_sg = StringField(max_length=2)
+    bai_no = StringField()
+    bai_no_abrev = StringField()
+    Localidade = StringField()
+
+    meta = {
+        'collection': 'bairro',
+        'indexes': [{'fields': ['bai_nu_sequencial']}],
+        'strict': False,
+    }
+
+
+class Localidade(Document):
+    """Município para enriquecimento da busca de CEP"""
+    loc_nu_sequencial = IntField()
+    loc_nosub = StringField()
+    loc_no = StringField()
+    cep = StringField(max_length=8)
+    ufe_sg = StringField(max_length=2)
+    loc_in_situacao = IntField()
+    loc_in_tipo_localidade = StringField(max_length=1)
+    loc_nu_sequencial_sub = IntField()
+    temp = StringField()
+
+    meta = {
+        'collection': 'municipio',
+        'indexes': [{'fields': ['loc_nu_sequencial']}, {'fields': ['cep']}],
+        'strict': False,
+    }
+
+
+class Logradouro(Document):
+    """Modelo de logradouro para busca de CEP (Correios)"""
+    log_nu_sequencial = IntField()
+    ufe_sg = StringField(max_length=2)
+    loc_nu_sequencial = IntField()
+    log_no = StringField()
+    log_nome = StringField()
+    bai_nu_sequencial_ini = IntField()
+    bai_nu_sequencial_fim = IntField()
+    cep = StringField(max_length=8)
+    log_complemento = StringField()
+    log_status_tipo_log = StringField(max_length=1)
+    log_no_sem_acento = StringField()
+    ind_uop = StringField(max_length=1)
+    ind_gru = StringField(max_length=1)
+    temp = StringField()
+    Bairro = StringField()
+
+    meta = {
+        'collection': 'Logradouro',
+        'indexes': [{'fields': ['cep']}],
+        'strict': False,
+    }
+
+    def to_dict(self):
+        return {
+            'cep': self.cep,
+            'logradouro': self.log_nome,
+            'complemento': self.log_complemento or '',
+            'bairro': self.Bairro or '',
+            'uf': self.ufe_sg,
+            'log_nu_sequencial': self.log_nu_sequencial,
+            'loc_nu_sequencial': self.loc_nu_sequencial,
+        }
+
 
 class Subscription(BaseDocument):
     """Subscription model for monthly recurring payments"""

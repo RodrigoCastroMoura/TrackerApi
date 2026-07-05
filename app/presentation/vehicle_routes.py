@@ -17,6 +17,9 @@ api = Namespace('vehicles', description='Vehicle operations')
 vehicle_model = api.model('Vehicle', {
     'id': fields.String(readonly=True, description='Vehicle unique identifier'),
     'IMEI': fields.String(required=True, description='IMEI único do dispositivo'),
+    'customer_id': fields.String(description='ID do cliente associado'),
+    'customer_name': fields.String(description='Nome do cliente'),
+    'customer_document': fields.String(description='Documento do cliente'),
     'dsplaca': fields.String(description='Placa do veículo'),
     'dsmodelo': fields.String(description='Modelo do veículo'),
     'dsmarca': fields.String(description='Marca do veículo'),
@@ -119,8 +122,19 @@ class VehicleList(Resource):
             vehicles = Vehicle.objects(**query).order_by('-created_at').skip(
                 (page - 1) * per_page).limit(per_page)
             
+            def _with_customer(v):
+                d = v.to_dict()
+                try:
+                    customer = v.customer_id
+                    d['customer_name'] = customer.name if customer else None
+                    d['customer_document'] = customer.document if customer else None
+                except Exception:
+                    d['customer_name'] = None
+                    d['customer_document'] = None
+                return d
+
             return {
-                'vehicles': [v.to_dict() for v in vehicles],
+                'vehicles': [_with_customer(v) for v in vehicles],
                 'total': total,
                 'page': page,
                 'per_page': per_page,
@@ -169,7 +183,14 @@ class VehicleList(Resource):
                     )
                 except DoesNotExist:
                     return {'message': 'Cliente não encontrado ou não pertence à sua empresa'}, 403
-            
+
+            # Cliente já possui outro(s) veículo(s): ao adicionar mais um, libera troca de plano
+            customer_already_had_vehicle = False
+            if customer:
+                customer_already_had_vehicle = Vehicle.objects(
+                    customer_id=customer, company_id=current_user.company_id, visible=True
+                ).count() >= 1
+
             try:
                 vehicle = Vehicle(
                     IMEI=data['IMEI'],
@@ -183,11 +204,16 @@ class VehicleList(Resource):
                     created_by=current_user,
                     updated_by=current_user
                 )
-                
+
                 if 'ultimoalertabateria' in data:
                     vehicle.ultimoalertabateria = datetime.fromisoformat(data['ultimoalertabateria'])
-                
+
                 vehicle.save()
+
+                if customer_already_had_vehicle and not customer.can_change_plan:
+                    customer.can_change_plan = True
+                    customer.save()
+
                 vehicle_data = vehicle.to_dict()
 
                 campos_desejados = ['id', 'IMEI', 'dsplaca', 'dsmodelo', 'created_by', 'created_at']
@@ -246,7 +272,7 @@ class VehicleResource(Resource):
             if 'customer_id' in data and data['customer_id']:
                 if not ObjectId.is_valid(data['customer_id']):
                     return {'message': 'customer_id inválido'}, 400
-                
+
                 from app.domain.models import Customer
                 try:
                     customer = Customer.objects.get(
@@ -254,9 +280,18 @@ class VehicleResource(Resource):
                         company_id=current_user.company_id,
                         visible=True
                     )
-                    vehicle.customer_id = customer
                 except DoesNotExist:
                     return {'message': 'Cliente não encontrado ou não pertence à sua empresa'}, 403
+
+                previous_customer = vehicle.customer_id
+                vehicle.customer_id = customer
+
+                # Veículo trocou de cliente: libera troca de plano para o cliente antigo e o novo
+                if previous_customer and previous_customer.id != customer.id:
+                    previous_customer.can_change_plan = True
+                    previous_customer.save()
+                    customer.can_change_plan = True
+                    customer.save()
             
             # Update fields
             if 'dsplaca' in data:

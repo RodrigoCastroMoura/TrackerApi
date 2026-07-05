@@ -315,6 +315,48 @@ class MercadoPagoService:
             return None
     
     @staticmethod
+    def update_subscription(
+        subscription_id: str,
+        plan_name: str,
+        amount: float,
+        frequency: int = 1,
+        frequency_type: str = 'months'
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Atualiza plano e valor de uma preapproval existente (authorized ou pending).
+        Não exige re-autorização do cliente.
+        """
+        try:
+            sdk = MercadoPagoService.get_sdk()
+            if not sdk:
+                return None
+
+            update_data = {
+                "reason": plan_name,
+                "auto_recurring": {
+                    "frequency": frequency,
+                    "frequency_type": frequency_type,
+                    "transaction_amount": float(amount),
+                    "currency_id": "BRL"
+                }
+            }
+
+            logger.info(f"[MP REQUEST] PUT /preapproval/{subscription_id} | body={update_data}")
+            response = sdk.subscription().update(subscription_id, update_data)
+            logger.info(f"[MP RESPONSE] PUT /preapproval/{subscription_id} | status={response.get('status')} | body={response.get('response')}")
+
+            if response.get("status") not in [200, 201]:
+                resp = response.get('response', {})
+                logger.error(f"Mercado Pago update error: {resp}")
+                return None
+
+            return response.get('response', {})
+
+        except Exception as e:
+            logger.error(f"Error updating subscription {subscription_id}: {str(e)}")
+            return None
+
+    @staticmethod
     def cancel_subscription(subscription_id: str) -> bool:
         """
         Cancel a subscription

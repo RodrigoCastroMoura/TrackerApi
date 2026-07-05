@@ -1,4 +1,3 @@
-import os
 from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Customer, Subscription, SubscriptionPlan
@@ -188,17 +187,16 @@ class SubscriptionResource(Resource):
     @api.expect(subscription_create_model)
     @customer_token_required
     def put(self, current_customer):
-        """Trocar de plano de assinatura"""
+        """Trocar de plano ou reativar assinatura cancelada"""
         try:
             data = request.get_json()
-            
+
             if not data.get('plan_id'):
                 return {'message': 'Campo plan_id é obrigatório'}, 400
-            
-            # Fetch the new subscription plan
+
             plan_id_input = data['plan_id']
             new_plan = None
-            
+
             if len(plan_id_input) == 24:
                 try:
                     new_plan = SubscriptionPlan.objects(
@@ -217,126 +215,116 @@ class SubscriptionResource(Resource):
                     is_active=True,
                     visible=True
                 ).first()
-            
+
             if not new_plan:
                 return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
-            
-            # Find existing active subscription
-            existing_subscription = Subscription.objects(
+
+            # Busca a assinatura existente
+            existing = Subscription.objects(
                 customer_id=current_customer.id,
-                status__in=['active', 'pending'],
+                status__in=['active', 'canceled'],
                 visible=True
-            ).first()
+            ).order_by('-created_at').first()
 
-            if not existing_subscription:
-                return {'message': 'Nenhuma assinatura ativa encontrada para alterar. Crie uma assinatura primeiro.'}, 404
+            if not existing:
+                return {'message': 'Nenhuma assinatura encontrada. Crie uma assinatura primeiro.'}, 404
 
-            old_plan_name = existing_subscription.plan_name
-            old_plan_amount = existing_subscription.amount
-
-            # Step 1: Ensure MP plan ID exists for the new plan
             new_frequency = new_plan.frequency or 1
             new_frequency_type = new_plan.frequency_type or 'months'
             mp_plan_id = new_plan.mp_preapproval_plan_id
+            was_canceled = existing.status == 'canceled'
 
-            if not mp_plan_id:
-                mp_plan = MercadoPagoService.create_subscription_plan(
+            if was_canceled:
+                # Subscription cancelada → cria nova preapproval (cliente precisa re-autorizar)
+                mp_subscription = MercadoPagoService.create_pending_subscription(
+                    reason=new_plan.name,
+                    payer_email=current_customer.email,
+                    amount=new_plan.amount,
+                    frequency=new_frequency,
+                    frequency_type=new_frequency_type,
+                    back_url=Config.MERCADOPAGO_URL_RETURN,
+                    external_reference=str(current_customer.id),
+                    metadata={
+                        'customer_id': str(current_customer.id),
+                        'company_id': str(current_customer.company_id.id),
+                        'plan_id': str(new_plan.id),
+                    }
+                )
+
+                if not mp_subscription or mp_subscription.get('error'):
+                    mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
+                    if 'real or test users' in mp_msg:
+                        return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
+                    return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
+
+                new_mp_sub_id = mp_subscription['subscription_id']
+                new_payment_url = mp_subscription['init_point']
+                requires_authorization = True
+
+            else:
+                # Subscription ativa/pendente → atualiza a preapproval existente no MP
+                if not existing.mp_subscription_id:
+                    return {'message': 'ID da assinatura no Mercado Pago não encontrado'}, 400
+
+                mp_updated = MercadoPagoService.update_subscription(
+                    subscription_id=existing.mp_subscription_id,
                     plan_name=new_plan.name,
                     amount=new_plan.amount,
                     frequency=new_frequency,
                     frequency_type=new_frequency_type
                 )
-                if not mp_plan:
-                    return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
 
-                mp_plan_id = mp_plan['plan_id']
-                new_plan.mp_preapproval_plan_id = mp_plan_id
-                new_plan.save()
+                if not mp_updated:
+                    return {'message': 'Erro ao atualizar assinatura no Mercado Pago'}, 500
 
-            # Step 2: Create new MP subscription BEFORE canceling old one
-            mp_subscription = MercadoPagoService.create_pending_subscription(
-                reason=new_plan.name,
-                payer_email=current_customer.email,
-                amount=new_plan.amount,
-                frequency=new_frequency,
-                frequency_type=new_frequency_type,
-                back_url=os.environ.get('APP_URL', 'https://www.rcminformatica.tec.br/'),
-                external_reference=str(current_customer.id),
-                metadata={
-                    'customer_id': str(current_customer.id),
-                    'company_id': str(current_customer.company_id.id),
-                    'plan_id': str(new_plan.id),
-                }
-            )
+                new_mp_sub_id = existing.mp_subscription_id
+                new_payment_url = existing.payment_url
+                requires_authorization = False
 
-            if not mp_subscription or mp_subscription.get('error'):
-                mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
-                if 'real or test users' in mp_msg:
-                    return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
-                return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
+                customer = Customer.objects(id=current_customer.id).first()
+                customer.can_change_plan = False
+                customer.save()
 
-            # Step 3: Save new subscription to DB — if fails, cancel new MP subscription (old is untouched)
-            new_mp_sub_id = mp_subscription['subscription_id']
-            try:
-                subscription = Subscription(
-                    customer_id=current_customer,
-                    company_id=current_customer.company_id,
-                    mp_subscription_id=new_mp_sub_id,
-                    mp_preapproval_plan_id=mp_plan_id,
-                    plan_name=new_plan.name,
-                    amount=new_plan.amount,
-                    status='pending',
-                    mp_status='pending',
-                    billing_cycle=new_frequency_type,
-                    currency='BRL',
-                    payment_url=mp_subscription['init_point'],
-                    created_by=None,
-                    updated_by=None
-                )
-                subscription.save()
-            except Exception as db_error:
-                logger.error(f"DB save failed for new subscription, canceling new MP sub {new_mp_sub_id}: {db_error}")
-                MercadoPagoService.cancel_subscription(new_mp_sub_id)
-                return {'message': 'Erro ao salvar nova assinatura. Tente novamente.'}, 500
+            # Atualiza o mesmo documento de assinatura no banco
+            existing.mp_subscription_id = new_mp_sub_id
+            existing.mp_preapproval_plan_id = mp_plan_id
+            existing.plan_name = new_plan.name
+            existing.amount = new_plan.amount
+            existing.billing_cycle = new_frequency_type
+            existing.currency = 'BRL'
+            existing.payment_url = new_payment_url
+            existing.status = 'pending' if was_canceled else existing.status
+            existing.mp_status = 'pending' if was_canceled else existing.mp_status
+            existing.failure_message = None
+            existing.cancel_at_period_end = False
+            existing.canceled_at = None
+            existing.access_blocked = False
+            existing.updated_by = None
 
-            # Step 4: Only NOW cancel the old subscription on MP (new is safely persisted)
-            if existing_subscription.mp_subscription_id:
-                success = MercadoPagoService.cancel_subscription(existing_subscription.mp_subscription_id)
-                if not success:
-                    logger.warning(f"Failed to cancel old MP subscription: {existing_subscription.mp_subscription_id}")
+            existing.save()
 
-            # Step 5: Mark old subscription as canceled
-            existing_subscription.status = 'canceled'
-            existing_subscription.canceled_at = datetime.now(timezone.utc)
-            existing_subscription.cancel_at_period_end = True
-            existing_subscription.updated_by = None
-            existing_subscription.save()
+            action = 'reativada' if was_canceled else 'atualizada'
+            logger.info(f"Subscription {action} for customer {current_customer.email}, plan: {new_plan.name}, MP ID: {new_mp_sub_id}")
 
-            current_customer.current_plan_name = new_plan.name
-            current_customer.previous_plan_name = old_plan_name
-            current_customer.previous_plan_amount = old_plan_amount
-            current_customer.plan_changed_at = datetime.now(timezone.utc)
-            current_customer.save()
-            
-            logger.info(f"Subscription plan changed for customer {current_customer.email}, new plan: {new_plan.name}, MP subscription ID: {mp_subscription['subscription_id']}")
-            
-            return {
-                'message': 'Plano alterado com sucesso. Acesse o link para autorizar os pagamentos.',
-                'subscription_id': str(subscription.id),
+            response_body = {
+                'message': f'Assinatura {action} com sucesso.',
+                'subscription_id': str(existing.id),
                 'plan_name': new_plan.name,
                 'amount': new_plan.amount,
-                'payment_url': mp_subscription['init_point'],
-                'mp_subscription_id': mp_subscription['subscription_id'],
-                'previous_plan': {
-                    'plan_name': old_plan_name,
-                    'amount': old_plan_amount
-                },
-                'changed_at': subscription.changed_at.isoformat() if subscription.changed_at else None
-            }, 200
-            
+                'billing_cycle': new_frequency_type,
+                'mp_subscription_id': new_mp_sub_id,
+                'requires_authorization': requires_authorization,
+            }
+
+            if requires_authorization:
+                response_body['payment_url'] = new_payment_url
+                response_body['message'] += ' Acesse o link para autorizar os pagamentos.'
+
+            return response_body, 200
+
         except Exception as e:
-            logger.error(f"Error changing subscription plan: {str(e)}")
-            return {'message': 'Erro ao trocar de plano'}, 500
+            logger.error(f"Error updating subscription: {str(e)}")
+            return {'message': 'Erro ao atualizar assinatura'}, 500
 
 @api.route('/status')
 class SubscriptionStatus(Resource):
@@ -357,19 +345,13 @@ class SubscriptionStatus(Resource):
                     'status': None,
                     'mp_status': None,
                     'require_payment_method': current_customer.require_payment_method,
-                    'payment_url': None,
                 }, 200
 
             return {
                 'has_subscription': True,
                 'status': subscription.status,
                 'mp_status': subscription.mp_status,
-                'plan_name': subscription.plan_name,
-                'amount': subscription.amount,
-                'billing_cycle': subscription.billing_cycle,
-                'payment_url': subscription.payment_url,
                 'require_payment_method': current_customer.require_payment_method,
-                'current_period_end': subscription.current_period_end.isoformat() if subscription.current_period_end else None,
             }, 200
 
         except Exception as e:
@@ -377,7 +359,7 @@ class SubscriptionStatus(Resource):
             return {'message': 'Erro ao consultar status'}, 500
 
 @api.route('/cancel')
-class SubscriptionCancel(Resource):
+class SubscriptionCancel(Resource): 
     
     @api.doc('cancel_subscription')
     @customer_token_required
@@ -389,6 +371,11 @@ class SubscriptionCancel(Resource):
                 status__in=['active', 'pending'],
                 visible=True
             ).first()
+
+            customer = Customer.objects(id=current_customer.id).first()
+
+            if not customer:
+                return {'message': 'Cliente não encontrado'}, 404
             
             if not subscription:
                 return {'message': 'Nenhuma assinatura ativa encontrada'}, 404
@@ -408,12 +395,15 @@ class SubscriptionCancel(Resource):
             subscription.cancel_at_period_end = True
             subscription.updated_by = None
             subscription.save()
+
+            customer.can_change_plan = True
+            customer.subscription_blocked = False
+            customer.save()
             
             logger.info(f"Subscription canceled for customer {current_customer.email}")
             
             return {
-                'message': 'Assinatura cancelada com sucesso',
-                'subscription': subscription.to_dict()
+                'message': 'Assinatura cancelada com sucesso'
             }, 200
             
         except Exception as e:

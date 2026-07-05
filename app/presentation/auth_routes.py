@@ -340,6 +340,78 @@ def customer_token_required(f):
 
     return decorated
 
+def require_valid_subscription(f):
+    """Verifica se o cliente possui assinatura ativa e dentro do prazo de validade."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        current_customer = kwargs.get('current_customer')
+
+        # Tenta resolver pelo token JWT quando não disponível via kwargs
+        if current_customer is None:
+            try:
+                auth_header = request.headers.get('Authorization', '').strip()
+                if not auth_header:
+                    return {'message': 'Token não fornecido', 'error': 'missing_token'}, 401
+
+                token = auth_header.split(' ')[-1]
+                secret_key = Config.SECRET_KEY
+                data = jwt.decode(token, secret_key, algorithms=["HS256"])
+
+                if data.get('role') != 'customer':
+                    return {'message': 'Acesso negado. Apenas clientes podem acessar este recurso.', 'error': 'not_customer'}, 403
+
+                current_customer = Customer.objects(id=data['user_id']).first()
+            except jwt.ExpiredSignatureError:
+                return {'message': 'Token expirado', 'error': 'token_expired'}, 401
+            except jwt.InvalidTokenError:
+                return {'message': 'Token inválido', 'error': 'invalid_token'}, 401
+            except Exception as e:
+                logger.error(f"require_valid_subscription token error: {str(e)}")
+                return {'message': 'Erro na validação do token', 'error': 'validation_error'}, 500
+
+        if not current_customer:
+            return {'message': 'Cliente não encontrado', 'error': 'customer_not_found'}, 404
+
+        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+        active_subscription = Subscription.objects(
+            customer_id=current_customer.id,
+            status__in=['active', 'cancelled', 'rejected'],
+            visible=True
+        ).first()
+
+        if not active_subscription:
+            return {
+                'message': 'Nenhuma assinatura ativa encontrada.',
+                'error': 'no_active_subscription'
+            }, 403
+
+        if active_subscription.access_blocked:
+            return {
+                'message': 'Acesso bloqueado devido a pagamento pendente.',
+                'error': 'access_blocked'
+            }, 403
+
+        if active_subscription.grace_period_end and active_subscription.grace_period_end < now:
+            grace_end = active_subscription.grace_period_end
+            return {
+                'message': 'Assinatura expirada. Realize o pagamento para continuar.',
+                'error': 'subscription_expired',
+                'expired_at': active_subscription.current_period_end.isoformat(),
+                'grace_period_end': grace_end.isoformat() if grace_end else None
+            }, 403
+        
+        return f(*args, **kwargs)
+
+    return decorated
+
+def cleanup_blacklist():
+    try:
+        expired_date = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+        result = TokenBlacklist.objects(created_at__lt=expired_date).delete()
+    except Exception as e:
+        logger.error(f"Error cleaning up token blacklist: {str(e)}")
+
 @api.route('/login')
 class Login(Resource):
     @api.doc('login')
@@ -811,76 +883,3 @@ class LoginCustomerChatBot(Resource):
         except Exception as e:
             logger.error(f"Login error: {str(e)}")
             return {'message': 'Erro ao realizar login'}, 500
-
-def require_valid_subscription(f):
-    """Verifica se o cliente possui assinatura ativa e dentro do prazo de validade."""
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        current_customer = kwargs.get('current_customer')
-
-        # Tenta resolver pelo token JWT quando não disponível via kwargs
-        if current_customer is None:
-            try:
-                auth_header = request.headers.get('Authorization', '').strip()
-                if not auth_header:
-                    return {'message': 'Token não fornecido', 'error': 'missing_token'}, 401
-
-                token = auth_header.split(' ')[-1]
-                secret_key = Config.SECRET_KEY
-                data = jwt.decode(token, secret_key, algorithms=["HS256"])
-
-                if data.get('role') != 'customer':
-                    return {'message': 'Acesso negado. Apenas clientes podem acessar este recurso.', 'error': 'not_customer'}, 403
-
-                current_customer = Customer.objects(id=data['user_id']).first()
-            except jwt.ExpiredSignatureError:
-                return {'message': 'Token expirado', 'error': 'token_expired'}, 401
-            except jwt.InvalidTokenError:
-                return {'message': 'Token inválido', 'error': 'invalid_token'}, 401
-            except Exception as e:
-                logger.error(f"require_valid_subscription token error: {str(e)}")
-                return {'message': 'Erro na validação do token', 'error': 'validation_error'}, 500
-
-        if not current_customer:
-            return {'message': 'Cliente não encontrado', 'error': 'customer_not_found'}, 404
-
-        now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
-
-        active_subscription = Subscription.objects(
-            customer_id=current_customer.id,
-            status__in=['active', 'cancelled'],
-            visible=True
-        ).first()
-
-        if not active_subscription:
-            return {
-                'message': 'Nenhuma assinatura ativa encontrada.',
-                'error': 'no_active_subscription'
-            }, 403
-
-        if active_subscription.access_blocked:
-            return {
-                'message': 'Acesso bloqueado devido a pagamento pendente.',
-                'error': 'access_blocked'
-            }, 403
-
-        if active_subscription.grace_period_end and active_subscription.grace_period_end < now:
-            grace_end = active_subscription.grace_period_end
-            return {
-                'message': 'Assinatura expirada. Realize o pagamento para continuar.',
-                'error': 'subscription_expired',
-                'expired_at': active_subscription.current_period_end.isoformat(),
-                'grace_period_end': grace_end.isoformat() if grace_end else None
-            }, 403
-        
-        return f(*args, **kwargs)
-
-    return decorated
-
-def cleanup_blacklist():
-    try:
-        expired_date = datetime.datetime.utcnow() - datetime.timedelta(days=7)
-        result = TokenBlacklist.objects(created_at__lt=expired_date).delete()
-    except Exception as e:
-        logger.error(f"Error cleaning up token blacklist: {str(e)}")
-

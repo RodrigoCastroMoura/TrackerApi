@@ -19,7 +19,6 @@ PyMuPDF
 PyPDF2
 pytesseract
 requests
-mercadopago
 Flask-Dance
 Flask-Login
 Flask-SQLAlchemy

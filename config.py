@@ -55,12 +55,12 @@ class Config:
     # Rate Limiting Configuration
     RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', os.environ.get('REDIS_URL', 'memory://'))
     
-    # Mercado Pago Webhook Security
+    # AbacatePay Webhook Security
     # IMPORTANT: Configure this in production to validate webhook signatures
-    MERCADOPAGO_WEBHOOK_SECRET = os.environ.get('MERCADOPAGO_WEBHOOK_SECRET')
-    MERCADOPAGO_ACCESS_TOKEN = os.environ.get('MERCADOPAGO_ACCESS_TOKEN')
-    MERCADOPAGO_URL_RETURN = os.environ.get('MERCADOPAGO_URL_RETURN')
-    MERCADOPAGO_DAYS_TO_EXPIRE = int(os.environ.get('MERCADOPAGO_DAYS_TO_EXPIRE', 0))
+    ABACATEPAY_WEBHOOK_SECRET = os.environ.get('ABACATEPAY_WEBHOOK_SECRET')
+    ABACATEPAY_API_KEY = os.environ.get('ABACATEPAY_API_KEY')
+    ABACATEPAY_URL_RETURN = os.environ.get('ABACATEPAY_URL_RETURN')
+    ABACATEPAY_DAYS_TO_EXPIRE = int(os.environ.get('ABACATEPAY_DAYS_TO_EXPIRE', 0))
 
     PASSWORG_CHATBOT_SALT = os.environ.get('PASSWORG_CHATBOT_SALT', 'default_salt_for_chatbot')
 

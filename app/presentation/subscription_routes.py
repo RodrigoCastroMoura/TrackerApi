@@ -1,24 +1,90 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Customer, Subscription, SubscriptionPlan
-from app.infrastructure.mercadopago_service import MercadoPagoService
+from app.domain.models import Customer, Subscription, SubscriptionPlan, BILLING_CYCLE_PARAMS
+from app.infrastructure.abacatepay_service import AbacatePayService
 from app.presentation.auth_routes import customer_token_required
-from mongoengine import DoesNotExist
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import logging
 from config import Config
 
 logger = logging.getLogger(__name__)
 
-api = Namespace('subscriptions', description='Operações de assinatura e pagamento com Mercado Pago')
+api = Namespace('subscriptions', description='Operações de assinatura e pagamento com AbacatePay')
 
 subscription_create_model = api.model('SubscriptionCreate', {
     'plan_id': fields.String(required=True, description='ID do plano de assinatura cadastrado'),
 })
 
+
+def find_plan(plan_id_input, company_id):
+    """Busca o plano pelo ObjectId do banco ou pelo abacatepay_product_id"""
+    plan = None
+    if len(plan_id_input) == 24:
+        try:
+            plan = SubscriptionPlan.objects(
+                id=plan_id_input,
+                company_id=company_id,
+                is_active=True,
+                visible=True
+            ).first()
+        except Exception:
+            pass
+
+    if not plan:
+        plan = SubscriptionPlan.objects(
+            abacatepay_product_id=plan_id_input,
+            company_id=company_id,
+            is_active=True,
+            visible=True
+        ).first()
+
+    return plan
+
+
+def ensure_product(plan):
+    """Garante que o plano tem um produto criado no AbacatePay, criando se necessário"""
+    if plan.abacatepay_product_id:
+        return plan.abacatepay_product_id
+
+    product = AbacatePayService.create_product(
+        external_id=str(plan.id),
+        name=plan.name,
+        amount=plan.amount,
+        cycle=BILLING_CYCLE_PARAMS[plan.billing_cycle]['abacatepay_cycle'],
+        description=plan.description,
+    )
+
+    if not product or product.get('error'):
+        return None
+
+    plan.abacatepay_product_id = product['id']
+    plan.save()
+    return plan.abacatepay_product_id
+
+
+def ensure_abacatepay_customer(customer):
+    """Garante que o customer tem um cliente criado no AbacatePay, criando se necessário"""
+    if customer.abacatepay_customer_id:
+        return customer.abacatepay_customer_id
+
+    result = AbacatePayService.create_customer(
+        name=customer.name,
+        email=customer.email,
+        tax_id=customer.document,
+        cellphone=customer.phone,
+    )
+
+    if not result or result.get('error'):
+        return None
+
+    customer.abacatepay_customer_id = result['id']
+    customer.save()
+    return customer.abacatepay_customer_id
+
+
 @api.route('/')
 class SubscriptionResource(Resource):
-    
+
     @api.doc('create_subscription')
     @api.expect(subscription_create_model)
     @customer_token_required
@@ -26,38 +92,15 @@ class SubscriptionResource(Resource):
         """Criar assinatura a partir de um plano cadastrado"""
         try:
             data = request.get_json()
-            
+
             if not data.get('plan_id'):
                 return {'message': 'Campo plan_id é obrigatório'}, 400
-            
-            # Step 1: Fetch subscription plan — aceita ObjectId do banco ou mp_preapproval_plan_id
-            plan_id_input = data['plan_id']
-            plan = None
 
-            if len(plan_id_input) == 24:
-                # Formato ObjectId do MongoDB
-                try:
-                    plan = SubscriptionPlan.objects(
-                        id=plan_id_input,
-                        company_id=current_customer.company_id,
-                        is_active=True,
-                        visible=True
-                    ).first()
-                except Exception:
-                    pass
-
-            if not plan:
-                # Tenta pelo mp_preapproval_plan_id (ID do Mercado Pago)
-                plan = SubscriptionPlan.objects(
-                    mp_preapproval_plan_id=plan_id_input,
-                    company_id=current_customer.company_id,
-                    is_active=True,
-                    visible=True
-                ).first()
+            plan = find_plan(data['plan_id'], current_customer.company_id)
 
             if not plan:
                 return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
-            
+
             # Bloqueia se já tem assinatura ativa
             active_subscription = Subscription.objects(
                 customer_id=current_customer.id,
@@ -76,40 +119,26 @@ class SubscriptionResource(Resource):
             ).first()
 
             if pending_subscription:
-                if pending_subscription.mp_subscription_id:
-                    MercadoPagoService.cancel_subscription(pending_subscription.mp_subscription_id)
+                if pending_subscription.abacatepay_subscription_id:
+                    AbacatePayService.cancel_subscription(pending_subscription.abacatepay_subscription_id)
                 pending_subscription.delete()
                 logger.info(f"Deleted previous pending subscription {pending_subscription.id} before creating new one")
-            
-            # Step 2: Create or reuse Mercado Pago preapproval plan
-            frequency = plan.frequency or 1
-            frequency_type = plan.frequency_type or 'months'
-            mp_plan_id = plan.mp_preapproval_plan_id
 
-            if not mp_plan_id:
-                mp_plan = MercadoPagoService.create_subscription_plan(
-                    plan_name=plan.name,
-                    amount=plan.amount,
-                    frequency=frequency,
-                    frequency_type=frequency_type
-                )
+            product_id = ensure_product(plan)
+            if not product_id:
+                return {'message': 'Erro ao criar produto no AbacatePay'}, 500
 
-                if not mp_plan:
-                    return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
+            customer = Customer.objects(id=current_customer.id).first()
+            abacatepay_customer_id = ensure_abacatepay_customer(customer)
+            if not abacatepay_customer_id:
+                return {'message': 'Erro ao criar cliente no AbacatePay'}, 500
 
-                mp_plan_id = mp_plan['plan_id']
-                plan.mp_preapproval_plan_id = mp_plan_id
-                plan.save()
-
-            # Step 3: Create pending subscription — generates payment link for the customer
-            mp_subscription = MercadoPagoService.create_pending_subscription(
-                reason=plan.name,
-                payer_email=current_customer.email,
-                amount=plan.amount,
-                frequency=frequency,
-                frequency_type=frequency_type,
-                back_url=Config.MERCADOPAGO_URL_RETURN,
-                external_reference=str(current_customer.id),
+            checkout = AbacatePayService.create_subscription_checkout(
+                product_id=product_id,
+                customer_id=abacatepay_customer_id,
+                external_id=str(current_customer.id),
+                return_url=Config.ABACATEPAY_URL_RETURN,
+                completion_url=Config.ABACATEPAY_URL_RETURN,
                 metadata={
                     'customer_id': str(current_customer.id),
                     'company_id': str(current_customer.company_id.id),
@@ -117,53 +146,51 @@ class SubscriptionResource(Resource):
                 }
             )
 
-            if not mp_subscription or mp_subscription.get('error'):
-                mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
-                if 'real or test users' in mp_msg:
-                    return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
-                return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
-            
-            # Step 4: Salvar no banco — se falhar, cancela no MP para evitar órfão
-            mp_sub_id = mp_subscription['subscription_id']
+            if not checkout or checkout.get('error'):
+                msg = checkout.get('message', '') if checkout else ''
+                return {'message': msg or 'Erro ao criar assinatura no AbacatePay'}, 400
+
+            # Salvar no banco — se falhar, cancela no AbacatePay para evitar órfão
             try:
                 subscription = Subscription(
                     customer_id=current_customer,
                     company_id=current_customer.company_id,
-                    mp_subscription_id=mp_sub_id,
-                    mp_preapproval_plan_id=mp_plan_id,
+                    abacatepay_subscription_id=checkout['id'],
+                    abacatepay_customer_id=abacatepay_customer_id,
+                    abacatepay_product_id=product_id,
                     plan_name=plan.name,
                     amount=plan.amount,
                     status='pending',
-                    mp_status='pending',
-                    billing_cycle=frequency_type,
+                    abacatepay_status='pending',
+                    billing_cycle=plan.billing_cycle,
                     currency='BRL',
-                    payment_url=mp_subscription['init_point'],
+                    payment_url=checkout['url'],
                     created_by=None,
                     updated_by=None
                 )
                 subscription.save()
             except Exception as db_error:
-                logger.error(f"DB save failed, canceling MP subscription {mp_sub_id}: {db_error}")
-                MercadoPagoService.cancel_subscription(mp_sub_id)
+                logger.error(f"DB save failed, canceling AbacatePay subscription {checkout['id']}: {db_error}")
+                AbacatePayService.cancel_subscription(checkout['id'])
                 return {'message': 'Erro ao salvar assinatura. Tente novamente.'}, 500
 
-            logger.info(f"Subscription created for customer {current_customer.email}, plan: {plan.name}, MP ID: {mp_sub_id}")
+            logger.info(f"Subscription created for customer {current_customer.email}, plan: {plan.name}, AbacatePay ID: {checkout['id']}")
 
             return {
                 'message': 'Assinatura recorrente criada com sucesso',
                 'subscription_id': str(subscription.id),
                 'plan_name': plan.name,
                 'amount': plan.amount,
-                'billing_cycle': frequency_type,
-                'payment_url': mp_subscription['init_point'],
-                'mp_subscription_id': mp_sub_id,
-                'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
+                'billing_cycle': plan.billing_cycle,
+                'payment_url': checkout['url'],
+                'abacatepay_subscription_id': checkout['id'],
+                'instructions': 'Acesse o link para autorizar os pagamentos recorrentes'
             }, 201
 
         except Exception as e:
             logger.error(f"Error creating subscription: {str(e)}")
             return {'message': 'Erro ao criar assinatura'}, 500
-    
+
     @api.doc('get_my_subscription')
     @customer_token_required
     def get(self, current_customer):
@@ -173,12 +200,12 @@ class SubscriptionResource(Resource):
                 customer_id=current_customer.id,
                 visible=True
             ).order_by('-created_at').first()
-            
+
             if not subscription:
                 return {'message': 'Nenhuma assinatura encontrada'}, 404
-            
+
             return subscription.to_dict(), 200
-            
+
         except Exception as e:
             logger.error(f"Error getting subscription: {str(e)}")
             return {'message': 'Erro ao consultar assinatura'}, 500
@@ -194,27 +221,7 @@ class SubscriptionResource(Resource):
             if not data.get('plan_id'):
                 return {'message': 'Campo plan_id é obrigatório'}, 400
 
-            plan_id_input = data['plan_id']
-            new_plan = None
-
-            if len(plan_id_input) == 24:
-                try:
-                    new_plan = SubscriptionPlan.objects(
-                        id=plan_id_input,
-                        company_id=current_customer.company_id,
-                        is_active=True,
-                        visible=True
-                    ).first()
-                except Exception:
-                    pass
-            
-            if not new_plan:
-                new_plan = SubscriptionPlan.objects(
-                    mp_preapproval_plan_id=plan_id_input,
-                    company_id=current_customer.company_id,
-                    is_active=True,
-                    visible=True
-                ).first()
+            new_plan = find_plan(data['plan_id'], current_customer.company_id)
 
             if not new_plan:
                 return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
@@ -229,21 +236,25 @@ class SubscriptionResource(Resource):
             if not existing:
                 return {'message': 'Nenhuma assinatura encontrada. Crie uma assinatura primeiro.'}, 404
 
-            new_frequency = new_plan.frequency or 1
-            new_frequency_type = new_plan.frequency_type or 'months'
-            mp_plan_id = new_plan.mp_preapproval_plan_id
+            product_id = ensure_product(new_plan)
+            if not product_id:
+                return {'message': 'Erro ao criar produto no AbacatePay'}, 500
+
             was_canceled = existing.status == 'canceled'
 
             if was_canceled:
-                # Subscription cancelada → cria nova preapproval (cliente precisa re-autorizar)
-                mp_subscription = MercadoPagoService.create_pending_subscription(
-                    reason=new_plan.name,
-                    payer_email=current_customer.email,
-                    amount=new_plan.amount,
-                    frequency=new_frequency,
-                    frequency_type=new_frequency_type,
-                    back_url=Config.MERCADOPAGO_URL_RETURN,
-                    external_reference=str(current_customer.id),
+                # Subscription cancelada → cria novo checkout (cliente precisa re-autorizar)
+                customer = Customer.objects(id=current_customer.id).first()
+                abacatepay_customer_id = ensure_abacatepay_customer(customer)
+                if not abacatepay_customer_id:
+                    return {'message': 'Erro ao criar cliente no AbacatePay'}, 500
+
+                checkout = AbacatePayService.create_subscription_checkout(
+                    product_id=product_id,
+                    customer_id=abacatepay_customer_id,
+                    external_id=str(current_customer.id),
+                    return_url=Config.ABACATEPAY_URL_RETURN,
+                    completion_url=Config.ABACATEPAY_URL_RETURN,
                     metadata={
                         'customer_id': str(current_customer.id),
                         'company_id': str(current_customer.company_id.id),
@@ -251,33 +262,28 @@ class SubscriptionResource(Resource):
                     }
                 )
 
-                if not mp_subscription or mp_subscription.get('error'):
-                    mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
-                    if 'real or test users' in mp_msg:
-                        return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
-                    return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
+                if not checkout or checkout.get('error'):
+                    msg = checkout.get('message', '') if checkout else ''
+                    return {'message': msg or 'Erro ao criar assinatura no AbacatePay'}, 400
 
-                new_mp_sub_id = mp_subscription['subscription_id']
-                new_payment_url = mp_subscription['init_point']
+                new_subscription_id = checkout['id']
+                new_payment_url = checkout['url']
                 requires_authorization = True
 
             else:
-                # Subscription ativa/pendente → atualiza a preapproval existente no MP
-                if not existing.mp_subscription_id:
-                    return {'message': 'ID da assinatura no Mercado Pago não encontrado'}, 400
+                # Subscription ativa → troca o produto na assinatura existente
+                if not existing.abacatepay_subscription_id:
+                    return {'message': 'ID da assinatura no AbacatePay não encontrado'}, 400
 
-                mp_updated = MercadoPagoService.update_subscription(
-                    subscription_id=existing.mp_subscription_id,
-                    plan_name=new_plan.name,
-                    amount=new_plan.amount,
-                    frequency=new_frequency,
-                    frequency_type=new_frequency_type
+                changed = AbacatePayService.change_subscription_plan(
+                    subscription_id=existing.abacatepay_subscription_id,
+                    product_id=product_id,
                 )
 
-                if not mp_updated:
-                    return {'message': 'Erro ao atualizar assinatura no Mercado Pago'}, 500
+                if not changed or changed.get('error'):
+                    return {'message': 'Erro ao atualizar assinatura no AbacatePay'}, 500
 
-                new_mp_sub_id = existing.mp_subscription_id
+                new_subscription_id = existing.abacatepay_subscription_id
                 new_payment_url = existing.payment_url
                 requires_authorization = False
 
@@ -286,15 +292,15 @@ class SubscriptionResource(Resource):
                 customer.save()
 
             # Atualiza o mesmo documento de assinatura no banco
-            existing.mp_subscription_id = new_mp_sub_id
-            existing.mp_preapproval_plan_id = mp_plan_id
+            existing.abacatepay_subscription_id = new_subscription_id
+            existing.abacatepay_product_id = product_id
             existing.plan_name = new_plan.name
             existing.amount = new_plan.amount
-            existing.billing_cycle = new_frequency_type
+            existing.billing_cycle = new_plan.billing_cycle
             existing.currency = 'BRL'
             existing.payment_url = new_payment_url
             existing.status = 'pending' if was_canceled else existing.status
-            existing.mp_status = 'pending' if was_canceled else existing.mp_status
+            existing.abacatepay_status = 'pending' if was_canceled else existing.abacatepay_status
             existing.failure_message = None
             existing.cancel_at_period_end = False
             existing.canceled_at = None
@@ -304,15 +310,15 @@ class SubscriptionResource(Resource):
             existing.save()
 
             action = 'reativada' if was_canceled else 'atualizada'
-            logger.info(f"Subscription {action} for customer {current_customer.email}, plan: {new_plan.name}, MP ID: {new_mp_sub_id}")
+            logger.info(f"Subscription {action} for customer {current_customer.email}, plan: {new_plan.name}, AbacatePay ID: {new_subscription_id}")
 
             response_body = {
                 'message': f'Assinatura {action} com sucesso.',
                 'subscription_id': str(existing.id),
                 'plan_name': new_plan.name,
                 'amount': new_plan.amount,
-                'billing_cycle': new_frequency_type,
-                'mp_subscription_id': new_mp_sub_id,
+                'billing_cycle': new_plan.billing_cycle,
+                'abacatepay_subscription_id': new_subscription_id,
                 'requires_authorization': requires_authorization,
             }
 
@@ -343,14 +349,14 @@ class SubscriptionStatus(Resource):
                 return {
                     'has_subscription': False,
                     'status': None,
-                    'mp_status': None,
+                    'abacatepay_status': None,
                     'require_payment_method': current_customer.require_payment_method,
                 }, 200
 
             return {
                 'has_subscription': True,
                 'status': subscription.status,
-                'mp_status': subscription.mp_status,
+                'abacatepay_status': subscription.abacatepay_status,
                 'require_payment_method': current_customer.require_payment_method,
             }, 200
 
@@ -359,8 +365,8 @@ class SubscriptionStatus(Resource):
             return {'message': 'Erro ao consultar status'}, 500
 
 @api.route('/cancel')
-class SubscriptionCancel(Resource): 
-    
+class SubscriptionCancel(Resource):
+
     @api.doc('cancel_subscription')
     @customer_token_required
     def post(self, current_customer):
@@ -376,19 +382,19 @@ class SubscriptionCancel(Resource):
 
             if not customer:
                 return {'message': 'Cliente não encontrado'}, 404
-            
+
             if not subscription:
                 return {'message': 'Nenhuma assinatura ativa encontrada'}, 404
-            
+
             if subscription.cancel_at_period_end:
                 return {'message': 'Assinatura já está agendada para cancelamento'}, 400
-            
-            # Cancel on Mercado Pago if subscription ID exists
-            if subscription.mp_subscription_id:
-                success = MercadoPagoService.cancel_subscription(subscription.mp_subscription_id)
+
+            # Cancel on AbacatePay if subscription ID exists
+            if subscription.abacatepay_subscription_id:
+                success = AbacatePayService.cancel_subscription(subscription.abacatepay_subscription_id)
                 if not success:
-                    logger.warning(f"Failed to cancel subscription on Mercado Pago: {subscription.mp_subscription_id}")
-            
+                    logger.warning(f"Failed to cancel subscription on AbacatePay: {subscription.abacatepay_subscription_id}")
+
             # Mark as canceled
             subscription.status = 'canceled'
             subscription.canceled_at = datetime.now(timezone.utc)
@@ -399,13 +405,13 @@ class SubscriptionCancel(Resource):
             customer.can_change_plan = True
             customer.subscription_blocked = False
             customer.save()
-            
+
             logger.info(f"Subscription canceled for customer {current_customer.email}")
-            
+
             return {
                 'message': 'Assinatura cancelada com sucesso'
             }, 200
-            
+
         except Exception as e:
             logger.error(f"Error canceling subscription: {str(e)}")
             return {'message': 'Erro ao cancelar assinatura'}, 500

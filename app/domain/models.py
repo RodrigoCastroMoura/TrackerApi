@@ -4,20 +4,20 @@ from mongoengine import *
 from enum import Enum
 from config import Config
 
-# Mapa canônico de ciclos de cobrança → parâmetros do Mercado Pago e dias do período
+# Mapa canônico de ciclos de cobrança → cycle do AbacatePay e dias do período
 BILLING_CYCLE_PARAMS = {
-    'weekly':    {'frequency': 7,  'frequency_type': 'days',   'period_days': 7},
-    'monthly':   {'frequency': 1,  'frequency_type': 'months', 'period_days': 30},
-    'quarterly': {'frequency': 3,  'frequency_type': 'months', 'period_days': 90},
-    'yearly':    {'frequency': 12, 'frequency_type': 'months', 'period_days': 365},
+    'weekly':    {'abacatepay_cycle': 'WEEKLY',       'period_days': 7},
+    'monthly':   {'abacatepay_cycle': 'MONTHLY',      'period_days': 30},
+    'quarterly': {'abacatepay_cycle': 'QUARTERLY',    'period_days': 90},
+    'yearly':    {'abacatepay_cycle': 'ANNUALLY',     'period_days': 365},
 }
 
 # Aliases para valores legados no banco
 _BILLING_CYCLE_ALIASES = {
-    'semanal': 'weekly', 'semana': 'weekly',
-    'mensal': 'monthly', 'mes': 'monthly',
-    'trimestral': 'quarterly', 'trimestre': 'quarterly',
-    'anual': 'yearly', 'annual': 'yearly', 'ano': 'yearly',
+    'weeks': 'weekly', 
+    'months': 'monthly', 
+    'thimonths': 'quarterly',
+    'years': 'yearly',
 }
 
 def normalize_billing_cycle(value: str) -> str:
@@ -283,6 +283,9 @@ class Customer(BaseDocument):
     has_accepted_terms = BooleanField(default=False)
     require_payment_method = BooleanField(default=True)
 
+    # AbacatePay customer reference (criado uma vez, reaproveitado em todas as assinaturas)
+    abacatepay_customer_id = StringField()
+
     # Plan change tracking
     current_plan_name = StringField()  # Nome do plano atual
     previous_plan_name = StringField()  # Nome do plano anterior
@@ -340,6 +343,7 @@ class Customer(BaseDocument):
             'fcm_token': self.fcm_token,
             'has_accepted_terms': self.has_accepted_terms,
             'require_payment_method': self.require_payment_method,
+            'abacatepay_customer_id': self.abacatepay_customer_id,
             'current_plan_name': self.current_plan_name,
             'previous_plan_name': self.previous_plan_name,
             'previous_plan_amount': self.previous_plan_amount,
@@ -357,29 +361,28 @@ class SubscriptionPlan(BaseDocument):
     description = StringField(max_length=500)
     amount = FloatField(required=True)  # Monthly amount in BRL
     currency = StringField(default='BRL')
-    frequency = IntField(default=1)
-    frequency_type = StringField(default='months')
+    billing_cycle = StringField(default='monthly', choices=list(BILLING_CYCLE_PARAMS.keys()))
 
-    # Mercado Pago integration
-    mp_preapproval_plan_id = StringField(unique=True, sparse=True)  # Mercado Pago plan ID
-    
+    # AbacatePay integration
+    abacatepay_product_id = StringField(unique=True, sparse=True)  # AbacatePay product ID
+
     features = ListField(StringField())  # Lista de funcionalidades do plano
     max_vehicles = IntField()  # Maximum number of vehicles (optional)
-    
+
     # Status
     is_active = BooleanField(default=True)  # If plan is available for new subscriptions
     visible = BooleanField(default=True)
-    
+
     meta = {
         'collection': 'subscription_plans',
         'indexes': [
             {'fields': ['company_id']},
             {'fields': ['is_active']},
-            {'fields': ['mp_preapproval_plan_id'], 'unique': True, 'sparse': True},
+            {'fields': ['abacatepay_product_id'], 'unique': True, 'sparse': True},
         ],
         'strict': False  # Allow extra fields from old schema versions
     }
-    
+
     def to_dict(self):
         """Convert to dictionary for API responses"""
         base_dict = super(SubscriptionPlan, self).to_dict()
@@ -389,19 +392,18 @@ class SubscriptionPlan(BaseDocument):
             'description': self.description,
             'amount': self.amount,
             'currency': self.currency,
-            'frequency': self.frequency,
-            'frequency_type': self.frequency_type,
-            'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
+            'billing_cycle': self.billing_cycle,
+            'abacatepay_product_id': self.abacatepay_product_id,
             'features': self.features or [],
             'max_vehicles': self.max_vehicles,
             'is_active': self.is_active,
-            'visible': self.visible 
+            'visible': self.visible
         })
         return base_dict
 
 class SubscriptionPayment(EmbeddedDocument):
     """Registro de um pagamento mensal da assinatura"""
-    mp_authorized_payment_id = StringField(required=True)
+    abacatepay_billing_id = StringField(required=True)
     amount = FloatField(required=True)
     currency = StringField(default='BRL')
     status = StringField(choices=['approved', 'rejected', 'pending'], default='pending')
@@ -409,9 +411,13 @@ class SubscriptionPayment(EmbeddedDocument):
     period_start = DateTimeField()
     period_end = DateTimeField()
 
+    meta = {
+        'strict': False  # Allow extra/legacy fields from old schema versions (ex: mp_authorized_payment_id)
+    }
+
     def to_dict(self):
         return {
-            'mp_authorized_payment_id': self.mp_authorized_payment_id,
+            'abacatepay_billing_id': self.abacatepay_billing_id,
             'amount': self.amount,
             'currency': self.currency,
             'status': self.status,
@@ -496,11 +502,11 @@ class Subscription(BaseDocument):
     customer_id = ReferenceField('Customer', required=True)
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
 
-    # Mercado Pago data
-    mp_subscription_id = StringField(unique=True, sparse=True)
-    mp_payer_id = StringField()
-    mp_preapproval_plan_id = StringField()
-    mp_status = StringField(
+    # AbacatePay data
+    abacatepay_subscription_id = StringField(unique=True, sparse=True)
+    abacatepay_customer_id = StringField()
+    abacatepay_product_id = StringField()
+    abacatepay_status = StringField(
         choices=['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded'],
         default='pending'
     )
@@ -539,10 +545,11 @@ class Subscription(BaseDocument):
         'collection': 'subscriptions',
         'indexes': [
             {'fields': ['customer_id']},
-            {'fields': ['mp_subscription_id'], 'unique': True, 'sparse': True},
+            {'fields': ['abacatepay_subscription_id'], 'unique': True, 'sparse': True},
             {'fields': ['company_id']},
             {'fields': ['status']},
-        ]
+        ],
+        'strict': False  # Allow extra fields from old schema versions (ex: mp_subscription_id)
     }
 
     def to_dict(self):
@@ -551,9 +558,9 @@ class Subscription(BaseDocument):
         base_dict.update({
             'customer_id': str(self.customer_id.id) if self.customer_id else None,
             'company_id': str(self.company_id.id) if self.company_id else None,
-            'mp_subscription_id': self.mp_subscription_id,
-            'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
-            'mp_status': self.mp_status,
+            'abacatepay_subscription_id': self.abacatepay_subscription_id,
+            'abacatepay_product_id': self.abacatepay_product_id,
+            'abacatepay_status': self.abacatepay_status,
             'payment_url': self.payment_url,
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'failure_message': self.failure_message,

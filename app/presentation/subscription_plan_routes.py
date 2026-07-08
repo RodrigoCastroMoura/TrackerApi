@@ -1,28 +1,19 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import SubscriptionPlan, Company
+from app.domain.models import SubscriptionPlan, Company, BILLING_CYCLE_PARAMS, normalize_billing_cycle
 from app.presentation.auth_routes import token_required, require_permission
-from app.infrastructure.mercadopago_service import MercadoPagoService
+from app.infrastructure.abacatepay_service import AbacatePayService
 import logging
 
 logger = logging.getLogger(__name__)
 
 api = Namespace('subscription-plans', description='Subscription plan management operations')
 
-_FREQUENCY_TYPE_MAP = {
-    'days': 'days', 'day': 'days', 'daily': 'days',
-    'months': 'months', 'month': 'months', 'monthly': 'months',
-}
-
-def normalize_frequency_type(value):
-    return _FREQUENCY_TYPE_MAP.get((value or 'months').lower(), 'months')
-
 subscription_plan_model = api.model('SubscriptionPlan', {
     'name': fields.String(required=True, description='Plan name', example='Plano Básico'),
     'description': fields.String(description='Plan description', example='Até 10 veículos'),
     'amount': fields.Float(required=True, description='Amount in BRL', example=39.99),
-    'frequency': fields.Integer(description='Billing frequency', example=1),
-    'frequency_type': fields.String(description='Frequency type', enum=['days', 'months'], example='months'),
+    'billing_cycle': fields.String(description='Billing cycle', enum=list(BILLING_CYCLE_PARAMS.keys()), example='monthly'),
     'features': fields.List(fields.String, description='List of features', example=['Rastreamento em tempo real']),
     'max_vehicles': fields.Integer(description='Maximum number of vehicles', example=10),
     'is_active': fields.Boolean(description='If plan is available for new subscriptions', example=True)
@@ -35,9 +26,8 @@ subscription_plan_response = api.model('SubscriptionPlanResponse', {
     'description': fields.String(description='Plan description'),
     'amount': fields.Float(description='Amount in BRL'),
     'currency': fields.String(description='Currency'),
-    'frequency': fields.Integer(description='Billing frequency'),
-    'frequency_type': fields.String(description='Frequency type'),
-    'mp_preapproval_plan_id': fields.String(description='Mercado Pago plan ID'),
+    'billing_cycle': fields.String(description='Billing cycle'),
+    'abacatepay_product_id': fields.String(description='AbacatePay product ID'),
     'features': fields.List(fields.String, description='List of features'),
     'max_vehicles': fields.Integer(description='Maximum number of vehicles'),
     'is_active': fields.Boolean(description='If plan is active'),
@@ -85,17 +75,7 @@ class SubscriptionPlanListResource(Resource):
             if data['amount'] <= 0:
                 return {'message': 'Amount must be greater than zero'}, 400
 
-            frequency = data.get('frequency', 1)
-            frequency_type = normalize_frequency_type(data.get('frequency_type', 'months'))
-
-            mp_result = MercadoPagoService.create_subscription_plan(
-                plan_name=data['name'],
-                amount=data['amount'],
-                frequency=frequency,
-                frequency_type=frequency_type
-            )
-
-            mp_plan_id = mp_result.get('plan_id') if mp_result else None
+            billing_cycle = normalize_billing_cycle(data.get('frequency_type', 'monthly'))
 
             plan = SubscriptionPlan(
                 company_id=current_user.company_id,
@@ -103,21 +83,29 @@ class SubscriptionPlanListResource(Resource):
                 description=data.get('description', ''),
                 amount=data['amount'],
                 currency='BRL',
-                frequency=frequency,
-                frequency_type=frequency_type,
+                billing_cycle=billing_cycle,
                 features=data.get('features', []),
                 max_vehicles=data.get('max_vehicles'),
                 is_active=data.get('is_active', True),
-                mp_preapproval_plan_id=mp_plan_id,
                 created_by=current_user,
                 updated_by=current_user
             )
             plan.save()
 
-            if mp_plan_id:
-                logger.info(f"Mercado Pago plan created: {mp_plan_id} for plan {plan.name}")
+            product = AbacatePayService.create_product(
+                external_id=str(plan.id),
+                name=plan.name,
+                amount=plan.amount,
+                cycle=BILLING_CYCLE_PARAMS[billing_cycle]['abacatepay_cycle'],
+                description=plan.description,
+            )
+
+            if product and not product.get('error'):
+                plan.abacatepay_product_id = product['id']
+                plan.save()
+                logger.info(f"AbacatePay product created: {product['id']} for plan {plan.name}")
             else:
-                logger.warning(f"Could not create Mercado Pago plan for {plan.name} — saved locally only")
+                logger.warning(f"Could not create AbacatePay product for {plan.name} — saved locally only")
 
             logger.info(f"Subscription plan created: {plan.name} by user {current_user.email}")
 
@@ -174,10 +162,8 @@ class SubscriptionPlanResource(Resource):
                 if data['amount'] <= 0:
                     return {'message': 'Amount must be greater than zero'}, 400
                 plan.amount = data['amount']
-            if 'frequency' in data:
-                plan.frequency = data['frequency']
             if 'frequency_type' in data:
-                plan.frequency_type = normalize_frequency_type(data['frequency_type'])
+                plan.billing_cycle = normalize_billing_cycle(data['frequency_type'])
             if 'features' in data:
                 plan.features = data['features']
             if 'max_vehicles' in data:

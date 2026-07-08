@@ -4,6 +4,7 @@
 This project is a comprehensive multi-tenant vehicle tracking system built with Flask, adhering to Clean Architecture principles. It offers user authentication, multi-company management (multi-tenancy), real-time GPS tracking, and detailed reports with role-based access control. The system utilizes MongoDB for data persistence and Firebase Cloud Storage for file storage. Its core purpose is to provide a robust and scalable solution for vehicle monitoring and management for various businesses, enabling efficient operations and data-driven insights.
 
 ## Recent Changes
+- **Jul 07, 2026**: Replaced Mercado Pago with AbacatePay as the payment gateway for subscriptions. `SubscriptionPlan`/`Subscription`/`Payment` models now use `abacatepay_*` fields (product, customer, subscription IDs) instead of `mp_*`. Webhook moved to `/api/webhooks/abacatepay` with HMAC-SHA256 signature validation via `ABACATEPAY_WEBHOOK_SECRET`. New service: `app/infrastructure/abacatepay_service.py`.
 - **Feb 18, 2026**: Integrated Redis for session management and rate limiting. Chatbot sessions now stored in Redis (with automatic fallback to in-memory). Rate limiting (Flask-Limiter) uses Redis as backend. Gunicorn restored to multiple workers (up to 4). Environment variable: `REDIS_URL`.
 - **Feb 16, 2026**: Added WhatsApp chatbot module (`app/chatbot/`) for customer interaction via WhatsApp. Supports auto-authentication by phone number, vehicle selection (interactive lists/buttons), location tracking, and block/unblock commands. Integrated as Flask Blueprint at `/api/chatbot/webhook`.
 - **Nov 24, 2025 (Security Update)**: Enhanced tracking list endpoint with automatic customer_id filtering. Removed customer_id query parameter from GET /tracking/vehicles - now automatically extracted from JWT token for customer users. This prevents customers from accessing vehicles belonging to other customers in the vehicle list view.
@@ -30,7 +31,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Layer
 - **Database**: MongoDB with MongoEngine ODM.
 - **Connection Strategy**: Resilient connection with retry logic, connection pooling, and timeouts.
-- **Data Models**: Includes `BaseDocument` for audit fields, `Company`, `User`, `Permission`, `Customer`, `Vehicle`, `VehicleData`, `TokenBlacklist`, `UsedLinkToken`. Also includes `Subscription` and `Payment` for Mercado Pago integration.
+- **Data Models**: Includes `BaseDocument` for audit fields, `Company`, `User`, `Permission`, `Customer`, `Vehicle`, `VehicleData`, `TokenBlacklist`, `UsedLinkToken`. Also includes `Subscription` and `Payment` for AbacatePay integration.
 - **Multi-Tenancy**: Data isolation by `company_id` across all primary resources.
 - **Indexing**: Automatic index creation, including TTL indexes for token expiration.
 
@@ -49,7 +50,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Security & Production Readiness
 - Mandatory environment variables: `FLASK_SECRET_KEY`, `MONGODB_URI`.
-- **Webhook Security**: HMAC-SHA256 signature validation for Mercado Pago webhooks using `MERCADOPAGO_WEBHOOK_SECRET`.
+- **Webhook Security**: HMAC-SHA256 signature validation for AbacatePay webhooks using `ABACATEPAY_WEBHOOK_SECRET`.
 - Production WSGI server: Gunicorn.
 - CORS support with configurable origins.
 - Bootstrap CLI script (`bootstrap.py`) for secure admin creation.
@@ -67,14 +68,14 @@ Preferred communication style: Simple, everyday language.
     - `/api/reports`: Vehicle usage reports (summary, detailed, trips, stops).
     - `/api/subscription-plans`: Subscription plan management (list, create, update, delete).
     - `/api/subscriptions`: Monthly subscription management (create, view, cancel) and payment history (customer-only).
-    - `/api/webhooks/mercadopago`: Mercado Pago payment notification processing.
+    - `/api/webhooks/abacatepay`: AbacatePay payment notification processing.
     - `/api/chatbot/webhook`: WhatsApp chatbot webhook (GET=verification, POST=messages).
 - **Features**: Decorator-based authentication and authorization, multi-tenancy enforcement, consistent error handling, input validation, pagination, and filtering.
 
 ### Configuration Management
 - Environment-based configuration via `config.py`.
 - Critical environment variables: `FLASK_SECRET_KEY`, `MONGODB_URI`.
-- Optional variables for CORS, Rate Limiting, Firebase, Mercado Pago, Email, and Google Maps (`GOOGLE_MAPS_API_KEY`).
+- Optional variables for CORS, Rate Limiting, Firebase, AbacatePay, Email, and Google Maps (`GOOGLE_MAPS_API_KEY`).
 
 ### Logging & Monitoring
 - Centralized logging (console + file) with structured format.
@@ -95,7 +96,7 @@ Preferred communication style: Simple, everyday language.
 - **Google Maps Geocoding API**: Premium reverse geocoding service via `googlemaps` library. Higher quality addresses, requires `GOOGLE_MAPS_API_KEY` environment variable. Includes LRU caching and automatic error handling.
 
 ### Payment Gateway
-- **Mercado Pago**: For monthly subscription payment processing, integrated via `mercadopago` SDK. Supports payment links, subscription management, and webhooks.
+- **AbacatePay**: For recurring subscription payment processing (PIX/cartão), integrated via REST API (`app/infrastructure/abacatepay_service.py`, `requests`). Supports products, customers, subscription checkout links, and webhooks.
 
 ### WhatsApp Chatbot
 - **Provider**: WhatsApp Cloud API (Meta).
@@ -113,5 +114,5 @@ Preferred communication style: Simple, everyday language.
 - **Authentication**: PyJWT, Werkzeug.
 - **Storage**: Firebase-admin.
 - **Geocoding**: Geopy (Nominatim), Googlemaps (Google Maps API).
-- **Payment**: Mercadopago.
+- **Payment**: AbacatePay (via `requests`).
 - **Production Server**: Gunicorn.

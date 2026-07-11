@@ -177,6 +177,8 @@ class Vehicle(BaseDocument):
     status = StringField(choices=['active', 'inactive'], default='active')
     visible = BooleanField(default=True)  # Campo para exclusão 
     numberSendMessageWhatsApp = StringField(max_length=20)  # Número para enviar a mensagem via WhatsApp
+    curso = IntField()  # Curso do veículo (direção)
+    velocidade = FloatField()  # Velocidade do veículo
 
     meta = {
         'collection': 'vehicles',
@@ -204,6 +206,8 @@ class Vehicle(BaseDocument):
             'bloqueado': self.bloqueado,
             'comandotrocarip': self.comandotrocarip,
             'ignicao': self.ignicao,
+            'curso': self.curso,
+            'velocidade': self.velocidade,
             'bateriavoltagem': self.bateriavoltagem,
             'bateriabaixa': self.bateriabaixa,
             'ultimoalertabateria': self.ultimoalertabateria.isoformat() if self.ultimoalertabateria else None,

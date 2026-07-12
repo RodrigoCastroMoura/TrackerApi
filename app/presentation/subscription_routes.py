@@ -269,11 +269,9 @@ class SubscriptionResource(Resource):
                 mp_updated = MercadoPagoService.update_subscription(
                     subscription_id=existing.mp_subscription_id,
                     plan_name=new_plan.name,
-                    amount=new_plan.amount,
-                    frequency=new_frequency,
-                    frequency_type=new_frequency_type
+                    amount=new_plan.amount
                 )
-
+                
                 if not mp_updated:
                     return {'message': 'Erro ao atualizar assinatura no Mercado Pago'}, 500
 

@@ -319,12 +319,18 @@ class MercadoPagoService:
         subscription_id: str,
         plan_name: str,
         amount: float,
-        frequency: int = 1,
-        frequency_type: str = 'months'
+        currency: str = 'BRL'
     ) -> Optional[Dict[str, Any]]:
         """
-        Atualiza plano e valor de uma preapproval existente (authorized ou pending).
-        Não exige re-autorização do cliente.
+        Atualiza nome e valor (transaction_amount) de uma preapproval já autorizada,
+        SEM alterar frequency/frequency_type.
+
+        A API do Mercado Pago não documenta suporte a mudar a frequência de uma
+        preapproval autorizada via PUT — apenas transaction_amount/currency_id/reason
+        são atualizáveis com segurança. Ao não tocar em frequency/start_date, o MP
+        aplica o novo valor a partir do próximo débito já agendado, preservando a
+        data de cobrança do cliente. Trocas de frequência devem ser feitas cancelando
+        a preapproval e criando uma nova (ver create_pending_subscription).
         """
         try:
             sdk = MercadoPagoService.get_sdk()
@@ -334,10 +340,8 @@ class MercadoPagoService:
             update_data = {
                 "reason": plan_name,
                 "auto_recurring": {
-                    "frequency": frequency,
-                    "frequency_type": frequency_type,
                     "transaction_amount": float(amount),
-                    "currency_id": "BRL"
+                    "currency_id": currency
                 }
             }
 
@@ -359,29 +363,47 @@ class MercadoPagoService:
     @staticmethod
     def cancel_subscription(subscription_id: str) -> bool:
         """
-        Cancel a subscription
-        
+        Cancel a subscription and confirm the cancellation actually took effect on
+        Mercado Pago's side (the SDK does not raise on 4xx/5xx responses — it returns
+        them as a normal dict — so the HTTP status and the resulting `status` field
+        must both be checked before treating the cancellation as successful).
+
         Args:
             subscription_id: Mercado Pago subscription ID
-            
+
         Returns:
-            True if successful, False otherwise
+            True only if Mercado Pago confirmed the subscription is now 'cancelled'.
         """
         try:
             sdk = MercadoPagoService.get_sdk()
             if not sdk:
                 return False
-            
+
             update_data = {
                 "status": "cancelled"
             }
-            
-            sdk.subscription().update(subscription_id, update_data)
+
+            logger.info(f"[MP REQUEST] PUT /preapproval/{subscription_id} | body={update_data}")
+            response = sdk.subscription().update(subscription_id, update_data)
+            logger.info(f"[MP RESPONSE] PUT /preapproval/{subscription_id} | status={response.get('status')} | body={response.get('response')}")
+
+            if response.get("status") not in [200, 201]:
+                logger.error(f"Mercado Pago cancel error for {subscription_id}: {response.get('response')}")
+                return False
+
+            result_status = response.get('response', {}).get('status')
+            if result_status != 'cancelled':
+                logger.error(
+                    f"Mercado Pago did not confirm cancellation for {subscription_id}: "
+                    f"got status={result_status!r}"
+                )
+                return False
+
             logger.info(f"Canceled subscription: {subscription_id}")
             return True
-            
+
         except Exception as e:
-            logger.error(f"Error canceling subscription: {str(e)}")
+            logger.error(f"Error canceling subscription {subscription_id}: {str(e)}")
             return False
     
     @staticmethod

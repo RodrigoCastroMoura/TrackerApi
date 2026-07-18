@@ -7,11 +7,27 @@ import logging
 from bson.objectid import ObjectId
 from datetime import datetime
 from app.infrastructure.redis_cache import vehicle_cache
+from app.infrastructure.geocoding_service import (
+    get_google_geocoding_service,
+    get_geocoding_service
+)
 import re
 
 logger = logging.getLogger(__name__)
 
 api = Namespace('vehicles', description='Vehicle operations')
+
+
+def get_best_geocoding_service():
+    """
+    Get the best available geocoding service.
+    Tries Google Maps first (premium), falls back to Nominatim (free).
+    """
+    try:
+        return get_google_geocoding_service()
+    except (ValueError, ImportError) as e:
+        logger.warning(f"Google Maps not available ({str(e)}), using Nominatim fallback")
+        return get_geocoding_service()
 
 # Vehicle Model for Swagger
 vehicle_model = api.model('Vehicle', {
@@ -55,6 +71,26 @@ vehicle_data_model = api.model('VehicleData', {
     'location': fields.Nested(vehicle_location_model, description='Localização GPS'),
 })
 
+vehicle_placa_model = api.model('Vehicle', {
+    'id': fields.String(readonly=True, description='Vehicle unique identifier'),
+    'IMEI': fields.String(required=True, description='IMEI único do dispositivo'),
+    'dsplaca': fields.String(description='Placa do veículo'),
+    'dsmodelo': fields.String(description='Modelo do veículo'),
+    'dsmarca': fields.String(description='Marca do veículo'),
+    'tipo': fields.String(description='Tipo do veículo', enum=['carro', 'moto', 'caminhao', 'van', 'onibus', 'outro']),
+    'ano': fields.Integer(description='Ano do veículo'),
+    'comandobloqueo': fields.Boolean(description='Comando de bloqueio pendente'),
+    'bloqueado': fields.Boolean(description='Status atual de bloqueio', default=False),
+    'comandotrocarip': fields.Boolean(description='Comando para trocar IP pendente'),
+    'ignicao': fields.Boolean(description='Status da ignição', default=False),
+    'status': fields.String(description='Status do veículo', enum=['active', 'inactive'], default='active'),
+    'longitude': fields.String(description='Longitude'),
+    'latitude': fields.String(description='Latitude'),
+    'address': fields.String(description='Endereço obtido a partir das coordenadas'),
+    'tsusermanu': fields.DateTime(description='Timestamp do último comando manual'),
+    'velocidade': fields.Float(description='Velocidade do veículo'),
+})
+
 pagination_model = api.model('PaginatedVehicles', {
     'vehicles': fields.List(fields.Nested(vehicle_model)),
     'total': fields.Integer(description='Total de veículos'),
@@ -92,7 +128,9 @@ class VehicleList(Resource):
             per_page = max(1, min(100, int(request.args.get('per_page', 10))))
             
             # Build query - filter by company (multi-tenancy)
-            query = {'visible': True, 'company_id': current_user.company_id}
+            query = {'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
             
             # Filters
             if request.args.get('customer_id'):
@@ -246,7 +284,12 @@ class VehicleResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
+            # Build query with multi-tenant isolation (admins can see all companies)
+            query = {'id': id, 'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
+            
+            vehicle = Vehicle.objects.get(**query)
             return vehicle.to_dict(), 200
             
         except DoesNotExist:
@@ -265,7 +308,12 @@ class VehicleResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
+            # Build query with multi-tenant isolation (admins can see all companies)
+            query = {'id': id, 'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
+            
+            vehicle = Vehicle.objects.get(**query)
             data = request.get_json()
             
             # Validate customer_id belongs to the same company (multi-tenancy security)
@@ -343,7 +391,12 @@ class VehicleResource(Resource):
             if not ObjectId.is_valid(id):
                 return {'message': 'ID do veículo inválido'}, 400
             
-            vehicle = Vehicle.objects.get(id=id, visible=True, company_id=current_user.company_id)
+            # Build query with multi-tenant isolation (admins can see all companies)
+            query = {'id': id, 'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
+
+            vehicle = Vehicle.objects.get(**query)
             vehicle.visible = False
             vehicle.status = 'inactive'
             vehicle.updated_by = current_user
@@ -468,14 +521,30 @@ class VehicleBlock(Resource):
 class VehicleByPlaca(Resource):
     
     @api.doc('get_vehicle_by_placa')
-    @api.marshal_with(vehicle_model)
+    @api.marshal_with(vehicle_placa_model)
     @token_required
     @require_permission('vehicle', 'read')
     def get(self, current_user, placa):
         """Buscar veículo por placa"""
         try:
-            vehicle = Vehicle.objects.get(dsplaca=placa, visible=True, company_id=current_user.company_id)
-            return vehicle.to_dict(), 200
+            # Build query with multi-tenant isolation (admins can see all companies)
+            query = {'dsplaca': placa, 'visible': True}
+            if current_user.role != 'admin':
+                query['company_id'] = current_user.company_id
+            vehicle = Vehicle.objects.get(**query)
+
+            # Get address from coordinates (Google Maps or Nominatim)
+            lat = float(vehicle.latitude) if vehicle.latitude else 0.0
+            lng = float(vehicle.longitude) if vehicle.longitude else 0.0
+
+            address = 'N/A'
+            if lat != 0.0 and lng != 0.0:
+                geocoding = get_best_geocoding_service()
+                address = geocoding.get_address_or_fallback(lat, lng)
+
+            vehicle_data = vehicle.to_dict()
+            vehicle_data['address'] = address
+            return vehicle_data, 200
             
         except DoesNotExist:
             return {'message': 'Veículo não encontrado'}, 404

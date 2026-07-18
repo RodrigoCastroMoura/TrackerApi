@@ -245,7 +245,6 @@ class VehicleCurrentLocation(Resource):
 class VehicleHistory(Resource):
     @api.doc('get_vehicle_location',
              params={
-                 'limit': {'type': 'integer', 'default': 10, 'description': 'Número de posições'},
                  'start_date': {'type': 'string', 'description': 'Data inicial (ISO format)'},
                  'end_date': {'type': 'string', 'description': 'Data final (ISO format)'}
              })
@@ -268,10 +267,8 @@ class VehicleHistory(Resource):
                 end = datetime.fromisoformat(request.args.get('end_date'))
                 query['timestamp__lte'] = end
             
-            limit = min(100, int(request.args.get('limit', 10)))
-            
             # Get location data
-            locations = VehicleData.objects(**query).order_by('-timestamp').limit(limit)
+            locations = VehicleData.objects(**query).order_by('-timestamp')
             
             return {
                 'locations': [loc.to_dict() for loc in locations],

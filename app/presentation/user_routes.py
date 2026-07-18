@@ -259,15 +259,14 @@ class UserList(Resource):
                 return {'message': 'Dados não fornecidos'}, 400
 
             required_fields = [
-                'name', 'email', 'cpf', 'password', 'role'
+                'name', 'email', 'document', 'password', 'role'
             ]
             for field in required_fields:
                 if field not in data or not data[field]:
                     return {'message': f'Campo {field} é obrigatório'}, 400
 
-            
+            company_id = current_user.company_id
 
-           
             # Verify company access and role permissions
             if current_user.role != 'admin':
                 if data['role'] == 'admin':
@@ -275,11 +274,16 @@ class UserList(Resource):
                         'message':
                         'Apenas administradores podem criar outros administradores'
                     }, 403
+            else:
+                company_id = data.get('company_id', current_user.company_id)
 
-            # Validate CPF format
-            cpf = re.sub(r'\D', '', data['cpf'])
-            if len(cpf) != 11:
-                return {'message': 'CPF inválido'}, 400
+            try:             
+                # Validate CPF format
+                cpf = re.sub(r'\D', '', data['document'])
+                if len(cpf) != 11:
+                    return {'message': 'CPF inválido'}, 400
+            except Exception as e:
+             return {'message': 'CPF inválido'}, 500
 
             # Create user
             try:
@@ -290,7 +294,7 @@ class UserList(Resource):
                             cpf=cpf,
                             phone=data.get('phone'),
                             role=data['role'],
-                            company_id=current_user.company_id,
+                            company_id=company_id,
                             created_by=current_user,
                             updated_by=current_user)
                 user.set_password(data['password'])

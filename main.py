@@ -10,6 +10,7 @@ from app.presentation.permission_routes import api as permission_ns
 from app.presentation.link_token_routes import api as link_token_ns
 from app.presentation.vehicle_routes import api as vehicle_ns
 from app.presentation.customer_routes import api as customer_ns
+from app.presentation.company_routes import api as company_ns
 from app.presentation.tracking_routes import api as tracking_ns
 from app.presentation.report_routes import api as report_ns
 from app.presentation.subscription_routes import api as subscription_ns
@@ -165,6 +166,7 @@ def create_app():
         api.add_namespace(permission_ns, path='/api/permissions')
         api.add_namespace(vehicle_ns, path='/api/vehicles')
         api.add_namespace(customer_ns, path='/api/customers')
+        api.add_namespace(company_ns, path='/api/companies')
         api.add_namespace(link_token_ns, path='/api/links')
         api.add_namespace(tracking_ns, path='/api/tracking')
         api.add_namespace(report_ns, path='/api/reports')

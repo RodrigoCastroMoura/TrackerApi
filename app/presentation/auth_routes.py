@@ -447,7 +447,7 @@ class Login(Resource):
                     'refresh_token': refresh_token,
                     'token_type': 'Bearer',
                     'expires_in': 3600,
-                    'requires_password_change': not user.password_changed,
+                    'requires_password_change': (not user.password_changed) or (user.must_change_password if hasattr(user, 'must_change_password') else False),
                     'user': {
                         'id': str(user.id),
                         'name': user.name,

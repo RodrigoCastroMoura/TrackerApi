@@ -35,10 +35,11 @@ class PermissionList(Resource):
     def get(self, current_user):
         """List all permissions"""
         try:
-            if not current_user.role == 'admin':
-                return {'message': 'Apenas administradores podem listar permissões'}, 403
+            permissions = current_user.permissions
 
-            permissions = Permission.objects.all()
+            if current_user.role == 'admin':
+                permissions = Permission.objects.all()
+
             return [p.to_dict() for p in permissions]
         except Exception as e:
             logger.error(f"Error listing permissions: {str(e)}")

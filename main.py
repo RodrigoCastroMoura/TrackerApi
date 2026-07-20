@@ -39,21 +39,22 @@ logger = logging.getLogger(__name__)
 
 def verify_mongodb_connection():
     """Verify MongoDB connection is working"""
+    pid = os.getpid()
     try:
-        logger.debug("Verifying MongoDB connection...")
+        logger.info(f"[pid={pid}] Verifying MongoDB connection...")
         mongodb_uri = Config.MONGODB_URI
         if not mongodb_uri:
-            logger.error("MONGODB_URI not set in config.py")
+            logger.error(f"[pid={pid}] MONGODB_URI not set in config.py")
             return False
 
-        logger.debug(f"Attempting to connect to MongoDB...")
+        logger.info(f"[pid={pid}] Attempting to connect to MongoDB...")
         client = pymongo.MongoClient(mongodb_uri,
                                      serverSelectionTimeoutMS=5000)
         client.admin.command('ping')
-        logger.info("MongoDB connection verified successfully")
+        logger.info(f"[pid={pid}] MongoDB connection verified successfully")
         return True
     except Exception as e:
-        logger.error(f"MongoDB connection error: {str(e)}")
+        logger.error(f"[pid={pid}] MongoDB connection error: {str(e)}", exc_info=True)
         return False
 
 
@@ -110,12 +111,14 @@ def create_default_permissions():
 
 def create_app():
     """Create and configure the Flask application"""
+    pid = os.getpid()
+    logger.info(f"[pid={pid}] create_app() starting")
     try:
         app = Flask(__name__)
         app.config.from_object(Config)
 
         if not verify_mongodb_connection():
-            logger.error("Failed to verify MongoDB connection")
+            logger.error(f"[pid={pid}] Failed to verify MongoDB connection — this worker will fall back to the stub app in wsgi.py (only '/' and '/health' respond; every other route 404s)")
             return None
 
         # Initialize CORS
@@ -179,9 +182,10 @@ def create_app():
         app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')
         logger.info("WhatsApp chatbot blueprint registered at /api/chatbot")
 
+        logger.info(f"[pid={pid}] create_app() finished successfully — all namespaces registered")
         return app
     except Exception as e:
-        logger.error(f"Error creating Flask application: {str(e)}")
+        logger.error(f"[pid={pid}] Error creating Flask application: {str(e)}", exc_info=True)
         return None
 
 

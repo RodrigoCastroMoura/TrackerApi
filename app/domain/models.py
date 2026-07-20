@@ -4,26 +4,27 @@ from mongoengine import *
 from enum import Enum
 from config import Config
 
-# Mapa canônico de ciclos de cobrança → parâmetros do Mercado Pago e dias do período
-BILLING_CYCLE_PARAMS = {
-    'weekly':    {'frequency': 7,  'frequency_type': 'days',   'period_days': 7},
-    'monthly':   {'frequency': 1,  'frequency_type': 'months', 'period_days': 30},
-    'quarterly': {'frequency': 3,  'frequency_type': 'months', 'period_days': 90},
-    'yearly':    {'frequency': 12, 'frequency_type': 'months', 'period_days': 365},
-}
+# Unidades de frequência de cobrança suportadas em toda a aplicação (plano e assinatura).
+# O Mercado Pago só aceita 'days' e 'months' na API — 'weeks' e 'years' são convertidos
+# para essas duas na fronteira com o MP via to_mercadopago_frequency().
+FREQUENCY_TYPES = ('days', 'weeks', 'months', 'years')
 
-# Aliases para valores legados no banco
-_BILLING_CYCLE_ALIASES = {
-    'semanal': 'weekly', 'semana': 'weekly',
-    'mensal': 'monthly', 'mes': 'monthly',
-    'trimestral': 'quarterly', 'trimestre': 'quarterly',
-    'anual': 'yearly', 'annual': 'yearly', 'ano': 'yearly',
-}
+_DAYS_PER_UNIT = {'days': 1, 'weeks': 7, 'months': 30, 'years': 365}
 
-def normalize_billing_cycle(value: str) -> str:
-    """Normaliza variações de billing_cycle para o valor canônico."""
-    v = (value or 'monthly').lower().strip()
-    return _BILLING_CYCLE_ALIASES.get(v, v)
+def period_days_for_frequency(frequency: int, frequency_type: str) -> int:
+    """Duração aproximada (em dias) de um período de cobrança."""
+    frequency = frequency or 1
+    return frequency * _DAYS_PER_UNIT.get(frequency_type, 30)
+
+def to_mercadopago_frequency(frequency: int, frequency_type: str) -> tuple:
+    """Converte (frequency, frequency_type) do domínio — days/weeks/months/years —
+    para o formato aceito pela API do Mercado Pago, que só suporta 'days' e 'months'."""
+    frequency = frequency or 1
+    if frequency_type == 'weeks':
+        return frequency * 7, 'days'
+    if frequency_type == 'years':
+        return frequency * 12, 'months'
+    return frequency, frequency_type
 
 class TipoVeiculo(Enum):
     """Vehicle type enum with numeric and string values"""
@@ -362,7 +363,7 @@ class SubscriptionPlan(BaseDocument):
     amount = FloatField(required=True)  # Monthly amount in BRL
     currency = StringField(default='BRL')
     frequency = IntField(default=1)
-    frequency_type = StringField(default='months')
+    frequency_type = StringField(default='months', choices=list(FREQUENCY_TYPES))
 
     # Mercado Pago integration
     mp_preapproval_plan_id = StringField(unique=True, sparse=True)  # Mercado Pago plan ID
@@ -517,7 +518,8 @@ class Subscription(BaseDocument):
     plan_name = StringField(required=True)  # Nome do plano
     amount = FloatField(required=True)  # Valor mensal em reais
     currency = StringField(default='BRL')
-    billing_cycle = StringField(default='months')
+    billing_cycle = StringField(default='months', choices=['days', 'months'])  # frequency_type já convertido pra API do MP
+    frequency = IntField(default=1)  # frequency já convertido pra API do MP (ex: 7 + billing_cycle='days' = semanal)
 
     # Status and dates
     status = StringField(
@@ -566,6 +568,7 @@ class Subscription(BaseDocument):
             'amount': self.amount,
             'currency': self.currency,
             'billing_cycle': self.billing_cycle,
+            'frequency': self.frequency,
             'status': self.status,
             'current_period_start': self.current_period_start.isoformat() if self.current_period_start else None,
             'current_period_end': self.current_period_end.isoformat() if self.current_period_end else None,

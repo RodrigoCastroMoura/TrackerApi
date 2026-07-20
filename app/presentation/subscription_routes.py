@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Customer, Subscription, SubscriptionPlan
+from app.domain.models import Customer, Subscription, SubscriptionPlan, to_mercadopago_frequency
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from app.presentation.auth_routes import customer_token_required
 from mongoengine import DoesNotExist
@@ -11,6 +11,31 @@ from config import Config
 logger = logging.getLogger(__name__)
 
 api = Namespace('subscriptions', description='Operações de assinatura e pagamento com Mercado Pago')
+
+def _mp_start_date(delay_days: int = 0) -> str:
+    """
+    Data/hora atual (ou deslocada `delay_days` dias) formatada no padrão ISO 8601
+    exigido pelo Mercado Pago (com milissegundos e offset), usada como
+    auto_recurring.start_date. Sem esse campo o MP só cobra a partir do próximo
+    ciclo depois da autorização.
+    """
+    when = datetime.now(timezone.utc) + timedelta(days=delay_days)
+    return when.strftime('%Y-%m-%dT%H:%M:%S.000+00:00')
+
+def _mp_start_date_now() -> str:
+    return _mp_start_date(0)
+
+def _first_charge_start_date(frequency: int, frequency_type: str) -> str:
+    """
+    Planos mensais (frequency=1, frequency_type='months'): primeira cobrança só
+    daqui a 1 mês, seguindo o ciclo normal do plano — sem cobrança na criação.
+    Qualquer outro plano: cobrança imediata, assim que o cliente autorizar.
+    """
+    if frequency == 1 and frequency_type == 'months':
+        return _mp_start_date(30)
+    if frequency == 1 and frequency_type == 'weeks':
+        return _mp_start_date(7)
+    return _mp_start_date(0)
 
 subscription_create_model = api.model('SubscriptionCreate', {
     'plan_id': fields.String(required=True, description='ID do plano de assinatura cadastrado'),
@@ -81,17 +106,16 @@ class SubscriptionResource(Resource):
                 pending_subscription.delete()
                 logger.info(f"Deleted previous pending subscription {pending_subscription.id} before creating new one")
             
-            # Step 2: Create or reuse Mercado Pago preapproval plan
-            frequency = plan.frequency or 1
-            frequency_type = plan.frequency_type or 'months'
+            # Step 2: Create subscription plan on Mercado Pago if not already created
+            mp_frequency, mp_frequency_type = to_mercadopago_frequency(plan.frequency, plan.frequency_type)
             mp_plan_id = plan.mp_preapproval_plan_id
 
             if not mp_plan_id:
                 mp_plan = MercadoPagoService.create_subscription_plan(
                     plan_name=plan.name,
                     amount=plan.amount,
-                    frequency=frequency,
-                    frequency_type=frequency_type
+                    frequency=mp_frequency,
+                    frequency_type=mp_frequency_type
                 )
 
                 if not mp_plan:
@@ -106,15 +130,16 @@ class SubscriptionResource(Resource):
                 reason=plan.name,
                 payer_email=current_customer.email,
                 amount=plan.amount,
-                frequency=frequency,
-                frequency_type=frequency_type,
+                frequency=mp_frequency,
+                frequency_type=mp_frequency_type,
                 back_url=Config.MERCADOPAGO_URL_RETURN,
                 external_reference=str(current_customer.id),
                 metadata={
                     'customer_id': str(current_customer.id),
                     'company_id': str(current_customer.company_id.id),
                     'plan_id': str(plan.id),
-                }
+                },
+                start_date=_first_charge_start_date(plan.frequency, plan.frequency_type)
             )
 
             if not mp_subscription or mp_subscription.get('error'):
@@ -135,7 +160,8 @@ class SubscriptionResource(Resource):
                     amount=plan.amount,
                     status='pending',
                     mp_status='pending',
-                    billing_cycle=frequency_type,
+                    billing_cycle=mp_frequency_type,
+                    frequency=mp_frequency,
                     currency='BRL',
                     payment_url=mp_subscription['init_point'],
                     created_by=None,
@@ -154,7 +180,7 @@ class SubscriptionResource(Resource):
                 'subscription_id': str(subscription.id),
                 'plan_name': plan.name,
                 'amount': plan.amount,
-                'billing_cycle': frequency_type,
+                'billing_cycle': plan.frequency_type,
                 'payment_url': mp_subscription['init_point'],
                 'mp_subscription_id': mp_sub_id,
                 'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
@@ -229,26 +255,30 @@ class SubscriptionResource(Resource):
             if not existing:
                 return {'message': 'Nenhuma assinatura encontrada. Crie uma assinatura primeiro.'}, 404
 
-            new_frequency = new_plan.frequency or 1
-            new_frequency_type = new_plan.frequency_type or 'months'
+            # new_plan.frequency/frequency_type usam o vocabulário amigável do domínio
+            # (days/weeks/months/years); o Mercado Pago só aceita days/months.
+            mp_new_frequency, mp_new_frequency_type = to_mercadopago_frequency(new_plan.frequency, new_plan.frequency_type)
             mp_plan_id = new_plan.mp_preapproval_plan_id
             was_canceled = existing.status == 'canceled'
 
             if was_canceled:
-                # Subscription cancelada → cria nova preapproval (cliente precisa re-autorizar)
+                # Subscription cancelada → cria nova preapproval (cliente precisa re-autorizar).
+                # start_date=agora garante que a cobrança aconteça assim que o cliente
+                # reautorizar, em vez de só no próximo ciclo.
                 mp_subscription = MercadoPagoService.create_pending_subscription(
                     reason=new_plan.name,
                     payer_email=current_customer.email,
                     amount=new_plan.amount,
-                    frequency=new_frequency,
-                    frequency_type=new_frequency_type,
+                    frequency=mp_new_frequency,
+                    frequency_type=mp_new_frequency_type,
                     back_url=Config.MERCADOPAGO_URL_RETURN,
                     external_reference=str(current_customer.id),
                     metadata={
                         'customer_id': str(current_customer.id),
                         'company_id': str(current_customer.company_id.id),
                         'plan_id': str(new_plan.id),
-                    }
+                    },
+                    start_date=_mp_start_date_now()
                 )
 
                 if not mp_subscription or mp_subscription.get('error'):
@@ -288,7 +318,8 @@ class SubscriptionResource(Resource):
             existing.mp_preapproval_plan_id = mp_plan_id
             existing.plan_name = new_plan.name
             existing.amount = new_plan.amount
-            existing.billing_cycle = new_frequency_type
+            existing.billing_cycle = mp_new_frequency_type
+            existing.frequency = mp_new_frequency
             existing.currency = 'BRL'
             existing.payment_url = new_payment_url
             existing.status = 'pending' if was_canceled else existing.status
@@ -309,7 +340,7 @@ class SubscriptionResource(Resource):
                 'subscription_id': str(existing.id),
                 'plan_name': new_plan.name,
                 'amount': new_plan.amount,
-                'billing_cycle': new_frequency_type,
+                'billing_cycle': new_plan.frequency_type,
                 'mp_subscription_id': new_mp_sub_id,
                 'requires_authorization': requires_authorization,
             }

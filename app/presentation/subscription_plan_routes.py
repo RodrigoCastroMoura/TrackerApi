@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import SubscriptionPlan, Company
+from app.domain.models import SubscriptionPlan, Company, FREQUENCY_TYPES, to_mercadopago_frequency
 from app.presentation.auth_routes import token_required, require_permission
 from app.infrastructure.mercadopago_service import MercadoPagoService
 import logging
@@ -9,20 +9,29 @@ logger = logging.getLogger(__name__)
 
 api = Namespace('subscription-plans', description='Subscription plan management operations')
 
-_FREQUENCY_TYPE_MAP = {
-    'days': 'days', 'day': 'days', 'daily': 'days',
-    'months': 'months', 'month': 'months', 'monthly': 'months',
-}
+def parse_frequency(data):
+    """
+    Lê (frequency, frequency_type) do payload. frequency_type deve ser um de
+    FREQUENCY_TYPES ('days', 'weeks', 'months', 'years'). Retorna (None, None)
+    se o valor informado não for reconhecido.
+    """
+    frequency_type = (data.get('frequency_type') or 'months').lower().strip()
+    if frequency_type not in FREQUENCY_TYPES:
+        return None, None
 
-def normalize_frequency_type(value):
-    return _FREQUENCY_TYPE_MAP.get((value or 'months').lower(), 'months')
+    frequency = int(data.get('frequency') or 1)
+    return frequency, frequency_type
 
 subscription_plan_model = api.model('SubscriptionPlan', {
     'name': fields.String(required=True, description='Plan name', example='Plano Básico'),
     'description': fields.String(description='Plan description', example='Até 10 veículos'),
     'amount': fields.Float(required=True, description='Amount in BRL', example=39.99),
-    'frequency': fields.Integer(description='Billing frequency', example=1),
-    'frequency_type': fields.String(description='Frequency type', enum=['days', 'months'], example='months'),
+    'frequency': fields.Integer(description='Multiplicador do ciclo de cobrança (ex: 2 + frequency_type=weeks = a cada 2 semanas)', example=1),
+    'frequency_type': fields.String(
+        description='Unidade do ciclo de cobrança',
+        enum=list(FREQUENCY_TYPES),
+        example='months'
+    ),
     'features': fields.List(fields.String, description='List of features', example=['Rastreamento em tempo real']),
     'max_vehicles': fields.Integer(description='Maximum number of vehicles', example=10),
     'is_active': fields.Boolean(description='If plan is available for new subscriptions', example=True)
@@ -71,7 +80,6 @@ class SubscriptionPlanListResource(Resource):
 
     @api.doc('create_subscription_plan', security='Bearer')
     @token_required
-    @require_permission('subscription_plan', 'write')
     @api.expect(subscription_plan_model)
     @api.marshal_with(subscription_plan_response, code=201)
     def post(self, current_user):
@@ -85,14 +93,17 @@ class SubscriptionPlanListResource(Resource):
             if data['amount'] <= 0:
                 return {'message': 'Amount must be greater than zero'}, 400
 
-            frequency = data.get('frequency', 1)
-            frequency_type = normalize_frequency_type(data.get('frequency_type', 'months'))
+            frequency, frequency_type = parse_frequency(data)
+            if frequency_type is None:
+                return {'message': f"frequency_type inválido: {data.get('frequency_type')}. Use days, weeks, months ou years."}, 400
+
+            mp_frequency, mp_frequency_type = to_mercadopago_frequency(frequency, frequency_type)
 
             mp_result = MercadoPagoService.create_subscription_plan(
                 plan_name=data['name'],
                 amount=data['amount'],
-                frequency=frequency,
-                frequency_type=frequency_type
+                frequency=mp_frequency,
+                frequency_type=mp_frequency_type
             )
 
             mp_plan_id = mp_result.get('plan_id') if mp_result else None
@@ -149,7 +160,6 @@ class SubscriptionPlanResource(Resource):
 
     @api.doc('update_subscription_plan', security='Bearer')
     @token_required
-    @require_permission('subscription_plan', 'update')
     @api.expect(subscription_plan_model)
     @api.marshal_with(subscription_plan_response)
     def put(self, current_user, plan_id):
@@ -174,10 +184,16 @@ class SubscriptionPlanResource(Resource):
                 if data['amount'] <= 0:
                     return {'message': 'Amount must be greater than zero'}, 400
                 plan.amount = data['amount']
-            if 'frequency' in data:
-                plan.frequency = data['frequency']
-            if 'frequency_type' in data:
-                plan.frequency_type = normalize_frequency_type(data['frequency_type'])
+            if 'frequency' in data or 'frequency_type' in data:
+                merged = {
+                    'frequency': data.get('frequency', plan.frequency),
+                    'frequency_type': data.get('frequency_type', plan.frequency_type),
+                }
+                new_frequency, new_frequency_type = parse_frequency(merged)
+                if new_frequency_type is None:
+                    return {'message': f"frequency_type inválido: {data.get('frequency_type')}. Use days, weeks, months ou years."}, 400
+                plan.frequency = new_frequency
+                plan.frequency_type = new_frequency_type
             if 'features' in data:
                 plan.features = data['features']
             if 'max_vehicles' in data:

@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource
-from app.domain.models import Subscription, SubscriptionPayment, BILLING_CYCLE_PARAMS
+from app.domain.models import Subscription, SubscriptionPayment, period_days_for_frequency
 from app.infrastructure.mercadopago_service import MercadoPagoService
 from datetime import datetime, timedelta, timezone
 import logging
@@ -15,47 +15,64 @@ api = Namespace('webhooks', description='Webhooks de integração - Mercado Pago
 def validate_mercadopago_signature(x_signature, x_request_id, data_id, secret):
     """
     Validate Mercado Pago webhook signature for security
-    
+
     Args:
         x_signature: Value from x-signature header (format: "ts=123,v1=abc...")
         x_request_id: Value from x-request-id header
         data_id: Value from data.id query parameter
         secret: Webhook secret key from Mercado Pago dashboard
-    
+
     Returns:
         bool: True if signature is valid, False otherwise
     """
     if not all([x_signature, x_request_id, data_id, secret]):
         logger.warning("Missing required signature parameters")
         return False
-    
+
     try:
-        parts = x_signature.split(',')
-        if len(parts) < 2:
-            logger.warning("Invalid x-signature format")
+        # Parseia "ts=...,v1=..." por chave em vez de posição fixa — a MP não
+        # garante a ordem das partes, e um espaço após a vírgula (ex: "ts=1, v1=abc")
+        # quebraria o split posicional antigo.
+        ts_value = None
+        received_signature = None
+        for part in x_signature.split(','):
+            if '=' not in part:
+                continue
+            key, value = part.split('=', 1)
+            key = key.strip()
+            value = value.strip()
+            if key == 'ts':
+                ts_value = value
+            elif key == 'v1':
+                received_signature = value
+
+        if not ts_value or not received_signature:
+            logger.warning(f"Invalid x-signature format: {x_signature!r}")
             return False
-        
-        ts_part = parts[0]
-        signature_part = parts[1]
-        
-        ts_value = ts_part.split('=')[1]
-        received_signature = signature_part.split('=')[1]
-        
-        signature_template = f"id:{data_id};request-id:{x_request_id};ts:{ts_value};"
-        
+
+        # A doc da MP recomenda usar data.id em minúsculas na assinatura — o valor
+        # recebido na query pode vir com letras maiúsculas em alguns recursos.
+        normalized_data_id = str(data_id).lower()
+        secret_clean = secret.strip()
+
+        signature_template = f"id:{normalized_data_id};request-id:{x_request_id};ts:{ts_value};"
+
         calculated_signature = hmac.new(
-            secret.encode('utf-8'),
+            secret_clean.encode('utf-8'),
             signature_template.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
-        
+
         is_valid = hmac.compare_digest(calculated_signature, received_signature)
-        
+
         if not is_valid:
-            logger.warning("Signature validation failed - potential security threat")
-        
+            logger.warning(
+                "Signature validation failed - potential security threat | "
+                f"manifest={signature_template!r} calculated={calculated_signature} received={received_signature}"
+            )
+
         return is_valid
-        
+
     except (IndexError, AttributeError, ValueError) as e:
         logger.error(f"Error validating signature: {str(e)}")
         return False
@@ -131,7 +148,7 @@ class MercadoPagoWebhook(Resource):
 
                 if mp_status == 'authorized':
                     now = datetime.now(timezone.utc)
-                    period_days = BILLING_CYCLE_PARAMS.get(subscription.billing_cycle, BILLING_CYCLE_PARAMS['monthly'])['period_days']
+                    period_days = period_days_for_frequency(subscription.frequency, subscription.billing_cycle)
                     subscription.status = 'active'
                     subscription.mp_status = 'succeeded'
                     subscription.current_period_start = now
@@ -198,7 +215,7 @@ class MercadoPagoWebhook(Resource):
 
                 if payment_status in ('processed', 'approved'):
                     # Cobrança recorrente confirmada: estende o período e libera o acesso
-                    period_days = BILLING_CYCLE_PARAMS.get(subscription.billing_cycle, BILLING_CYCLE_PARAMS['monthly'])['period_days']
+                    period_days = period_days_for_frequency(subscription.frequency, subscription.billing_cycle)
                     next_payment_date = now + timedelta(days=period_days)
                     grace_period_end = next_payment_date + timedelta(days=Config.MERCADOPAGO_DAYS_TO_EXPIRE)
 

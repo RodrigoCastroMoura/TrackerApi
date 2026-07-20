@@ -236,12 +236,13 @@ class MercadoPagoService:
         frequency_type: str = 'months',
         back_url: Optional[str] = None,
         external_reference: Optional[str] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        start_date: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Create a pending subscription that generates a payment link.
         Customer can complete payment via the init_point URL.
-        
+
         Args:
             reason: Description of the subscription
             payer_email: Customer email
@@ -251,7 +252,10 @@ class MercadoPagoService:
             back_url: URL to redirect after payment
             external_reference: Your reference ID (e.g., customer_id)
             metadata: Additional metadata
-            
+            start_date: Data (ISO 8601, com offset) da primeira cobrança. Se omitido, o
+                Mercado Pago só cobra a partir do próximo ciclo depois da autorização —
+                passe a data/hora atual para cobrar assim que o cliente autorizar.
+
         Returns:
             Dict with subscription_id, init_point (payment URL), and status
         """
@@ -259,7 +263,7 @@ class MercadoPagoService:
             sdk = MercadoPagoService.get_sdk()
             if not sdk:
                 return None
-            
+
             subscription_data = {
                 "reason": reason,
                 "auto_recurring": {
@@ -268,10 +272,13 @@ class MercadoPagoService:
                     "transaction_amount": float(amount),
                     "currency_id": "BRL"
                 },
-                 "payer_email": payer_email,              
+                 "payer_email": payer_email,
                 "status": "pending"
             }
-            
+
+            if start_date:
+                subscription_data["auto_recurring"]["start_date"] = start_date
+
             if back_url:
                 subscription_data["back_url"] = back_url
             

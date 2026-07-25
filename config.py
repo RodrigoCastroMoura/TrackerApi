@@ -25,6 +25,9 @@ class Config:
     # Server Configuration
     PORT = int(os.environ.get('PORT', 8000))
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max file size
+
+    # Swagger Configuration - desative em produção por segurança
+    SWAGGER_ENABLED = os.environ.get('SWAGGER_ENABLED', 'true').lower() == 'true'
     
     # Email Configuration (optional for development)
     MAIL_SERVER = os.environ.get('MAIL_SERVER','smtp.gmail.com')

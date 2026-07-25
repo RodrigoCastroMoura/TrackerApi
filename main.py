@@ -155,7 +155,11 @@ def create_app():
                   version='2.0',
                   description='API completa para gerenciamento de rastreamento veicular multi-tenant com relatórios.',
                   authorizations=authorizations,
-                  security='Bearer Auth')
+                  security='Bearer Auth',
+                  doc='/' if Config.SWAGGER_ENABLED else False)
+
+        if not Config.SWAGGER_ENABLED:
+            logger.info("Swagger UI está desativado (SWAGGER_ENABLED=false)")
 
         limiter.init_app(app)
         if Config.RATELIMIT_STORAGE_URL and not Config.RATELIMIT_STORAGE_URL.startswith('memory://'):

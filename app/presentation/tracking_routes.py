@@ -10,7 +10,7 @@ from mongoengine.errors import DoesNotExist
 import logging
 from bson.objectid import ObjectId
 from app.infrastructure.redis_cache import vehicle_cache
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +37,25 @@ location_model = api.model('Location', {
     'timestamp': fields.DateTime(description='Timestamp da localização')
 })
 
+vehicle_tracking_location_model = api.model('VehicleTrackingLocation', {
+    'lat': fields.Float(description='Latitude'),
+    'lng': fields.Float(description='Longitude')
+})
+
 vehicle_tracking_model = api.model('VehicleTracking', {
     'id': fields.String(readonly=True),
     'plate': fields.String(description='Placa do veículo'),
     'model': fields.String(description='Modelo do veículo'),
     'type': fields.String(description='Tipo do veículo'),
-    'block': fields.String(description='Status do veículo')
+    'block': fields.String(description='Status do veículo'),
+    'location': fields.Nested(vehicle_tracking_location_model, allow_null=True),
+    'tsusermanu': fields.DateTime(description='Timestamp da última atualização de localização')
 })
 
 vehicle_location_response_model = api.model('VehicleLocationResponse', {
     'vehicle_id': fields.String(description='ID do veículo'),
     'plate': fields.String(description='Placa do veículo'),
-    'location': fields.Nested(location_model),
+    'location': fields.Nested(location_model, allow_null=True),
     'type': fields.String(description='Tipo do veículo'),
     'block': fields.Boolean(description='Status de bloqueio do veículo'),
     'ignition': fields.Boolean(description='Status da ignição')
@@ -147,13 +154,23 @@ class VehicleTrackingList(Resource):
             # Get last location for each vehicle
             result_vehicles = []
             for vehicle in vehicles:
-                
+
+                location = None
+                if vehicle.latitude and vehicle.longitude and vehicle.tsusermanu \
+                        and vehicle.tsusermanu.date() == datetime.now().date():
+                    location = {
+                        'lat': float(vehicle.latitude),
+                        'lng': float(vehicle.longitude)
+                    }
+
                 vehicle_data = {
                     'id': str(vehicle.IMEI),
                     'plate': vehicle.dsplaca or 'N/A',
                     'model': vehicle.dsmodelo or 'N/A',
                     'type': vehicle.tipo,
-                    'block': 'bloqueado' if vehicle.bloqueado else "desbloqueado"
+                    'block': 'bloqueado' if vehicle.bloqueado else "desbloqueado",
+                    'location': location,
+                    'tsusermanu': vehicle.tsusermanu
                 }
                 
                 result_vehicles.append(vehicle_data)
@@ -202,17 +219,29 @@ class VehicleCurrentLocation(Resource):
             elif vehicle_obj:
                 vehicle = vehicle_obj.to_mongo().to_dict()
 
-            # Get best geocoding service (Google Maps with Nominatim fallback)
-            geocoding = get_best_geocoding_service()
-            
-            lat = float(vehicle.get('latitude')) if vehicle.get('latitude') else 0.0
-            lng = float(vehicle.get('longitude')) if vehicle.get('longitude') else 0.0
-            
-            # Get address from coordinates (Google Maps or Nominatim)
-            address = 'N/A'
-            if lat != 0.0 and lng != 0.0:
+            tsusermanu = vehicle.get('tsusermanu')
+            is_today = bool(tsusermanu) and tsusermanu.date() == datetime.now().date()
+
+            location = None
+            if is_today and vehicle.get('latitude') and vehicle.get('longitude'):
+                lat = float(vehicle.get('latitude'))
+                lng = float(vehicle.get('longitude'))
+
+                # Get best geocoding service (Google Maps with Nominatim fallback)
+                geocoding = get_best_geocoding_service()
                 address = geocoding.get_address_or_fallback(lat, lng)
-            
+
+                location = {
+                    'lat': lat,
+                    'lng': lng,
+                    'address': address,
+                    'speed': 0.0,
+                    'heading': 0.0,
+                    'altitude': float(vehicle.get('altitude')) if vehicle.get('altitude') else 0.0,
+                    'accuracy': 10.0,
+                    'timestamp': tsusermanu
+                }
+
             response = {
                         'vehicle_id': str(vehicle.get('_id', 'N/A')),
                         'plate': vehicle.get('dsplaca') or 'N/A',
@@ -220,18 +249,9 @@ class VehicleCurrentLocation(Resource):
                         'block': vehicle.get('bloqueado'),
                         'ignition': vehicle.get('ignicao'),
                         'model': vehicle.get('dsmodelo') or 'N/A',
-                        'location': {
-                            'lat': lat,
-                            'lng': lng,
-                            'address': address,
-                            'speed': 0.0,
-                            'heading': 0.0,
-                            'altitude': float(vehicle.get('altitude')) if vehicle.get('altitude') else 0.0,
-                            'accuracy': 10.0,
-                            'timestamp': vehicle.get('tsusermanu')
-                        }
+                        'location': location
                     }
-            
+
             return response, 200
             
         except DoesNotExist:
@@ -245,8 +265,7 @@ class VehicleCurrentLocation(Resource):
 class VehicleHistory(Resource):
     @api.doc('get_vehicle_location',
              params={
-                 'start_date': {'type': 'string', 'description': 'Data inicial (ISO format)'},
-                 'end_date': {'type': 'string', 'description': 'Data final (ISO format)'}
+                 'date': {'type': 'string', 'description': 'Data a ser consultada (ISO format, ex: 2026-07-25)'}
              })
     @token_required
     @require_permission('customer', 'read')
@@ -254,25 +273,32 @@ class VehicleHistory(Resource):
     def get(self, current_user, imei):
         """Obter histórico de localização do veículo"""
         try:
-            
+
             # Build query for vehicle data
             query = {'imei': imei}
-            
-            # Date filters
-            if request.args.get('start_date'):
-                start = datetime.fromisoformat(request.args.get('start_date'))
+
+            # Date filter - busca todos os registros do dia informado
+            if request.args.get('date'):
+                start = datetime.fromisoformat(request.args.get('date'))
+                start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+                end = start + timedelta(days=1)
                 query['timestamp__gte'] = start
-            
-            if request.args.get('end_date'):
-                end = datetime.fromisoformat(request.args.get('end_date'))
-                query['timestamp__lte'] = end
-            
+                query['timestamp__lt'] = end
+
             # Get location data
             locations = VehicleData.objects(**query).order_by('-timestamp')
-            
+
+            result_locations = [{
+                'longitude': loc.location.longitude,
+                'latitude': loc.location.latitude,
+                'altitude': loc.location.altitude,
+                'speed': loc.location.speed,
+                'course': loc.location.course
+            } if loc.location else None for loc in locations]
+
             return {
-                'locations': [loc.to_dict() for loc in locations],
-                'total': len(locations)
+                'locations': result_locations,
+                'total': len(result_locations)
             }, 200
             
         except DoesNotExist:

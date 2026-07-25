@@ -637,7 +637,7 @@ class Logout(Resource):
 
 @api.route('/customer/login')
 class LoginCustomer(Resource):
-    @api.doc('login')
+    @api.doc('customer_login')
     @api.expect(login_model)
     @limiter.limit("5 per minute")
     def post(self):
@@ -836,7 +836,7 @@ class CustomerPasswordRecover(Resource):
 
 @api.route('/customer/chatbot/login')
 class LoginCustomerChatBot(Resource):
-    @api.doc('login')
+    @api.doc('customer_chatbot_login')
     @api.expect(login_model)
     @limiter.limit("5 per minute")
     def post(self):

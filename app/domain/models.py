@@ -226,6 +226,8 @@ class VehicleLocation(EmbeddedDocument):
     longitude = StringField(max_length=20)
     latitude = StringField(max_length=20)
     altitude = StringField(max_length=20)
+    speed = FloatField()
+    course = FloatField()
 
 class VehicleData(BaseDocument):
     """Vehicle tracking data model - apenas dados de localização"""
@@ -236,6 +238,7 @@ class VehicleData(BaseDocument):
 
     meta = {
         'collection': 'vehicle_data',
+        'auto_create_index': False,
         'indexes': [
             'imei',
             'timestamp',
@@ -251,6 +254,8 @@ class VehicleData(BaseDocument):
                 'longitude': self.location.longitude if self.location else None,
                 'latitude': self.location.latitude if self.location else None,
                 'altitude': self.location.altitude if self.location else None,
+                'speed': self.location.speed if self.location else None,
+                'course': self.location.course if self.location else None,
             } if self.location else None,
         })
         return base_dict

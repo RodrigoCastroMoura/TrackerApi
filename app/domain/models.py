@@ -375,7 +375,8 @@ class SubscriptionPlan(BaseDocument):
     
     features = ListField(StringField())  # Lista de funcionalidades do plano
     max_vehicles = IntField()  # Maximum number of vehicles (optional)
-    
+    free_days = IntField(default=0)  # Number of free trial days before first billing
+
     # Status
     is_active = BooleanField(default=True)  # If plan is available for new subscriptions
     visible = BooleanField(default=True)
@@ -404,6 +405,7 @@ class SubscriptionPlan(BaseDocument):
             'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
             'features': self.features or [],
             'max_vehicles': self.max_vehicles,
+            'free_days': self.free_days or 0,
             'is_active': self.is_active,
             'visible': self.visible 
         })
@@ -445,7 +447,6 @@ class Bairro(Document):
         'strict': False,
     }
 
-
 class Localidade(Document):
     """Município para enriquecimento da busca de CEP"""
     loc_nu_sequencial = IntField()
@@ -463,7 +464,6 @@ class Localidade(Document):
         'indexes': [{'fields': ['loc_nu_sequencial']}, {'fields': ['cep']}],
         'strict': False,
     }
-
 
 class Logradouro(Document):
     """Modelo de logradouro para busca de CEP (Correios)"""
@@ -499,7 +499,6 @@ class Logradouro(Document):
             'log_nu_sequencial': self.log_nu_sequencial,
             'loc_nu_sequencial': self.loc_nu_sequencial,
         }
-
 
 class Subscription(BaseDocument):
     """Subscription model for monthly recurring payments"""

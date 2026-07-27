@@ -34,6 +34,7 @@ subscription_plan_model = api.model('SubscriptionPlan', {
     ),
     'features': fields.List(fields.String, description='List of features', example=['Rastreamento em tempo real']),
     'max_vehicles': fields.Integer(description='Maximum number of vehicles', example=10),
+    'free_days': fields.Integer(description='Number of free trial days before first billing', example=0),
     'is_active': fields.Boolean(description='If plan is available for new subscriptions', example=True)
 })
 
@@ -49,6 +50,7 @@ subscription_plan_response = api.model('SubscriptionPlanResponse', {
     'mp_preapproval_plan_id': fields.String(description='Mercado Pago plan ID'),
     'features': fields.List(fields.String, description='List of features'),
     'max_vehicles': fields.Integer(description='Maximum number of vehicles'),
+    'free_days': fields.Integer(description='Number of free trial days before first billing'),
     'is_active': fields.Boolean(description='If plan is active'),
     'visible': fields.Boolean(description='If plan is visible'),
     'created_at': fields.String(description='Creation date'),
@@ -118,6 +120,7 @@ class SubscriptionPlanListResource(Resource):
                 frequency_type=frequency_type,
                 features=data.get('features', []),
                 max_vehicles=data.get('max_vehicles'),
+                free_days=data.get('free_days', 0),
                 is_active=data.get('is_active', True),
                 mp_preapproval_plan_id=mp_plan_id,
                 created_by=current_user,
@@ -198,6 +201,8 @@ class SubscriptionPlanResource(Resource):
                 plan.features = data['features']
             if 'max_vehicles' in data:
                 plan.max_vehicles = data['max_vehicles']
+            if 'free_days' in data:
+                plan.free_days = data['free_days']
             if 'is_active' in data:
                 plan.is_active = data['is_active']
 

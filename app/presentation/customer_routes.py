@@ -1,7 +1,7 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Customer
-from app.presentation.auth_routes import token_required, require_permission
+from app.presentation.auth_routes import token_required, require_permission, generate_temporary_password
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging
 from bson.objectid import ObjectId
@@ -155,7 +155,7 @@ class CustomerList(Resource):
                 return {'message': 'Dados não fornecidos'}, 400
             
             # Validate required fields
-            required_fields = ['name', 'email', 'document', 'phone', 'password',
+            required_fields = ['name', 'email', 'document', 'phone',
                              'street', 'number', 'district', 'city', 'state', 'postal_code']
             for field in required_fields:
                 if field not in data or not data[field]:
@@ -169,12 +169,7 @@ class CustomerList(Resource):
             # Validate email format
             if not validate_email(data['email']):
                 return {'message': 'Formato de email inválido'}, 400
-            
-            # Validate password
-            password = data['password']
-            if len(password) < 6:
-                return {'message': 'A senha deve ter no mínimo 6 caracteres'}, 400
-            
+                
             # Validate state (2 letters)
             if not validate_state(data['state']):
                 return {'message': 'Estado inválido. Use a sigla com 2 letras'}, 400
@@ -213,8 +208,18 @@ class CustomerList(Resource):
                     created_by=current_user,
                     updated_by=current_user
                 )
-                customer.set_password(password)  # Hash da senha
+                # Gerar senha temporária
+                temporary_password = generate_temporary_password()
+
+                customer.set_password(temporary_password)  # Hash da senha
                 customer.save()
+
+                # Enviar email com senha temporária
+                from app.infrastructure.email_service import EmailService
+                if EmailService.send_welcome_email(customer.email, customer.name, temporary_password):
+                    logger.warning(f"Email de boas vindas enviado para: {customer.email}")
+                else:
+                    logger.warning(f"erro no envio no email: {customer.email}")
                 
                 logger.info(f"Cliente criado com sucesso: {customer.email}")
                 return customer.to_dict(), 201

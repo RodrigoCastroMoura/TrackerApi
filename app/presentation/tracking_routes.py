@@ -220,10 +220,9 @@ class VehicleCurrentLocation(Resource):
                 vehicle = vehicle_obj.to_mongo().to_dict()
 
             tsusermanu = vehicle.get('tsusermanu')
-            is_today = bool(tsusermanu) and tsusermanu.date() == datetime.now().date()
 
             location = None
-            if is_today and vehicle.get('latitude') and vehicle.get('longitude'):
+            if vehicle.get('latitude') and vehicle.get('longitude'):
                 lat = float(vehicle.get('latitude'))
                 lng = float(vehicle.get('longitude'))
 

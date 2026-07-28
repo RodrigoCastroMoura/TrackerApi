@@ -1,7 +1,7 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import User, Permission
-from app.presentation.auth_routes import token_required, require_permission
+from app.presentation.auth_routes import token_required, require_permission, generate_temporary_password
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging
 from bson.objectid import ObjectId
@@ -88,8 +88,6 @@ user_create_model = api.model(
         fields.String(required=True, description='User CPF (unique, 11 digits)'),
         'phone':
         fields.String(description='User phone number'),
-        'password':
-        fields.String(required=True, description='User password'),
         'role':
         fields.String(required=True, description='User role', enum=['admin', 'user']),
         'permissions':
@@ -259,7 +257,7 @@ class UserList(Resource):
                 return {'message': 'Dados não fornecidos'}, 400
 
             required_fields = [
-                'name', 'email', 'document', 'password', 'role'
+                'name', 'email', 'document', 'role'
             ]
             for field in required_fields:
                 if field not in data or not data[field]:
@@ -297,8 +295,11 @@ class UserList(Resource):
                             company_id=company_id,
                             created_by=current_user,
                             updated_by=current_user)
-                user.set_password(data['password'])
-                
+
+                # Gerar senha temporária
+                temporary_password = generate_temporary_password()
+                user.set_password(temporary_password)
+
                 # Process permissions if provided
                 if 'permissions' in data and data['permissions']:
                     permissions = []
@@ -311,8 +312,16 @@ class UserList(Resource):
                         except DoesNotExist:
                             return {'message': f'Permissão não encontrada: {perm_id}'}, 404
                     user.permissions = permissions
-                
+
                 user.save()
+
+                # Enviar email com senha temporária
+                from app.infrastructure.email_service import EmailService
+                if EmailService.send_welcome_portal_email(user.email, user.name, temporary_password):
+                    logger.warning(f"Email de boas vindas enviado para: {user.email}")
+                else:
+                    logger.warning(f"erro no envio no email: {user.email}")
+
                 return user.to_dict(), 201
 
             except NotUniqueError as e:

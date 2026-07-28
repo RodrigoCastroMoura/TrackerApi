@@ -183,6 +183,92 @@ class EmailService:
             return False
 
     @staticmethod
+    def send_welcome_portal_email(recipient_email: str, recipient_name: str, temporary_password: str) -> bool:
+        """
+        Envia email de boas-vindas com a senha temporária para um novo usuário do portal de configuração.
+
+        Args:
+            recipient_email: Email do destinatário
+            recipient_name: Nome do destinatário
+            temporary_password: Senha temporária gerada
+
+        Returns:
+            bool: True se enviado com sucesso, False caso contrário
+        """
+        try:
+            template_email_path = Config.TEMPLATE_EMAIL_PATH
+            path_for_saving = os.path.join(current_app.root_path, template_email_path)
+
+            text = open(path_for_saving, 'r', encoding='utf-8').read()
+
+            login_url = current_app.config.get('APP_URL', '')
+
+            msg_boas_vindas = f"""
+                Seja bem-vindo(a) à MonitoraNet! Sua conta foi criada com sucesso.\n
+                Esta senha é para o acesso ao portal de configuração MonitoraNet, através do navegador em
+                <a href="{login_url}">{login_url}</a>.\n
+                Para acessar o portal, utilize seu CPF e a senha temporária abaixo:
+            """
+
+            senha_destacada = f"""
+                <span style="display: inline-block; margin-top: 8px; padding: 10px 18px; background-color: #0c2033; color: #ffffff; font-size: 20px; font-weight: bold; letter-spacing: 1px; border-radius: 4px;">
+                    {temporary_password}
+                </span>
+            """
+
+            text = text.replace("*NOME*", recipient_name)
+            text = text.replace("*MSG1*", msg_boas_vindas)
+            text = text.replace("*MSG2*", senha_destacada)
+
+            msg = Message(
+                "Bem-vindo(a) ao Portal - MonitoraNet",
+                sender=current_app.config['MAIL_DEFAULT_SENDER'],
+                recipients=[recipient_email]
+            )
+            msg.html = text
+
+            images_dir = os.path.join(current_app.root_path, 'templates', 'imagens')
+
+            images_list = [
+                ('Email_03.jpg', 'Email_03'),
+                ('Email_05.jpg', 'Email_05'),
+                ('Email_06.jpg', 'Email_06'),
+                ('Email_09.jpg', 'Email_09'),
+                ('Email_10.jpg', 'Email_10'),
+                ('Email_11.jpg', 'Email_11'),
+                ('Email_12.jpg', 'Email_12'),
+                ('Email_13.jpg', 'Email_13'),
+            ]
+
+            for image_filename, cid_name in images_list:
+                image_path = os.path.join(images_dir, image_filename)
+
+                if os.path.exists(image_path):
+                    with open(image_path, 'rb') as img_file:
+                        msg.attach(
+                            filename=image_filename,
+                            content_type='image/jpeg',
+                            data=img_file.read(),
+                            disposition='inline',
+                            headers=[('Content-ID', f'<{cid_name}>')]
+                        )
+                    logger.info(f"Image {image_filename} attached with CID: {cid_name}")
+                else:
+                    logger.warning(f"Image not found: {image_path}")
+
+            mail.send(msg)
+            logger.info(f"Welcome portal email sent to {recipient_email}")
+            return True
+
+        except FileNotFoundError as e:
+            logger.error(f"Template file not found: {str(e)}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Error sending welcome portal email: {str(e)}")
+            return False
+
+    @staticmethod
     def send_password_recovery_email(recipient_email: str, recovery_token: str) -> bool:
         """
         DEPRECATED: Use send_temporary_password_email instead.

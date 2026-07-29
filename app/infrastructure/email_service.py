@@ -205,7 +205,7 @@ class EmailService:
 
             msg_boas_vindas = f"""
                 Seja bem-vindo(a) à MonitoraNet! Sua conta foi criada com sucesso.\n
-                Esta senha é para o acesso ao portal de configuração MonitoraNet, através do navegador em
+                Esta senha é para o acesso ao Portal MonitoraNet, através do navegador em
                 <a href="{login_url}">{login_url}</a>.\n
                 Para acessar o portal, utilize seu CPF e a senha temporária abaixo:
             """

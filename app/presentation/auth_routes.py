@@ -376,7 +376,7 @@ def require_valid_subscription(f):
 
         active_subscription = Subscription.objects(
             customer_id=current_customer.id,
-            status__in=['active', 'cancelled', 'rejected'],
+            status__in=['active', 'canceled', 'rejected'],
             visible=True
         ).first()
 
@@ -386,12 +386,6 @@ def require_valid_subscription(f):
                 'error': 'no_active_subscription'
             }, 403
 
-        if active_subscription.access_blocked:
-            return {
-                'message': 'Acesso bloqueado devido a pagamento pendente.',
-                'error': 'access_blocked'
-            }, 403
-
         if active_subscription.grace_period_end and active_subscription.grace_period_end < now:
             grace_end = active_subscription.grace_period_end
             return {
@@ -399,7 +393,7 @@ def require_valid_subscription(f):
                 'error': 'subscription_expired',
                 'expired_at': active_subscription.current_period_end.isoformat(),
                 'grace_period_end': grace_end.isoformat() if grace_end else None
-            }, 403
+            }, 369
         
         return f(*args, **kwargs)
 

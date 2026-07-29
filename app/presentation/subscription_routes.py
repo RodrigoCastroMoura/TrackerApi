@@ -409,8 +409,8 @@ class SubscriptionCancel(Resource):
             if not subscription:
                 return {'message': 'Nenhuma assinatura ativa encontrada'}, 404
             
-            if subscription.cancel_at_period_end:
-                return {'message': 'Assinatura já está agendada para cancelamento'}, 400
+            if subscription.status == 'canceled':
+                return {'message': 'Assinatura já está cancelada'}, 400
             
             # Cancel on Mercado Pago if subscription ID exists
             if subscription.mp_subscription_id:
@@ -421,14 +421,8 @@ class SubscriptionCancel(Resource):
             # Mark as canceled
             subscription.status = 'canceled'
             subscription.canceled_at = datetime.now(timezone.utc)
-            subscription.cancel_at_period_end = True
-            subscription.updated_by = None
             subscription.save()
-
-            customer.can_change_plan = True
-            customer.subscription_blocked = False
-            customer.save()
-            
+       
             logger.info(f"Subscription canceled for customer {current_customer.email}")
             
             return {

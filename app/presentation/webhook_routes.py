@@ -221,9 +221,9 @@ class MercadoPagoWebhook(Resource):
 
                     subscription.current_period_end = next_payment_date
                     subscription.grace_period_end = grace_period_end
-                    subscription.access_blocked = False
                     subscription.mp_status = 'succeeded'
                     subscription.failure_message = None
+                    subscription.canceled_at = None
 
                     if not already_registered:
                         subscription.payment_history.append(SubscriptionPayment(

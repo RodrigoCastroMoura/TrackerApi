@@ -52,14 +52,24 @@ class BaseDocument(Document):
         self.updated_at = datetime.utcnow()
         return super(BaseDocument, self).save(*args, **kwargs)
 
+    def _ref_id(self, field_name):
+        """Get the id of a reference field without dereferencing it.
+
+        Avoids DoesNotExist errors when the referenced document (e.g. a
+        deleted user) no longer exists — we only need its id, not the
+        full document.
+        """
+        value = self._data.get(field_name)
+        return str(value.id) if value else None
+
     def to_dict(self):
         """Base method for consistent dictionary representation"""
         return {
             'id': str(self.id) if self.id else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'created_by': str(self.created_by.id) if self.created_by else None,
+            'created_by': self._ref_id('created_by'),
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'updated_by': str(self.updated_by.id) if self.updated_by else None
+            'updated_by': self._ref_id('updated_by')
         }
 
 class Company(BaseDocument):

@@ -393,7 +393,7 @@ def require_valid_subscription(f):
                 'error': 'subscription_expired',
                 'expired_at': active_subscription.current_period_end.isoformat(),
                 'grace_period_end': grace_end.isoformat() if grace_end else None
-            }, 369
+            }, 402
         
         return f(*args, **kwargs)
 

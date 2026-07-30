@@ -376,7 +376,7 @@ def require_valid_subscription(f):
 
         active_subscription = Subscription.objects(
             customer_id=current_customer.id,
-            status__in=['active', 'canceled', 'rejected'],
+            status__in=['active', 'canceled', 'pending'],
             visible=True
         ).first()
 
@@ -643,6 +643,7 @@ class LoginCustomer(Resource):
             identifier = data.get('identifier')
             password = data.get('password')
             fcm_token = data.get('fcm_token')
+            now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
             if not identifier or not password:
                 return {'message': 'Identificador e senha são obrigatórios'}, 400
@@ -659,12 +660,15 @@ class LoginCustomer(Resource):
                     logger.warning(f"Login attempt by inactive user: {customer.document}")
                     return {'message': 'Usuário inativo'}, 401
                 
-                # Verificar se acesso está bloqueado por pagamento atrasado
+                # Verificar a expiração da assinatura do cliente
                 active_sub = Subscription.objects(
                     customer_id=customer.id,
                     visible=True
                 ).order_by('-created_at').first()
-
+                can_change_plan = customer.can_change_plan
+                if active_sub.status == 'canceled' and active_sub.grace_period_end and active_sub.grace_period_end < now:
+                    can_change_plan = True  # Reativar a assinatura quanto o período de carência expirar e cancelar a assinatura
+                    
                 if not fcm_token:
                     logger.debug(f"FCM token not provided for customer: {customer.email}")
                 else:
@@ -683,11 +687,7 @@ class LoginCustomer(Resource):
                     'has_accepted_terms': customer.has_accepted_terms,
                     'require_payment_method': customer.require_payment_method,
                     'requires_password_change': not customer.password_changed,
-                    'current_plan_name': customer.current_plan_name,
-                    'previous_plan_name': customer.previous_plan_name,
-                    'previous_plan_amount': customer.previous_plan_amount,
-                    'plan_changed_at': customer.plan_changed_at.isoformat() if customer.plan_changed_at else None,
-                    'can_change_plan': customer.can_change_plan,
+                    'can_change_plan': can_change_plan,
                     'user': {
                         'id': str(customer.id),
                         'name': customer.name,

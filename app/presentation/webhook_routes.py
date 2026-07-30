@@ -244,8 +244,11 @@ class MercadoPagoWebhook(Resource):
                     # Cobrança recorrente falhou: NÃO estende o período nem libera acesso.
                     # O cliente mantém o acesso que já tinha até o grace_period_end vigente.
                     subscription.mp_status = 'failed'
-                    subscription.status = 'canceled'
-                    subscription.canceled_at = datetime.now(timezone.utc)
+                    if payment_status == 'cancelled':
+                        subscription.status = 'canceled'
+                        subscription.canceled_at = datetime.now(timezone.utc) 
+                    else:
+                        subscription.status = 'pending'
                     subscription.failure_message = f'Cobrança recorrente rejeitada (status: {payment_status})'
 
                     if not already_registered:

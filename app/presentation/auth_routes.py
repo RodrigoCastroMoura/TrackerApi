@@ -666,8 +666,10 @@ class LoginCustomer(Resource):
                     visible=True
                 ).order_by('-created_at').first()
                 can_change_plan = customer.can_change_plan
-                if active_sub.status == 'canceled' and active_sub.grace_period_end and active_sub.grace_period_end < now:
-                    can_change_plan = True  # Reativar a assinatura quanto o período de carência expirar e cancelar a assinatura
+
+                if active_sub:
+                    if active_sub.status == 'canceled' and active_sub.grace_period_end and active_sub.grace_period_end < now:
+                        can_change_plan = True  # Reativar a assinatura quanto o período de carência expirar e cancelar a assinatura
                     
                 if not fcm_token:
                     logger.debug(f"FCM token not provided for customer: {customer.email}")

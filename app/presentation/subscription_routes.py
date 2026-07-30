@@ -12,30 +12,37 @@ logger = logging.getLogger(__name__)
 
 api = Namespace('subscriptions', description='Operações de assinatura e pagamento com Mercado Pago')
 
-def _mp_start_date(delay_days: int = 0) -> str:
+# Margem de segurança para start_date "imediato": o Mercado Pago rejeita
+# auto_recurring.start_date se, no instante em que a requisição chega lá,
+# já estiver no passado. Calcular "agora" sem nenhuma folga faz a própria
+# latência de rede até o MP invalidar o campo (erro "cannot be a past date").
+_MP_START_DATE_BUFFER = timedelta(minutes=5)
+
+def _mp_start_date(delay: timedelta = timedelta()) -> str:
     """
-    Data/hora atual (ou deslocada `delay_days` dias) formatada no padrão ISO 8601
-    exigido pelo Mercado Pago (com milissegundos e offset), usada como
+    Data/hora atual deslocada por `delay`, formatada no padrão ISO 8601 exigido
+    pelo Mercado Pago (com milissegundos e offset), usada como
     auto_recurring.start_date. Sem esse campo o MP só cobra a partir do próximo
     ciclo depois da autorização.
     """
-    when = datetime.now(timezone.utc) + timedelta(days=delay_days)
+    when = datetime.now(timezone.utc) + delay
     return when.strftime('%Y-%m-%dT%H:%M:%S.000+00:00')
 
 def _mp_start_date_now() -> str:
-    return _mp_start_date(0)
+    return _mp_start_date(_MP_START_DATE_BUFFER)
 
 def _first_charge_start_date(frequency: int, frequency_type: str) -> str:
     """
     Planos mensais (frequency=1, frequency_type='months'): primeira cobrança só
     daqui a 1 mês, seguindo o ciclo normal do plano — sem cobrança na criação.
-    Qualquer outro plano: cobrança imediata, assim que o cliente autorizar.
+    Qualquer outro plano: cobrança imediata (com margem de segurança), assim
+    que o cliente autorizar.
     """
     if frequency == 1 and frequency_type == 'months':
-        return _mp_start_date(30)
+        return _mp_start_date(timedelta(days=30))
     if frequency == 1 and frequency_type == 'weeks':
-        return _mp_start_date(7)
-    return _mp_start_date(0)
+        return _mp_start_date(timedelta(weeks=1))
+    return _mp_start_date_now()
 
 subscription_create_model = api.model('SubscriptionCreate', {
     'plan_id': fields.String(required=True, description='ID do plano de assinatura cadastrado'),

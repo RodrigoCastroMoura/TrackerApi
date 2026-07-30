@@ -665,6 +665,7 @@ class LoginCustomer(Resource):
                     customer_id=customer.id,
                     visible=True
                 ).order_by('-created_at').first()
+                
                 can_change_plan = customer.can_change_plan
 
                 if active_sub:

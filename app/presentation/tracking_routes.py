@@ -287,17 +287,9 @@ class VehicleHistory(Resource):
             # Get location data
             locations = VehicleData.objects(**query).order_by('-timestamp')
 
-            result_locations = [{
-                'longitude': loc.location.longitude,
-                'latitude': loc.location.latitude,
-                'altitude': loc.location.altitude,
-                'speed': loc.location.speed,
-                'course': loc.location.course
-            } if loc.location else None for loc in locations]
-
             return {
-                'locations': result_locations,
-                'total': len(result_locations)
+                'locations': [loc.to_dict() for loc in locations],
+                'total': len(locations)
             }, 200
             
         except DoesNotExist:

@@ -239,7 +239,7 @@ class VehicleLocation(EmbeddedDocument):
     speed = FloatField()
     course = FloatField()
 
-class VehicleData(BaseDocument):
+class VehicleData(Document):
     """Vehicle tracking data model - apenas dados de localização"""
 
     imei = StringField(required=True, max_length=50)
@@ -256,19 +256,19 @@ class VehicleData(BaseDocument):
     }
 
     def to_dict(self):
-        base_dict = super(VehicleData, self).to_dict()
-        base_dict.update({
-            'imei': self.imei,
-            'timestamp': self.timestamp.isoformat() if self.timestamp else None,
-            'location': {
-                'longitude': self.location.longitude if self.location else None,
-                'latitude': self.location.latitude if self.location else None,
-                'altitude': self.location.altitude if self.location else None,
-                'speed': self.location.speed if self.location else None,
-                'course': self.location.course if self.location else None,
-            } if self.location else None,
-        })
-        return base_dict
+        
+        return{
+                'imei': self.imei,
+                'timestamp': self.timestamp.isoformat() if self.timestamp else None,
+                'location': {
+                    'longitude': self.location.longitude if self.location else None,
+                    'latitude': self.location.latitude if self.location else None,
+                    'altitude': self.location.altitude if self.location else None,
+                    'speed': self.location.speed if self.location else None,
+                    'course': self.location.course if self.location else None,
+                } if self.location else None,
+        }
+        
 
 class Customer(BaseDocument):
     # Dados básicos

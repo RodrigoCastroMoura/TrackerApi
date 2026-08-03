@@ -653,6 +653,12 @@ class LoginCustomer(Resource):
                     customer.save()
                     logger.debug(f"FCM token updated for customer: {customer.email}")
 
+                if not customer.has_accepted_terms:
+                    logger.info(f"Customer {customer.email} has not accepted terms and conditions")
+                    return {
+                        'message': 'Contrato de prestação de serviços não assinado.',
+                    }, 403
+
                 access_token = create_token(customer, 'customer')
                 refresh_token = create_token(customer, 'refresh')
 

@@ -825,11 +825,13 @@ class PdfDocumentAnalyzer(Resource):
                         file_url = storage.save_file(file)
                     document.url = file_url
                     document.signature = True
+                    document.signature_date = datetime.now()
                     document.save()
 
                     # Gerar nova senha de acesso ao app e enviar por email junto com o contrato assinado
                     temporary_password = generate_temporary_password()
                     customer.set_password(temporary_password)
+                    customer.has_accepted_terms = True
                     customer.save()
 
                     email_sent = EmailService.send_signed_welcome_email(

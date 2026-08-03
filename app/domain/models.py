@@ -609,6 +609,7 @@ class Document(Document):
     view_count = IntField(default=0)
     download_count = IntField(default=0)
     signature = BooleanField(default=False)  # Indicates if document has signature
+    signature_date = DateTimeField()  # Data/hora em que o documento foi assinado
     meta = {
         'collection': 'documents',
         'indexes': [
@@ -628,6 +629,7 @@ class Document(Document):
             'visible': self.visible,
             'view_count': self.view_count,
             'download_count': self.download_count,
-            'signature': self.signature
+            'signature': self.signature,
+            'signature_date': self.signature_date.isoformat() if self.signature_date else None
         }
 

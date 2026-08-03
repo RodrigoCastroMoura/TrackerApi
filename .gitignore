@@ -43,7 +43,10 @@ env/
 .env.production.local
 
 # Firebase
-docsmart-37bba-firebase-adminsdk-no5c5-a83e08fb7a.json
+*firebase-adminsdk*.json
 
 # MongoDB
 *.mongodb
+
+# Generated contracts (contêm dados pessoais do cliente)
+contracts/

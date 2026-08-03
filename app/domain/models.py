@@ -269,7 +269,6 @@ class VehicleData(Document):
                 } if self.location else None,
         }
         
-
 class Customer(BaseDocument):
     # Dados básicos
     name = StringField(required=True)
@@ -299,6 +298,13 @@ class Customer(BaseDocument):
 
     # FCM Token para notificações push
     fcm_token = StringField(max_length=500)
+
+    # Imagens de assinatura e rubrica (base64) usadas na assinatura de documentos
+    signature = StringField()
+    rubric = StringField()
+    signatureDoc = StringField()
+    rubricDoc = StringField()
+    type_font = StringField()
 
     has_accepted_terms = BooleanField(default=False)
     require_payment_method = BooleanField(default=True)
@@ -594,4 +600,34 @@ class Subscription(BaseDocument):
             'payment_history': [p.to_dict() for p in (self.payment_history or [])],
         })
         return base_dict
+
+class Document(Document):
+    url = StringField(required=True)
+    customer_id = ReferenceField('Customer', required=True)
+    status = StringField(required=True, choices=['active', 'inactive'], default='active')
+    visible = BooleanField(default=True)
+    view_count = IntField(default=0)
+    download_count = IntField(default=0)
+    signature = BooleanField(default=False)  # Indicates if document has signature
+    meta = {
+        'collection': 'documents',
+        'indexes': [
+            {'fields': ['customer_id', 'status']},
+            {'fields': ['customer_id', 'visible']}
+        ],
+        'strict': False  # Ignora campos antigos (created_at/created_by/updated_at/updated_by) já salvos no banco
+    }
+
+    def to_dict(self):
+        return {
+            'id': str(self.id) if self.id else None,
+            'url': self.url,
+            'customer_id': str(self.customer_id.id) if self.customer_id else None,
+            'customer_name': self.customer_id.name if self.customer_id else None,
+            'status': self.status,
+            'visible': self.visible,
+            'view_count': self.view_count,
+            'download_count': self.download_count,
+            'signature': self.signature
+        }
 

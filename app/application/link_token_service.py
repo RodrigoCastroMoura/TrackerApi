@@ -1,6 +1,7 @@
 
 import jwt
 import logging
+import time
 from datetime import datetime, timedelta
 from flask import current_app
 from app.domain.models import User
@@ -38,15 +39,16 @@ class LinkTokenService:
                 logger.error("SECRET_KEY não encontrada na configuração")
                 raise ValueError("Chave secreta da aplicação não configurada")
             
-            # Gerar data de expiração
-            expiration = datetime.utcnow() + timedelta(days=expiration_days)
-            
+            # time.time() já é epoch UTC; datetime.utcnow().timestamp() NÃO é (interpreta o
+            # horário naive como hora local), o que gera iat/exp errados fora do fuso UTC.
+            now = int(time.time())
+
             # Preparar payload
             payload = {
                 'user_id': str(user_id),
                 'action_type': action_type,
-                'exp': int(expiration.timestamp()),
-                'iat': int(datetime.utcnow().timestamp()),
+                'exp': now + expiration_days * 86400,
+                'iat': now,
                 'type': 'link',
                 'jti': AuthService._generate_token_id()
             }

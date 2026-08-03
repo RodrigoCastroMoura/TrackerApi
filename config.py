@@ -21,7 +21,8 @@ class Config:
     
     # Optional: Firebase Configuration
     FIREBASE_BUCKET_NAME = os.environ.get('FIREBASE_BUCKET_NAME')
-    
+    FIREBASE_CREDENTIALS = os.environ.get('FIREBASE_CREDENTIALS')
+
     # Server Configuration
     PORT = int(os.environ.get('PORT', 8000))
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max file size
@@ -75,3 +76,5 @@ class Config:
     WHATSAPP_API_URL = os.environ.get("WHATSAPP_API_URL", "")
     API_BASE_URL = os.environ.get("API_BASE_URL", "")
     SESSION_TIMEOUT_MINUTES = int(os.environ.get("SESSION_TIMEOUT_MINUTES", 30))
+
+    PATH_CONTRATO_ASSINATURA = os.environ.get("PATH_CONTRATO_ASSINATURA")

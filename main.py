@@ -17,6 +17,8 @@ from app.presentation.subscription_routes import api as subscription_ns
 from app.presentation.subscription_plan_routes import api as subscription_plan_ns
 from app.presentation.webhook_routes import api as webhook_ns
 from app.presentation.cep_routes import api as cep_ns
+from app.presentation.pdf_analyzer_routes import api as pdf_analyzer_ns
+from app.presentation.document_routes import api as document_ns
 from app.domain.models import User, Permission
 from config import Config
 import os
@@ -181,6 +183,8 @@ def create_app():
         api.add_namespace(subscription_ns, path='/api/subscriptions')
         api.add_namespace(webhook_ns, path='/api/webhooks')
         api.add_namespace(cep_ns, path='/api/cep')
+        api.add_namespace(pdf_analyzer_ns, path='/api/pdf-analyzer')
+        api.add_namespace(document_ns, path='/api/documents')
 
         from app.presentation.chatbot_routes import chatbot_bp
         app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')

@@ -1,11 +1,14 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Customer
-from app.presentation.auth_routes import token_required, require_permission, generate_temporary_password
+from app.domain.models import Customer, Document
+from app.presentation.auth_routes import token_required, customer_token_required, require_permission, generate_temporary_password
+from app.infrastructure.contract_generator import generate_customer_contract
+from app.infrastructure.firebase_storage import FirebaseStorage
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging
 from bson.objectid import ObjectId
 from datetime import datetime
+import os
 import re
 
 logger = logging.getLogger(__name__)
@@ -214,13 +217,50 @@ class CustomerList(Resource):
                 customer.set_password(temporary_password)  # Hash da senha
                 customer.save()
 
-                # Enviar email com senha temporária
                 from app.infrastructure.email_service import EmailService
-                if EmailService.send_welcome_email(customer.email, customer.name, temporary_password):
-                    logger.warning(f"Email de boas vindas enviado para: {customer.email}")
+                from app.application.link_token_service import LinkTokenService
+
+                # Gerar contrato de prestação de serviços e salvar no Firebase
+                contract_document = None
+                contract_path = None
+                try:
+                    contract_path = generate_customer_contract(customer)
+
+                    storage = FirebaseStorage()
+                    filename = os.path.basename(contract_path)
+                    with open(contract_path, 'rb') as contract_file:
+                        contract_file.filename = filename
+                        contract_url = storage.save_file(contract_file)
+
+                    contract_document = Document(
+                        url=contract_url,
+                        customer_id=customer,
+                        status='active',
+                        visible=True
+                    )
+                    contract_document.save()
+                    logger.info(f"Contrato gerado e enviado ao Firebase para o cliente: {customer.email}")
+                except Exception as e:
+                    logger.error(f"Erro ao gerar/enviar contrato para o cliente {customer.email}: {str(e)}")
+                finally:
+                    if contract_path and os.path.exists(contract_path):
+                        os.remove(contract_path)
+
+                # Enviar email de boas-vindas com o link de assinatura do contrato
+                if contract_document:
+                    signature_token = LinkTokenService.create_link_token(
+                        customer.id, 'document_signature', resource_id=str(contract_document.id))
+                    if EmailService.send_welcome_signature_email(customer.email, customer.name, signature_token):
+                        logger.warning(f"Email de boas vindas com link de assinatura enviado para: {customer.email}")
+                    else:
+                        logger.warning(f"erro no envio do email de boas vindas: {customer.email}")
                 else:
-                    logger.warning(f"erro no envio no email: {customer.email}")
-                
+                    # Contrato não pôde ser gerado: manter o fluxo antigo (senha temporária) para não deixar o cliente sem acesso
+                    if EmailService.send_welcome_email(customer.email, customer.name, temporary_password):
+                        logger.warning(f"Email de boas vindas enviado para: {customer.email}")
+                    else:
+                        logger.warning(f"erro no envio no email: {customer.email}")
+
                 logger.info(f"Cliente criado com sucesso: {customer.email}")
                 return customer.to_dict(), 201
                 
@@ -366,6 +406,79 @@ class CustomerResource(Resource):
         except Exception as e:
             logger.error(f"Error deleting customer: {str(e)}")
             return {'message': 'Erro ao deletar cliente'}, 500
+
+
+@api.route('/<id>/signature')
+@api.param('id', 'Customer identifier')
+class CustomerSignature(Resource):
+    signature_model = api.model(
+        'CustomerSignature', {
+            'signature':
+            fields.String(required=True, description='URL/base64 da assinatura do cliente'),
+            'rubric':
+            fields.String(required=True, description='URL/base64 da rubrica do cliente'),
+            'signatureDoc':
+            fields.String(required=True, description='Imagem (base64) da assinatura usada nos documentos'),
+            'rubricDoc':
+            fields.String(required=True, description='Imagem (base64) da rubrica usada nos documentos'),
+            'type_font':
+            fields.String(required=True, description='Fonte utilizada na assinatura')
+        })
+
+    @api.doc('update_customer_signature',
+             responses={
+                 200: 'Success',
+                 400: 'Dados inválidos',
+                 401: 'Não autenticado',
+                 403: 'Não autorizado',
+                 404: 'Cliente não encontrado',
+                 500: 'Erro interno do servidor'
+             })
+    @api.expect(signature_model)
+    @customer_token_required
+    def post(self, current_customer, id):
+        """Update customer signature."""
+        try:
+            if not ObjectId.is_valid(id):
+                return {'message': 'ID do cliente inválido'}, 400
+
+            customer = Customer.objects.get(id=id)
+
+            # Only allow customers to update their own signature or admins
+            if str(current_customer.id) != str(
+                    id) and current_customer.role != 'admin':
+                return {'message': 'Não autorizado'}, 403
+
+            data = request.get_json()
+            if not data or 'signature' not in data:
+                return {'message': 'URL da assinatura não fornecida'}, 400
+
+            if not data or 'rubric' not in data:
+                return {'message': 'URL da rubrica não fornecida'}, 400
+
+            if not data or 'signatureDoc' not in data:
+                return {'message': 'URL da assinaturaDoc não fornecida'}, 400
+
+            if not data or 'rubricDoc' not in data:
+                return {'message': 'URL da rubricaDoc não fornecida'}, 400
+
+            if not data or 'type_font' not in data:
+                return {'message': 'Font não fornecida'}, 400
+
+            customer.signature = data['signature']
+            customer.rubric = data['rubric']
+            customer.signatureDoc = data['signatureDoc']
+            customer.rubricDoc = data['rubricDoc']
+            customer.type_font = data['type_font']
+            customer.save()
+
+            return {'message': 'Assinatura atualizada com sucesso'}, 200
+
+        except DoesNotExist:
+            return {'message': 'Cliente não encontrado'}, 404
+        except Exception as e:
+            logger.error(f"Error updating customer signature: {str(e)}")
+            return {'message': 'Erro ao atualizar assinatura'}, 500
 
 
 @api.route('/search')

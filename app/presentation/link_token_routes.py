@@ -2,7 +2,7 @@
 from flask import request, jsonify, redirect, url_for
 from flask_restx import Namespace, Resource, fields
 from app.application.link_token_service import LinkTokenService
-from app.domain.models import User
+from app.domain.models import Customer
 from app.presentation.auth_routes import token_required, create_token
 import logging
 
@@ -26,26 +26,26 @@ class LinkTokenValidator(Resource):
             if not resource_id:
                 return {'message': 'ID do documento não encontrado no token'}, 400
             
-            user = User.objects.get(id=payload.get('user_id'), status= 'active') 
+            customer = Customer.objects.get(id=payload.get('user_id'), status='active')
 
-            if not user:
-                return {'message': 'ID do usuario não encontrado no token'}, 400
-            
-            access_token = create_token(user, 'access')
-            refresh_token = create_token(user, 'refresh')
+            if not customer:
+                return {'message': 'ID do cliente não encontrado no token'}, 400
+
+            access_token = create_token(customer, 'customer')
+            refresh_token = create_token(customer, 'refresh')
 
             return {
                 'access_token': access_token,
                 'refresh_token': refresh_token,
                 'token_type': 'Bearer',
                 'expires_in': 3600,
-                'requires_password_change': not user.password_changed,
+                'requires_password_change': not customer.password_changed,
                 'user': {
-                    'id': str(user.id),
-                    'name': user.name,
-                    'email': user.email,
-                    'role': user.role,
-                    'company_id': str(user.company_id.id),
+                    'id': str(customer.id),
+                    'name': customer.name,
+                    'email': customer.email,
+                    'role': customer.role,
+                    'company_id': str(customer.company_id.id),
                     'document_id': resource_id
                 }
             }, 200

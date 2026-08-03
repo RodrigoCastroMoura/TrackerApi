@@ -18,6 +18,7 @@ Pillow
 PyMuPDF
 PyPDF2
 pytesseract
+reportlab
 requests
 mercadopago
 Flask-Dance

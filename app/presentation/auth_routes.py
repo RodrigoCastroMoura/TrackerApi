@@ -295,36 +295,10 @@ def customer_token_required(f):
                     logger.warning(f"Inactive customer attempted to access: {current_customer.email}")
                     return {'message': 'Cliente inativo', 'error': 'inactive_customer'}, 401
                 
-                # Verificar se o cliente precisa de assinatura e não tem nenhuma
-                if current_customer.require_payment_method:
-                    active_subscription = Subscription.objects(
-                        customer_id=current_customer.id,
-                        status__in=['active', 'pending'],
-                        visible=True
-                    ).first()
-                    if active_subscription:
-
-                        if active_subscription.status == 'pending':
-                            logger.info(f"Customer {current_customer.email} has pending subscription")
-                            # Libera endpoints de gerenciamento de assinatura mesmo com pendente
-                            if not request.path.startswith('/api/subscriptions'):
-                                return {
-                                    'message': 'Assinatura pendente. Aguarde a confirmação do pagamento.',
-                                    'error': 'subscription_pending',
-                                    'payment_url': active_subscription.payment_url
-                                }, 403
                     
                 if current_customer.email != data['email']:
                     logger.warning("Token email mismatch with current customer")
                     return {'message': 'Token inválido', 'error': 'email_mismatch'}, 401
-
-                # Verificar se pode trocar de plano
-                active_subscription = Subscription.objects(
-                    customer_id=current_customer.id,
-                    status='active',
-                    visible=True
-                ).first()
-                current_customer.can_change_plan = active_subscription is not None
 
                 if len(args) > 0 and isinstance(args[0], Resource):
                     return f(args[0], current_customer=current_customer, *args[1:], **kwargs)

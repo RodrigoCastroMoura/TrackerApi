@@ -339,12 +339,12 @@ class VehicleResource(Resource):
 
                 # Veículo trocou de cliente: libera troca de plano para o cliente antigo e o novo
                 if previous_customer and previous_customer.id != customer.id:
-                    if not previous_customer.requested_plan_change:
+                    if not previous_customer.require_payment_method:
                         if (total - 1) > 0:
                             previous_customer.can_change_plan = True
                             previous_customer.save()
                     
-                    if not customer.requested_plan_change:
+                    if not customer.require_payment_method:
                         customer.can_change_plan = True
                         customer.save()
             

@@ -334,12 +334,19 @@ class VehicleResource(Resource):
                 previous_customer = vehicle.customer_id
                 vehicle.customer_id = customer
 
+                query = {'customer_id':  previous_customer.id, 'visible': True}
+                total = Vehicle.objects(**query).count()
+
                 # Veículo trocou de cliente: libera troca de plano para o cliente antigo e o novo
                 if previous_customer and previous_customer.id != customer.id:
-                    previous_customer.can_change_plan = True
-                    previous_customer.save()
-                    customer.can_change_plan = True
-                    customer.save()
+                    if not previous_customer.requested_plan_change:
+                        if (total - 1) > 0:
+                            previous_customer.can_change_plan = True
+                            previous_customer.save()
+                    
+                    if not customer.requested_plan_change:
+                        customer.can_change_plan = True
+                        customer.save()
             
             # Update fields
             if 'dsplaca' in data:

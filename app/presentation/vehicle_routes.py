@@ -7,27 +7,12 @@ import logging
 from bson.objectid import ObjectId
 from datetime import datetime
 from app.infrastructure.redis_cache import vehicle_cache
-from app.infrastructure.geocoding_service import (
-    get_google_geocoding_service,
-    get_geocoding_service
-)
+from app.infrastructure.geocoding_service import get_photon_geocoding_service
 import re
 
 logger = logging.getLogger(__name__)
 
 api = Namespace('vehicles', description='Vehicle operations')
-
-
-def get_best_geocoding_service():
-    """
-    Get the best available geocoding service.
-    Tries Google Maps first (premium), falls back to Nominatim (free).
-    """
-    try:
-        return get_google_geocoding_service()
-    except (ValueError, ImportError) as e:
-        logger.warning(f"Google Maps not available ({str(e)}), using Nominatim fallback")
-        return get_geocoding_service()
 
 # Vehicle Model for Swagger
 vehicle_model = api.model('Vehicle', {
@@ -486,42 +471,6 @@ class VehicleBlock(Resource):
             logger.error(f"Error sending block command: {str(e)}")
             return {'message': 'Erro ao enviar comando'}, 500
 
- 
-        """Obter histórico de localização do veículo"""
-        try:
-            
-            vehicle = Vehicle.objects.get(IMEI=id, visible=True, company_id=current_user.company_id)
-            
-            # Build query for vehicle data
-            query = {'imei': vehicle.IMEI}
-            
-            # Date filters
-            if request.args.get('start_date'):
-                start = datetime.fromisoformat(request.args.get('start_date'))
-                query['timestamp__gte'] = start
-            
-            if request.args.get('end_date'):
-                end = datetime.fromisoformat(request.args.get('end_date'))
-                query['timestamp__lte'] = end
-            
-            limit = min(100, int(request.args.get('limit', 10)))
-            
-            # Get location data
-            locations = VehicleData.objects(**query).order_by('-timestamp').limit(limit)
-            
-            return {
-                'vehicle_id': str(vehicle.id),
-                'IMEI': vehicle.IMEI,
-                'placa': vehicle.dsplaca,
-                'locations': [loc.to_dict() for loc in locations],
-                'total': len(locations)
-            }, 200
-            
-        except DoesNotExist:
-            return {'message': 'Veículo não encontrado'}, 404
-        except Exception as e:
-            logger.error(f"Error getting vehicle location: {str(e)}")
-            return {'message': 'Erro ao buscar localização'}, 500
 
 @api.route('/by-placa/<placa>')
 @api.param('placa', 'Vehicle placa')
@@ -540,13 +489,13 @@ class VehicleByPlaca(Resource):
                 query['company_id'] = current_user.company_id
             vehicle = Vehicle.objects.get(**query)
 
-            # Get address from coordinates (Google Maps or Nominatim)
+            # Get address from coordinates (provider via GEOCODING_PROVIDER env var)
             lat = float(vehicle.latitude) if vehicle.latitude else 0.0
             lng = float(vehicle.longitude) if vehicle.longitude else 0.0
 
             address = 'N/A'
             if lat != 0.0 and lng != 0.0:
-                geocoding = get_best_geocoding_service()
+                geocoding = get_photon_geocoding_service()
                 address = geocoding.get_address_or_fallback(lat, lng)
 
             vehicle_data = vehicle.to_dict()

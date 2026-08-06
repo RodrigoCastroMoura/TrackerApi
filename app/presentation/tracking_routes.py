@@ -2,10 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Vehicle, VehicleData
 from app.presentation.auth_routes import token_required, require_permission, require_valid_subscription
-from app.infrastructure.geocoding_service import (
-    get_google_geocoding_service,
-    get_geocoding_service
-)
+from app.infrastructure.geocoding_service import get_configured_geocoding_service, get_photon_geocoding_service
 from mongoengine.errors import DoesNotExist
 import logging
 from bson.objectid import ObjectId
@@ -13,18 +10,6 @@ from app.infrastructure.redis_cache import vehicle_cache
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
-
-
-def get_best_geocoding_service():
-    """
-    Get the best available geocoding service.
-    Tries Google Maps first (premium), falls back to Nominatim (free).
-    """
-    try:
-        return get_google_geocoding_service()
-    except (ValueError, ImportError) as e:
-        logger.warning(f"Google Maps not available ({str(e)}), using Nominatim fallback")
-        return get_geocoding_service()
 
 api = Namespace('tracking', description='Vehicle tracking operations')
 
@@ -226,16 +211,16 @@ class VehicleCurrentLocation(Resource):
                 lat = float(vehicle.get('latitude'))
                 lng = float(vehicle.get('longitude'))
 
-                # Get best geocoding service (Google Maps with Nominatim fallback)
-                geocoding = get_best_geocoding_service()
+                # Provider selected via GEOCODING_PROVIDER env var
+                geocoding = get_configured_geocoding_service() if vehicle.get('velocidade',0) > 0 else get_photon_geocoding_service()
                 address = geocoding.get_address_or_fallback(lat, lng)
 
                 location = {
                     'lat': lat,
                     'lng': lng,
                     'address': address,
-                    'speed': 0.0,
-                    'heading': 0.0,
+                    'speed': vehicle.get('velocidade',0),
+                    'heading': 0,
                     'altitude': float(vehicle.get('altitude')) if vehicle.get('altitude') else 0.0,
                     'accuracy': 10.0,
                     'timestamp': tsusermanu

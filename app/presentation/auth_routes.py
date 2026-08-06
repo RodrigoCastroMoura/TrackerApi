@@ -131,8 +131,8 @@ def require_permission(resource_type, action_type):
 
             if current_user.role == 'customer':
                 current_permissions = ["customer_read", "customer_write", "customer_update"]
-            elif current_user.role == 'admin':
-                return f(*args, **kwargs)
+            # elif current_user.role == 'admin':
+            #     return f(*args, **kwargs)
             else:
                 current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
 
@@ -330,11 +330,10 @@ def require_valid_subscription(f):
                 token = auth_header.split(' ')[-1]
                 secret_key = Config.SECRET_KEY
                 data = jwt.decode(token, secret_key, algorithms=["HS256"])
-
-                if data.get('role') != 'customer':
-                    return {'message': 'Acesso negado. Apenas clientes podem acessar este recurso.', 'error': 'not_customer'}, 403
-
                 current_customer = Customer.objects(id=data['user_id']).first()
+
+            except DoesNotExist:
+                return {'message': 'Cliente não encontrado', 'error': 'customer_not_found'}, 404
             except jwt.ExpiredSignatureError:
                 return {'message': 'Token expirado', 'error': 'token_expired'}, 401
             except jwt.InvalidTokenError:
@@ -344,7 +343,15 @@ def require_valid_subscription(f):
                 return {'message': 'Erro na validação do token', 'error': 'validation_error'}, 500
 
         if not current_customer:
-            return {'message': 'Cliente não encontrado', 'error': 'customer_not_found'}, 404
+            current_user = kwargs.get('current_user')
+            current_permissions = kwargs.get('current_permissions')    
+            current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
+            
+            if "block_vehicle" in current_permissions:
+                return f(*args, **kwargs)
+            else:
+                return {'message': 'Acesso negado. Solicite acesso ao administrador.', 'error': 'not_customer'}, 403
+
 
         now = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 

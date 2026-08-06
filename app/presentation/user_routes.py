@@ -188,10 +188,17 @@ class UserList(Resource):
                 return {'message': 'Parâmetros de paginação inválidos'}, 400
 
             # Build query with multi-tenant isolation
-            query = { 'role': 'user', 'visible': True}
+            query = { 'visible': True}
             if current_user.role != 'admin':
                 query['company_id'] = current_user.company_id
+                query['role'] = 'user' 
+            else:
+                current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
 
+                if "all_view_user" not in current_permissions:
+                    query['role'] = 'user' 
+
+    
             email = request.args.get('email')
             if email:
                 query['email'] = {
@@ -408,9 +415,15 @@ class UserResource(Resource):
                 return {'message': 'ID do usuário inválido'}, 400
 
             # Build query with multi-tenant isolation
-            query = {'id': id, 'role': 'user'}
+            query = {'id': id}
             if current_user.role != 'admin':
                 query['company_id'] = current_user.company_id
+                query['role'] = 'user' 
+            else:
+                current_permissions = [p.name for p in current_user.permissions] if current_user.permissions else []
+                
+                if "all_view_user" not in current_permissions:
+                    query['role'] = 'user' 
             
             user = User.objects.get(**query)
 
@@ -464,7 +477,7 @@ class UserResource(Resource):
                     # If permissions is an empty list, clear all permissions
                     user.permissions = []
 
-            user.role = 'user'
+            user.role = data['role']
 
             user.updated_by = current_user
 

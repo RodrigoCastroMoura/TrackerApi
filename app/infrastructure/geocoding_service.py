@@ -1,15 +1,17 @@
 """
-Geocoding service using Nominatim (OpenStreetMap) and Google Maps for reverse geocoding.
+Geocoding service using Nominatim (OpenStreetMap), Photon (komoot) and Google Maps
+for reverse geocoding.
 
 This service converts GPS coordinates (latitude, longitude) into human-readable addresses.
 It implements rate limiting and caching for optimal performance.
 
 Providers:
 - Nominatim (OpenStreetMap): Free, rate-limited (1 req/sec)
+- Photon (komoot): Free, no API key, used as secondary fallback
 - Google Maps: Paid, requires GOOGLE_MAPS_API_KEY environment variable
 """
 
-from geopy.geocoders import Nominatim
+from geopy.geocoders import Nominatim, Photon
 from geopy.exc import GeocoderTimedOut, GeocoderUnavailable
 import logging
 import time
@@ -150,11 +152,11 @@ class GeocodingService:
     def get_address_or_fallback(self, lat: float, lng: float) -> str:
         """
         Get address with automatic fallback to coordinates if geocoding fails.
-        
+
         Args:
             lat: Latitude
             lng: Longitude
-        
+
         Returns:
             Address string or formatted coordinates
         """
@@ -164,6 +166,146 @@ class GeocodingService:
         else:
             # Fallback to coordinates
             return f"{lat:.6f}, {lng:.6f}"
+
+    def get_address(self, lat: float, lng: float) -> Optional[str]:
+        """Address or None (no coordinate fallback) — used by FallbackGeocodingService."""
+        return self.reverse_geocode(lat, lng)
+
+
+class PhotonGeocodingService:
+    """
+    Service for reverse geocoding using Photon (komoot), built on OpenStreetMap data.
+
+    Free, no API key required. Intended as a secondary fallback for when both
+    Google Maps and Nominatim are unavailable or unstable.
+    """
+
+    # Photon's API only accepts these language codes (a 'pt' request 400s);
+    # anything else is dropped so Photon falls back to the OSM tag's default
+    # name, which for Brazil is already Portuguese.
+    SUPPORTED_LANGUAGES = {'de', 'en', 'fr'}
+
+    def __init__(self):
+        self.geolocator = Photon(timeout=10)
+
+    @lru_cache(maxsize=1000)
+    def reverse_geocode(self, lat: float, lng: float, language: str = 'pt') -> Optional[str]:
+        """
+        Convert coordinates to address using Photon.
+
+        Args:
+            lat: Latitude
+            lng: Longitude
+            language: Language for the address (only 'de', 'en', 'fr' are
+                sent to Photon; anything else uses the OSM default name)
+
+        Returns:
+            Address string or None if geocoding fails
+        """
+        try:
+            lat_rounded = round(lat, 4)
+            lng_rounded = round(lng, 4)
+
+            kwargs = {}
+            if language in self.SUPPORTED_LANGUAGES:
+                kwargs['language'] = language
+
+            location = self.geolocator.reverse(
+                f"{lat_rounded}, {lng_rounded}",
+                **kwargs
+            )
+
+            if location:
+                return location.address
+            else:
+                logger.warning(f"No address found for coordinates: {lat}, {lng}")
+                return None
+
+        except GeocoderTimedOut:
+            logger.error(f"Photon geocoding timeout for coordinates: {lat}, {lng}")
+            return None
+        except GeocoderUnavailable:
+            logger.error("Photon service unavailable")
+            return None
+        except Exception as e:
+            logger.error(f"Photon geocoding error: {str(e)}")
+            return None
+
+    @lru_cache(maxsize=1000)
+    def reverse_geocode_detailed(self, lat: float, lng: float, language: str = 'pt') -> Optional[Dict]:
+        """
+        Convert coordinates to detailed address components using Photon.
+
+        Args:
+            lat: Latitude
+            lng: Longitude
+            language: Language for the address
+
+        Returns:
+            Dictionary with address components or None
+        """
+        try:
+            lat_rounded = round(lat, 4)
+            lng_rounded = round(lng, 4)
+
+            kwargs = {}
+            if language in self.SUPPORTED_LANGUAGES:
+                kwargs['language'] = language
+
+            location = self.geolocator.reverse(
+                f"{lat_rounded}, {lng_rounded}",
+                **kwargs
+            )
+
+            if location and location.raw:
+                props = location.raw.get('properties', {})
+                # Photon puts the street name in 'name' (not 'street') when
+                # the result itself is a street/highway feature.
+                road = props.get('street') or (
+                    props.get('name', '') if props.get('osm_key') == 'highway' else ''
+                )
+                return {
+                    'full_address': location.address,
+                    'road': road,
+                    'house_number': props.get('housenumber', ''),
+                    'suburb': props.get('district', ''),
+                    'city': props.get('city', ''),
+                    'state': props.get('state', ''),
+                    'postcode': props.get('postcode', ''),
+                    'country': props.get('country', ''),
+                    'country_code': props.get('countrycode', '').upper()
+                }
+            else:
+                logger.warning(f"No detailed address found for coordinates: {lat}, {lng}")
+                return None
+
+        except GeocoderTimedOut:
+            logger.error(f"Photon geocoding timeout for coordinates: {lat}, {lng}")
+            return None
+        except GeocoderUnavailable:
+            logger.error("Photon service unavailable")
+            return None
+        except Exception as e:
+            logger.error(f"Photon geocoding error: {str(e)}")
+            return None
+
+    def get_address_or_fallback(self, lat: float, lng: float) -> str:
+        """
+        Get address with automatic fallback to coordinates if geocoding fails.
+
+        Args:
+            lat: Latitude
+            lng: Longitude
+
+        Returns:
+            Address string or formatted coordinates
+        """
+        address = self.reverse_geocode(lat, lng)
+        return address if address else f"{lat:.6f}, {lng:.6f}"
+
+    def get_address(self, lat: float, lng: float) -> Optional[str]:
+        """Address or None (no coordinate fallback) — used by FallbackGeocodingService."""
+        return self.reverse_geocode(lat, lng)
 
 
 class GoogleGeocodingService:
@@ -412,9 +554,15 @@ class GoogleGeocodingService:
             logger.error(f"Google Maps geocoding error: {str(e)}")
             return None
 
+    def get_address(self, lat: float, lng: float) -> Optional[str]:
+        """Address or None (no coordinate fallback)."""
+        return self.reverse_geocode_full(lat, lng)
+
+
 # Singleton instances
 _geocoding_service = None
 _google_geocoding_service = None
+_photon_geocoding_service = None
 
 def get_geocoding_service() -> GeocodingService:
     """Get or create the singleton Nominatim geocoding service instance."""
@@ -440,3 +588,43 @@ def get_google_geocoding_service() -> GoogleGeocodingService:
     if _google_geocoding_service is None:
         _google_geocoding_service = GoogleGeocodingService()
     return _google_geocoding_service
+
+def get_photon_geocoding_service() -> PhotonGeocodingService:
+    """Get or create the singleton Photon geocoding service instance."""
+    global _photon_geocoding_service
+    if _photon_geocoding_service is None:
+        _photon_geocoding_service = PhotonGeocodingService()
+    return _photon_geocoding_service
+
+# Maps GEOCODING_PROVIDER values to their singleton factory functions.
+_GEOCODING_PROVIDER_FACTORIES = {
+    'google': get_google_geocoding_service,
+    'nominatim': get_geocoding_service,
+    'photon': get_photon_geocoding_service,
+}
+
+
+def get_configured_geocoding_service():
+    """
+    Get the geocoding service selected via the GEOCODING_PROVIDER env var.
+
+    Set GEOCODING_PROVIDER to 'google', 'nominatim' or 'photon' to choose the
+    active provider (e.g. switch away from Google without touching code when
+    there's no budget for it, or if it's having an outage). Defaults to
+    'nominatim' (free, no API key) when unset.
+
+    Returns:
+        The selected geocoding service instance.
+
+    Raises:
+        ValueError: If GEOCODING_PROVIDER is 'google' but GOOGLE_MAPS_API_KEY
+            is not configured, or if GEOCODING_PROVIDER is set to an unknown value.
+    """
+    provider = os.getenv('GEOCODING_PROVIDER', 'photon').strip().lower()
+    factory = _GEOCODING_PROVIDER_FACTORIES.get(provider)
+    if factory is None:
+        raise ValueError(
+            f"Unknown GEOCODING_PROVIDER '{provider}'. "
+            f"Valid options: {', '.join(_GEOCODING_PROVIDER_FACTORIES)}"
+        )
+    return factory()

@@ -277,6 +277,12 @@ class VehicleHistory(Resource):
             # Get location data
             locations = VehicleData.objects(**query).order_by('-timestamp')
 
+            # Considera apenas registros com localização válida (lat/long preenchidos)
+            locations = [
+                loc for loc in locations
+                if loc.location and loc.location.latitude and loc.location.longitude
+            ]
+
             return {
                 'locations': [loc.to_dict() for loc in locations],
                 'total': len(locations)

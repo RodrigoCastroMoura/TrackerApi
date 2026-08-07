@@ -197,6 +197,7 @@ class Vehicle(BaseDocument):
         'indexes': [
             {'fields': ['IMEI'], 'unique': True, 'name': 'idx_v_imei'},
             {'fields': ['dsplaca'], 'unique': True, 'name': 'idx_v_placa', 'sparse': True},
+            {'fields': ['company_id', 'visible'], 'name': 'idx_v_company_visible'},
         ]
     }
     
@@ -250,8 +251,7 @@ class VehicleData(Document):
         'collection': 'vehicle_data',
         'auto_create_index': False,
         'indexes': [
-            'imei',
-            'timestamp',
+            {'fields': ['imei', '-timestamp'], 'name': 'idx_vd_imei_ts'},
         ]
     }
 

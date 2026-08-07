@@ -24,12 +24,12 @@ from config import Config
 import os
 import logging
 import sys
-import pymongo
+from mongoengine.connection import get_db
 
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=os.environ.get('LOG_LEVEL', 'INFO').upper(),
     format=
     '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
@@ -44,15 +44,12 @@ def verify_mongodb_connection():
     pid = os.getpid()
     try:
         logger.info(f"[pid={pid}] Verifying MongoDB connection...")
-        mongodb_uri = Config.MONGODB_URI
-        if not mongodb_uri:
+        if not Config.MONGODB_URI:
             logger.error(f"[pid={pid}] MONGODB_URI not set in config.py")
             return False
 
         logger.info(f"[pid={pid}] Attempting to connect to MongoDB...")
-        client = pymongo.MongoClient(mongodb_uri,
-                                     serverSelectionTimeoutMS=5000)
-        client.admin.command('ping')
+        get_db().command('ping', maxTimeMS=5000)
         logger.info(f"[pid={pid}] MongoDB connection verified successfully")
         return True
     except Exception as e:

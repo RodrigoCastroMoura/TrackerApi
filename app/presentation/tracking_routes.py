@@ -2,7 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Vehicle, VehicleData
 from app.presentation.auth_routes import token_required, require_permission, require_valid_subscription
-from app.infrastructure.geocoding_service import get_configured_geocoding_service, get_photon_geocoding_service
+from app.infrastructure.geocoding_service import get_google_geocoding_service, get_photon_geocoding_service
 from mongoengine.errors import DoesNotExist
 import logging
 from bson.objectid import ObjectId
@@ -185,7 +185,11 @@ class VehicleCurrentLocation(Resource):
         try:
             if not imei:
                 return {'message': 'IMEI do veículo não fornecido'}, 400
-            
+
+            cached_response = vehicle_cache.get_location_response(current_user.company_id, imei)
+            if cached_response is not None:
+                return cached_response, 200
+
             vehicle_obj = None
             vehicle_dict = vehicle_cache.get_vehicle(imei)  # tenta cache
 
@@ -212,7 +216,7 @@ class VehicleCurrentLocation(Resource):
                 lng = float(vehicle.get('longitude'))
 
                 # Provider selected via GEOCODING_PROVIDER env var
-                geocoding = get_configured_geocoding_service() if vehicle.get('velocidade',0) > 0 else get_photon_geocoding_service()
+                geocoding = get_google_geocoding_service() if vehicle.get('velocidade',0) <= 0 else get_photon_geocoding_service()
                 address = geocoding.get_address_or_fallback(lat, lng)
 
                 location = {
@@ -236,6 +240,7 @@ class VehicleCurrentLocation(Resource):
                         'location': location
                     }
 
+            vehicle_cache.set_location_response(current_user.company_id, imei, response)
             return response, 200
             
         except DoesNotExist:

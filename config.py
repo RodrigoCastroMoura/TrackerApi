@@ -55,6 +55,7 @@ class Config:
     REDIS_URL = os.environ.get('REDIS_URL', '')
     REDIS_ENABLED: bool = os.getenv('REDIS_ENABLED', 'true').lower() == 'true'
     REDIS_VEHICLE_TTL: int = int(os.getenv('REDIS_VEHICLE_TTL', '3600'))
+    REDIS_LOCATION_TTL: int = int(os.getenv('REDIS_LOCATION_TTL', '30'))
 
     # Rate Limiting Configuration
     RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', os.environ.get('REDIS_URL', 'memory://'))

@@ -14,6 +14,7 @@ class RedisVehicleCache:
         self.client: Optional[redis.Redis] = None
         self.enabled = Config.REDIS_ENABLED
         self.ttl = Config.REDIS_VEHICLE_TTL
+        self.location_ttl = Config.REDIS_LOCATION_TTL
         self._connect()
     
     def _connect(self):
@@ -44,6 +45,9 @@ class RedisVehicleCache:
 
     def _vehicle_id_key(self, vehicle_id: str) -> str:
         return f"vehicle:id:{vehicle_id}"
+
+    def _location_key(self, company_id: str, imei: str) -> str:
+        return f"location:{company_id}:{imei}"
 
     def _serialize_vehicle(self, vehicle_data: Any) -> str:
         # Se for objeto MongoEngine, converte para dict via to_mongo()
@@ -153,7 +157,59 @@ class RedisVehicleCache:
                 self.invalidate_vehicle(imei)
         except Exception as e:
             logger.error(f"Redis update error for IMEI {imei}: {e}")
-    
+
+    def _serialize_location_response(self, response: Dict[str, Any]) -> str:
+        data = dict(response)
+        location = data.get('location')
+        if location:
+            location = dict(location)
+            ts = location.get('timestamp')
+            if isinstance(ts, datetime):
+                location['timestamp'] = ts.isoformat()
+            data['location'] = location
+        return json.dumps(data)
+
+    def _deserialize_location_response(self, data: str) -> Dict[str, Any]:
+        response = json.loads(data)
+        location = response.get('location')
+        if location and isinstance(location.get('timestamp'), str):
+            try:
+                location['timestamp'] = datetime.fromisoformat(location['timestamp'])
+            except (ValueError, TypeError):
+                pass
+        return response
+
+    def get_location_response(self, company_id: str, imei: str) -> Optional[Dict[str, Any]]:
+        """Resposta já pronta do endpoint /vehicles/<imei>/location (curto TTL).
+
+        Usado para não estourar o serviço de geocoding (Google/Photon/Nominatim)
+        em polling frequente do cliente.
+        """
+        if not self.enabled or not self.client:
+            return None
+
+        try:
+            data = self.client.get(self._location_key(company_id, imei))
+            if data:
+                logger.debug(f"Redis HIT for location {company_id}:{imei}")
+                return self._deserialize_location_response(data)
+            logger.debug(f"Redis MISS for location {company_id}:{imei}")
+            return None
+        except Exception as e:
+            logger.error(f"Redis get location error for {company_id}:{imei}: {e}")
+            return None
+
+    def set_location_response(self, company_id: str, imei: str, response: Dict[str, Any]):
+        if not self.enabled or not self.client:
+            return
+
+        try:
+            serialized = self._serialize_location_response(response)
+            self.client.setex(self._location_key(company_id, imei), self.location_ttl, serialized)
+            logger.debug(f"Redis SET location {company_id}:{imei} (TTL: {self.location_ttl}s)")
+        except Exception as e:
+            logger.error(f"Redis set location error for {company_id}:{imei}: {e}")
+
     def get_stats(self) -> Dict[str, Any]:
         if not self.enabled or not self.client:
             return {'enabled': False}

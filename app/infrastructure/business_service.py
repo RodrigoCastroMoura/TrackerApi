@@ -4,7 +4,7 @@ from datetime import timezone, timedelta
 from config import Config
 from app.domain.models import Customer, Vehicle
 from app.infrastructure.session_manager import ChatUser, ChatVehicle, ChatSession
-from app.infrastructure.geocoding_service import get_configured_geocoding_service
+from app.infrastructure.geocoding_service import get_google_geocoding_service, get_photon_geocoding_service
 from app.infrastructure.redis_cache import vehicle_cache
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ class BusinessService:
             address = "Endereco nao disponivel"
             if lat != 0.0 and lng != 0.0:
                 try:
-                    geocoding = get_configured_geocoding_service()
+                    geocoding = get_google_geocoding_service() if vehicle.get('velocidade',0) <= 0 else get_photon_geocoding_service()
                     address = geocoding.get_address_or_fallback(lat, lng)
                 except Exception as e:
                     logger.warning(f"[BIZ] Geocoding failed: {str(e)}")

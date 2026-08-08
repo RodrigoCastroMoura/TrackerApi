@@ -8,6 +8,7 @@ from app.infrastructure.session_manager import session_manager
 from app.infrastructure.whatsapp_client import whatsapp_client
 from app.infrastructure.business_service import business_service
 from app.infrastructure.message_handler import MessageHandler
+from app.infrastructure.message_dedup import message_deduplicator
 
 message_handler = MessageHandler(whatsapp_client, business_service)
 
@@ -75,6 +76,11 @@ def webhook():
                 messages = value.get("messages", [])
 
                 for msg in messages:
+                    message_id = msg.get("id", "")
+                    if message_id and message_deduplicator.seen_before(message_id):
+                        logger.info(f"[WEBHOOK] Mensagem duplicada ignorada: {message_id}")
+                        continue
+
                     phone_number = msg.get("from", "")
                     msg_type = msg.get("type", "")
 

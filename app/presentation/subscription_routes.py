@@ -89,30 +89,7 @@ class SubscriptionResource(Resource):
 
             if not plan:
                 return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
-            
-            # Bloqueia se já tem assinatura ativa
-            active_subscription = Subscription.objects(
-                customer_id=current_customer.id,
-                status='active',
-                visible=True
-            ).first()
 
-            if active_subscription:
-                return {'message': 'Cliente já possui uma assinatura ativa'}, 400
-
-            # Se tiver assinatura pendente, cancela antes de criar a nova
-            pending_subscription = Subscription.objects(
-                customer_id=current_customer.id,
-                status='pending',
-                visible=True
-            ).first()
-
-            if pending_subscription:
-                if pending_subscription.mp_subscription_id:
-                    MercadoPagoService.cancel_subscription(pending_subscription.mp_subscription_id)
-                pending_subscription.delete()
-                logger.info(f"Deleted previous pending subscription {pending_subscription.id} before creating new one")
-            
             # Step 2: Create subscription plan on Mercado Pago if not already created
             mp_frequency, mp_frequency_type = to_mercadopago_frequency(plan.frequency, plan.frequency_type)
             mp_plan_id = plan.mp_preapproval_plan_id
@@ -131,6 +108,15 @@ class SubscriptionResource(Resource):
                 mp_plan_id = mp_plan['plan_id']
                 plan.mp_preapproval_plan_id = mp_plan_id
                 plan.save()
+            
+            # Bloqueia se já tem assinatura ativa
+            active_subscription = Subscription.objects(
+                customer_id=current_customer.id,
+                visible=True
+            ).first()
+
+            if active_subscription and active_subscription.status in ['active', 'pendingPayment']:
+                return {'message': 'Já existe uma assinatura ativa ou pendente para este cliente'}, 400
 
             # Step 3: Create pending subscription — generates payment link for the customer
             mp_subscription = MercadoPagoService.create_pending_subscription(
@@ -148,13 +134,51 @@ class SubscriptionResource(Resource):
                 },
                 start_date=_first_charge_start_date(plan.frequency, plan.frequency_type)
             )
-
             if not mp_subscription or mp_subscription.get('error'):
                 mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
                 if 'real or test users' in mp_msg:
                     return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
                 return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
+
+            if active_subscription and active_subscription.status in ['canceled','pending']:
+                if active_subscription and active_subscription.status == 'pending':
+                    if active_subscription.mp_subscription_id:
+                        MercadoPagoService.cancel_subscription(active_subscription.mp_subscription_id)
+                # Se a assinatura anterior foi cancelada, podemos reativá-la
+                active_subscription.mp_subscription_id = mp_subscription['subscription_id']
+                active_subscription.mp_preapproval_plan_id = mp_plan_id
+                active_subscription.plan_name = plan.name
+                active_subscription.amount = plan.amount
+                active_subscription.status = 'pending'
+                active_subscription.mp_status = 'pending'
+                active_subscription.billing_cycle = mp_frequency_type
+                active_subscription.frequency = mp_frequency
+                active_subscription.currency = 'BRL'
+                active_subscription.payment_url = mp_subscription['init_point']
+                active_subscription.failure_message = None
+                active_subscription.cancel_at_period_end = None
+                active_subscription.canceled_at = None
+                active_subscription.updated_by = None
+
+                try:
+                    active_subscription.save()
+                    logger.info(f"Reactivated canceled subscription {active_subscription.id} for customer {current_customer.email}")
+                    return {
+                        'message': 'Assinatura criada com sucesso',
+                        'subscription_id': str(active_subscription.id),
+                        'plan_name': plan.name,
+                        'amount': plan.amount,
+                        'billing_cycle': plan.frequency_type,
+                        'payment_url': mp_subscription['init_point'],
+                        'mp_subscription_id': mp_subscription['subscription_id'],
+                        'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
+                    }, 200
+                except Exception as db_error:
+                    logger.error(f"DB save failed while reactivating subscription: {db_error}")
+                    MercadoPagoService.cancel_subscription(mp_subscription['subscription_id'])
+                    return {'message': 'Erro ao reativar assinatura. Tente novamente.'}, 500
             
+
             # Step 4: Salvar no banco — se falhar, cancela no MP para evitar órfão
             mp_sub_id = mp_subscription['subscription_id']
             try:
@@ -334,7 +358,6 @@ class SubscriptionResource(Resource):
             existing.failure_message = None
             existing.cancel_at_period_end = False
             existing.canceled_at = None
-            existing.access_blocked = False
             existing.updated_by = None
 
             existing.save()
@@ -486,8 +509,7 @@ class SubscriptionStatement(Resource):
                     'grace_period_end': subscription.grace_period_end.isoformat() if subscription.grace_period_end else None,
                     'is_overdue': is_overdue,
                     'days_overdue': days_overdue,
-                    'days_until_block': days_until_block,
-                    'access_blocked': subscription.access_blocked
+                    'days_until_block': days_until_block
                 },
                 'payment_history': {
                     'total_payments': len(payment_history),

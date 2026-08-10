@@ -155,8 +155,6 @@ class MercadoPagoWebhook(Resource):
                     subscription.current_period_end = now + timedelta(days=period_days)
                     subscription.grace_period_end = subscription.current_period_end + timedelta(days=Config.MERCADOPAGO_DAYS_TO_EXPIRE)
                     subscription.access_blocked = False
-                    if not subscription.payment_date:
-                        subscription.payment_date = now
                     customer.require_payment_method = False
                     customer.can_change_plan = False
                 elif mp_status == 'paused':
@@ -167,7 +165,9 @@ class MercadoPagoWebhook(Resource):
                     subscription.mp_status = 'canceled'
                     subscription.canceled_at = datetime.now(timezone.utc)
                     subscription.access_blocked = False
-                    customer.can_change_plan = True
+                    if customer.require_payment_method == False:
+                        customer.can_change_plan = True
+                        customer.require_payment_method = False
                 elif mp_status == 'pending':
                     subscription.status = 'pending'
                     subscription.mp_status = 'pending'
@@ -248,7 +248,7 @@ class MercadoPagoWebhook(Resource):
                         subscription.status = 'canceled'
                         subscription.canceled_at = datetime.now(timezone.utc) 
                     else:
-                        subscription.status = 'pending'
+                        subscription.status = 'pendingPayment'
                     subscription.failure_message = f'Cobrança recorrente rejeitada (status: {payment_status})'
 
                     if not already_registered:

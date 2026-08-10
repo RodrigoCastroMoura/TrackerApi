@@ -164,7 +164,6 @@ class MercadoPagoWebhook(Resource):
                     subscription.status = 'canceled'
                     subscription.mp_status = 'canceled'
                     subscription.canceled_at = datetime.now(timezone.utc)
-                    subscription.access_blocked = False
                     if customer.require_payment_method == False:
                         customer.can_change_plan = True
 

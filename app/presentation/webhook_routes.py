@@ -167,7 +167,7 @@ class MercadoPagoWebhook(Resource):
                     subscription.access_blocked = False
                     if customer.require_payment_method == False:
                         customer.can_change_plan = True
-                        customer.require_payment_method = False
+
                 elif mp_status == 'pending':
                     subscription.status = 'pending'
                     subscription.mp_status = 'pending'

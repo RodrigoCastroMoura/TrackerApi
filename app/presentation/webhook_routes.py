@@ -150,7 +150,7 @@ class MercadoPagoWebhook(Resource):
                     now = datetime.now(timezone.utc)
                     period_days = period_days_for_frequency(subscription.frequency, subscription.billing_cycle)
                     subscription.status = 'active'
-                    subscription.mp_status = 'succeeded'
+                    subscription.mp_status = 'authorized'
                     subscription.current_period_start = now
                     subscription.current_period_end = now + timedelta(days=period_days)
                     subscription.grace_period_end = subscription.current_period_end + timedelta(days=Config.MERCADOPAGO_DAYS_TO_EXPIRE)
@@ -158,11 +158,11 @@ class MercadoPagoWebhook(Resource):
                     customer.require_payment_method = False
                     customer.can_change_plan = False
                 elif mp_status == 'paused':
-                    subscription.status = 'pending'
-                    subscription.mp_status = 'processing'
+                    subscription.status = 'paused'
+                    subscription.mp_status = 'paused'
                 elif mp_status == 'cancelled':
                     subscription.status = 'canceled'
-                    subscription.mp_status = 'canceled'
+                    subscription.mp_status = 'cancelled'
                     subscription.canceled_at = datetime.now(timezone.utc)
                     if customer.require_payment_method == False:
                         customer.can_change_plan = True

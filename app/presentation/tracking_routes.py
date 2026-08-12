@@ -28,6 +28,7 @@ vehicle_tracking_location_model = api.model('VehicleTrackingLocation', {
 })
 
 vehicle_tracking_model = api.model('VehicleTracking', {
+    'vehicle_id': fields.String(description='ID do veículo'),
     'id': fields.String(readonly=True),
     'plate': fields.String(description='Placa do veículo'),
     'model': fields.String(description='Modelo do veículo'),
@@ -149,6 +150,7 @@ class VehicleTrackingList(Resource):
                     }
 
                 vehicle_data = {
+                    'vehicle_id': str(vehicle.id),
                     'id': str(vehicle.IMEI),
                     'plate': vehicle.dsplaca or 'N/A',
                     'model': vehicle.dsmodelo or 'N/A',

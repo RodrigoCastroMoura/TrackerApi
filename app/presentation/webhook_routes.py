@@ -86,24 +86,23 @@ class MercadoPagoWebhook(Resource):
         """Processar notificações do Mercado Pago (payment, subscription)"""
         try:
             data = request.get_json() or {}
-            
-            is_test_mode = data.get('live_mode') == False
-            
+
             x_signature = request.headers.get('x-signature', '')
             x_request_id = request.headers.get('x-request-id', '')
             data_id = request.args.get('data.id', '')
-            
+
             webhook_secret = Config.MERCADOPAGO_WEBHOOK_SECRET
-            
-            if is_test_mode:
-                logger.info("Test mode webhook received - skipping signature validation")
-            elif not webhook_secret:
+
+            if not webhook_secret:
                 logger.warning("MERCADOPAGO_WEBHOOK_SECRET not configured - processing without validation")
             else:
-                if x_signature and not validate_mercadopago_signature(x_signature, x_request_id, data_id, webhook_secret):
+                # x-signature é sempre exigido quando o secret está configurado: a ausência do
+                # header não deve pular a validação, e o campo live_mode do próprio payload
+                # (controlado por quem envia a requisição) não deve decidir se ela roda.
+                if not validate_mercadopago_signature(x_signature, x_request_id, data_id, webhook_secret):
                     logger.error("Invalid webhook signature - rejecting request")
                     return {'message': 'Invalid signature'}, 401
-                
+
                 logger.info("Webhook signature validated successfully")
             
             # MP envia type/topic e data.id tanto no body quanto nos query params
@@ -124,7 +123,7 @@ class MercadoPagoWebhook(Resource):
                 
                 if not subscription_info:
                     logger.error(f"Failed to get subscription info for ID: {resource_id}")
-                    return {'message': 'Webhook recebido'}, 200
+                    return {'message': 'Erro ao consultar assinatura no Mercado Pago'}, 502
                 
                 # Find subscription by MP subscription ID
                 subscription = Subscription.objects(
@@ -136,10 +135,11 @@ class MercadoPagoWebhook(Resource):
                     # A assinatura é sempre criada localmente pela nossa própria chamada
                     # à API do Mercado Pago (POST/PUT /api/subscriptions), que já recebe o
                     # mp_subscription_id na resposta síncrona. Se ainda não achamos o
-                    # registro aqui, o webhook só chegou antes desse save local — não há
-                    # nada a criar; o próprio fluxo de criação vai persistir o registro.
-                    logger.info(f"Subscription ainda não persistida localmente para MP ID {subscription_info['id']}; ignorando webhook")
-                    return {'message': 'Webhook recebido'}, 200
+                    # registro aqui, é provável que o webhook tenha chegado antes desse save
+                    # local (corrida) — respondemos um status de erro para que o Mercado Pago
+                    # reenvie a notificação mais tarde, em vez de descartá-la silenciosamente.
+                    logger.warning(f"Subscription ainda não persistida localmente para MP ID {subscription_info['id']}; solicitando reenvio")
+                    return {'message': 'Assinatura ainda não disponível localmente'}, 503
 
                 # Get customer from subscription
                 customer = subscription.customer_id
@@ -183,7 +183,7 @@ class MercadoPagoWebhook(Resource):
                 
                 if not authorized_payment:
                     logger.error(f"Failed to get authorized payment for ID: {resource_id}")
-                    return {'message': 'Webhook recebido'}, 200
+                    return {'message': 'Erro ao consultar pagamento no Mercado Pago'}, 502
                 
                 # Get subscription ID from authorized payment
                 mp_subscription_id = authorized_payment.get('subscription_id')
@@ -198,8 +198,8 @@ class MercadoPagoWebhook(Resource):
                 ).first()
                 
                 if not subscription:
-                    logger.warning(f"Subscription not found for authorized payment: {mp_subscription_id}")
-                    return {'message': 'Webhook recebido'}, 200
+                    logger.warning(f"Subscription not found for authorized payment: {mp_subscription_id}; solicitando reenvio")
+                    return {'message': 'Assinatura ainda não disponível localmente'}, 503
                 
                 # Get customer from subscription
                 customer = subscription.customer_id
@@ -213,11 +213,17 @@ class MercadoPagoWebhook(Resource):
                 )
 
                 if payment_status in ('processed', 'approved'):
-                    # Cobrança recorrente confirmada: estende o período e libera o acesso
+                    # Cobrança recorrente confirmada: estende o período e libera o acesso.
+                    # Este é o único branch que confirma cobranças recorrentes — sem liberar
+                    # require_payment_method/can_change_plan aqui, um cliente cuja primeira
+                    # cobrança recorrente aprove sem o webhook de preapproval "authorized" ter
+                    # sido processado (ex.: corrida, falha de rede) fica preso indefinidamente
+                    # na tela de pagamento do app, mesmo com o pagamento já confirmado no MP.
                     period_days = period_days_for_frequency(subscription.frequency, subscription.billing_cycle)
                     next_payment_date = now + timedelta(days=period_days)
                     grace_period_end = next_payment_date + timedelta(days=Config.MERCADOPAGO_DAYS_TO_EXPIRE)
 
+                    subscription.status = 'active'
                     subscription.current_period_end = next_payment_date
                     subscription.grace_period_end = grace_period_end
                     subscription.mp_status = 'succeeded'
@@ -234,6 +240,9 @@ class MercadoPagoWebhook(Resource):
                             period_start=now,
                             period_end=next_payment_date,
                         ))
+
+                    customer.require_payment_method = False
+                    customer.can_change_plan = False
 
                     subscription.save()
                     customer.save()

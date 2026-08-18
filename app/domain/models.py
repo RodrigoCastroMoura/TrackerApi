@@ -543,7 +543,7 @@ class Subscription(BaseDocument):
 
     # Status and dates
     status = StringField(
-        choices=['active', 'canceled', 'past_due', 'unpaid', 'incomplete', 'pending'],
+        choices=['active', 'canceled', 'past_due', 'unpaid', 'incomplete', 'pending', 'paused', 'pendingPayment'],
         default='incomplete'
     )
     current_period_start = DateTimeField()
@@ -601,6 +601,249 @@ class Subscription(BaseDocument):
         })
         return base_dict
 
+class Street(Document):
+    """Via/logradouro geografico (OpenStreetMap) - usado para reverse geocoding"""
+    name = StringField(required=True)
+    geometry = LineStringField(required=True)  # coordenadas simplificadas da via
+ 
+    meta = {
+        'collection': 'streets',
+        'indexes': ['geometry'],  # mongoengine cria indice 2dsphere automaticamente
+        'strict': False,
+    }
+ 
+    def to_dict(self):
+        return {
+            'id': str(self.id) if self.id else None,
+            'name': self.name,
+        }
+ 
+class Address(Document):
+    """Ponto de endereco exato (numero + rua) - usado para reverse geocoding"""
+    location = PointField(required=True)
+    street = StringField()
+    housenumber = StringField()
+ 
+    meta = {
+        'collection': 'addresses',
+        'indexes': ['location'],
+        'strict': False,
+    }
+ 
+    def to_dict(self):
+        return {
+            'id': str(self.id) if self.id else None,
+            'street': self.street,
+            'housenumber': self.housenumber,
+        }
+ 
+class Boundary(Document):
+    """Limite administrativo (municipio/bairro/estado) - fallback do reverse geocoding
+    quando nao ha rua/endereco proximo o suficiente (comum em area rural)."""
+    name = StringField(required=True)
+    admin_level = IntField(required=True)  # 4=estado, 8=municipio, 9/10=bairro/distrito
+    geometry = MultiPolygonField(required=True)
+ 
+    meta = {
+        'collection': 'boundaries',
+        'indexes': ['geometry', 'admin_level'],
+        'strict': False,
+    }
+ 
+    def to_dict(self):
+        return {
+            'id': str(self.id) if self.id else None,
+            'name': self.name,
+            'admin_level': self.admin_level,
+        }
+
+class Neighbourhood(Document):
+    """Bairro como ponto (OSM place=suburb/neighbourhood/quarter) - fonte principal
+    de bairro no Brasil, muito mais completa que Boundary (poligono administrativo,
+    que aqui quase nao tem cobertura de bairro - a maioria e' mapeada como NODE)."""
+    name = StringField(required=True)
+    place = StringField()  # 'suburb' | 'neighbourhood' | 'quarter'
+    location = PointField(required=True)
+
+    meta = {
+        'collection': 'neighbourhoods',
+        'indexes': ['location'],
+        'strict': False,
+    }
+
+    def to_dict(self):
+        return {
+            'id': str(self.id) if self.id else None,
+            'name': self.name,
+            'place': self.place,
+        }
+
+# --------------------------------------------------------------------------
+# Helper de reverse geocoding, usando as 3 entidades acima
+# --------------------------------------------------------------------------
+ 
+ESTADO_PARA_UF = {
+    'Acre': 'AC', 'Alagoas': 'AL', 'Amapá': 'AP', 'Amazonas': 'AM',
+    'Bahia': 'BA', 'Ceará': 'CE', 'Distrito Federal': 'DF',
+    'Espírito Santo': 'ES', 'Goiás': 'GO', 'Maranhão': 'MA',
+    'Mato Grosso': 'MT', 'Mato Grosso do Sul': 'MS', 'Minas Gerais': 'MG',
+    'Pará': 'PA', 'Paraíba': 'PB', 'Paraná': 'PR', 'Pernambuco': 'PE',
+    'Piauí': 'PI', 'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN',
+    'Rio Grande do Sul': 'RS', 'Rondônia': 'RO', 'Roraima': 'RR',
+    'Santa Catarina': 'SC', 'São Paulo': 'SP', 'Sergipe': 'SE',
+    'Tocantins': 'TO',
+}
+
+def _bairro_mais_proximo(lon, lat, cidade=None, max_distance_m=3000):
+    """
+    Bairro mais proximo via Neighbourhood (nos de ponto place=suburb/neighbourhood/
+    quarter do OSM) - e' assim que o Brasil mapeia bairro na pratica, Boundary
+    (poligono administrativo) quase nao tem cobertura disso aqui.
+
+    max_distance_m limita a busca a 3km por padrao: alem disso "bairro mais
+    proximo" deixa de ser uma resposta que faz sentido.
+
+    Retorna (nome, distancia_km) ou (None, None) se nao houver nenhum a menos
+    de max_distance_m.
+    """
+    collection = Neighbourhood._get_collection()
+    pipeline = [
+        {
+            '$geoNear': {
+                'near': {'type': 'Point', 'coordinates': [lon, lat]},
+                'distanceField': 'dist_m',
+                'spherical': True,
+                'maxDistance': max_distance_m,
+            }
+        },
+        {'$limit': 1},
+    ]
+    results = list(collection.aggregate(pipeline))
+    if results and results[0]['name'] != cidade:
+        return results[0]['name'], results[0]['dist_m'] / 1000.0
+    return None, None
+
+def _montar_endereco_completo(dados):
+    """Monta 'Rua, Numero, Bairro, Cidade - UF' a partir do dict retornado por reverse_geocode()."""
+    if not dados or not any((dados.get('rua'), dados.get('bairro'), dados.get('cidade'), dados.get('estado'))):
+        return None
+
+    parts = []
+
+    if dados.get('rua'):
+        rua = dados['rua']
+        if dados.get('numero'):
+            rua += f", {dados['numero']}"
+        parts.append(rua)
+
+    if dados.get('bairro'):
+        parts.append(dados['bairro'])
+
+    cidade_estado = [v for v in (dados.get('cidade'), dados.get('estado')) if v]
+    if cidade_estado:
+        parts.append(' - '.join(cidade_estado))
+
+    return ', '.join(parts) if parts else None
+
+def reverse_geocode(lat, lon, max_distance_m=200):
+    """
+    Reverse geocoding completo, combinando as entidades geograficas importadas do OSM
+    (streets/addresses/neighbourhoods/boundaries).
+ 
+    Cascata:
+      1. Street por proximidade (max_distance_m) -> rua (fonte primaria, mais densa
+         e confiavel que Address). Se achou Street, tenta complementar com Address
+         mais proximo SO' quando o street do Address bate com o nome da Street
+         encontrada — evita misturar numero de uma rua com nome de outra, que
+         acontecia quando Address (mais esparso) era usado como fonte primaria.
+      2. Se nao achou nenhuma Street por perto (raro), usa Address como fallback
+         pra rua tambem.
+      3. Boundary admin_level=4/8 por point-in-polygon -> estado (UF) e municipio
+         (poligono administrativo tem boa cobertura nesses dois niveis).
+      4. Neighbourhood (nos de ponto place=suburb/neighbourhood/quarter) por
+         proximidade -> bairro. Nao usa Boundary admin_level=9/10 pra isso porque
+         no Brasil bairro quase sempre e' mapeado como NODE no OSM, nao como area
+         administrativa - Boundary tinha cobertura de bairro praticamente nula.
+         bairro_tipo='exato' quando a menos de 500m, 'aproximado' caso contrario
+         (ate o limite de 3km definido em _bairro_mais_proximo).
+ 
+    Retorna um dict com os campos encontrados e 'endereco_completo' ja formatado.
+    """
+    result = {
+        'rua': None,
+        'numero': None,
+        'bairro': None,
+        'bairro_tipo': None,  # 'exato' | 'aproximado' | None
+        'bairro_distancia_km': None,
+        'cidade': None,
+        'estado': None,
+        'endereco_completo': None,
+    }
+ 
+    # --- Rua e numero ---
+    street = Street.objects(
+        geometry__near=[lon, lat], geometry__max_distance=max_distance_m
+    ).first()
+ 
+    if street:
+        result['rua'] = street.name
+ 
+        # Complementa o numero com o Address mais proximo, mas so' aceita se
+        # for da mesma rua (comparacao case-insensitive por substring) - senao
+        # fica None mesmo, e' melhor que numero errado de rua diferente.
+        address = Address.objects(
+            location__near=[lon, lat], location__max_distance=max_distance_m,
+        ).first()
+        if address and address.street and street.name:
+            a = address.street.strip().lower()
+            s = street.name.strip().lower()
+            if a in s or s in a:
+                result['numero'] = address.housenumber
+    else:
+        # Fallback raro: nenhuma Street por perto, tenta Address mesmo assim
+        address = Address.objects(
+            location__near=[lon, lat], location__max_distance=max_distance_m
+        ).first()
+        if address:
+            result['rua'] = address.street
+            result['numero'] = address.housenumber
+ 
+    # --- Cidade e estado (poligono administrativo, cobertura boa) ---
+    # admin_level__in usa string+int porque a importacao original gravou o campo como
+    # string (ex: '8'), embora o model declare IntField — sem isso a query nunca casa.
+    boundaries = list(Boundary.objects(
+        __raw__={
+            'geometry': {
+                '$geoIntersects': {
+                    '$geometry': {'type': 'Point', 'coordinates': [lon, lat]}
+                }
+            },
+            'admin_level': {'$in': [4, 8, '4', '8']},
+        }
+    ))
+ 
+    def by_level(*levels):
+        wanted = set(levels) | {str(l) for l in levels}
+        return [b for b in boundaries if b.admin_level in wanted]
+ 
+    estado = by_level(4)
+    if estado:
+        result['estado'] = ESTADO_PARA_UF.get(estado[0].name, estado[0].name)
+ 
+    cidade = by_level(8)
+    if cidade:
+        result['cidade'] = cidade[0].name
+ 
+    # --- Bairro (nos de ponto, nao poligono - ver docstring) ---
+    nome, distancia_km = _bairro_mais_proximo(lon, lat, cidade=result['cidade'])
+    if nome:
+        result['bairro'] = nome
+        result['bairro_tipo'] = 'exato' if distancia_km < 0.5 else 'aproximado'
+        result['bairro_distancia_km'] = round(distancia_km, 2)
+ 
+    result['endereco_completo'] = _montar_endereco_completo(result)
+    return result
+    
 class Document(Document):
     url = StringField(required=True)
     customer_id = ReferenceField('Customer', required=True)

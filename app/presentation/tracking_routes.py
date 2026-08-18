@@ -2,7 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import Vehicle, VehicleData
 from app.presentation.auth_routes import token_required, require_permission, require_valid_subscription
-from app.infrastructure.geocoding_service import get_google_geocoding_service, get_photon_geocoding_service
+from app.infrastructure.geocoding_service import get_google_geocoding_service, get_photon_geocoding_service, get_database_geocoding_service
 from mongoengine.errors import DoesNotExist
 import logging
 from bson.objectid import ObjectId
@@ -218,7 +218,7 @@ class VehicleCurrentLocation(Resource):
                 lng = float(vehicle.get('longitude'))
 
                 # Provider selected via GEOCODING_PROVIDER env var
-                geocoding = get_google_geocoding_service() if vehicle.get('velocidade',0) <= 0 else get_photon_geocoding_service()
+                geocoding = get_database_geocoding_service()  #get_google_geocoding_service() if vehicle.get('velocidade',0) <= 0 else get_photon_geocoding_service()
                 address = geocoding.get_address_or_fallback(lat, lng)
 
                 location = {

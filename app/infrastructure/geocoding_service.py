@@ -18,6 +18,7 @@ import time
 import os
 from functools import lru_cache
 from typing import Optional, Dict
+from app.domain.models import reverse_geocode as db_reverse_geocode
 
 logger = logging.getLogger(__name__)
 
@@ -559,10 +560,39 @@ class GoogleGeocodingService:
         return self.reverse_geocode_full(lat, lng)
 
 
+class DatabaseGeocodingService:
+    """
+    Service for reverse geocoding using the OSM data imported into the local
+    database (Street/Address/Boundary/Neighbourhood collections).
+
+    No external API calls, no rate limiting - just proximity/point-in-polygon
+    queries against data already in MongoDB.
+    """
+
+    def reverse_geocode(self, lat: float, lng: float, max_distance_m: int = 200) -> Optional[str]:
+        """Convert coordinates to address using the local database."""
+        result = db_reverse_geocode(lat, lng, max_distance_m=max_distance_m)
+        return result.get('endereco_completo')
+
+    def reverse_geocode_detailed(self, lat: float, lng: float, max_distance_m: int = 200) -> Optional[Dict]:
+        """Convert coordinates to detailed address components using the local database."""
+        return db_reverse_geocode(lat, lng, max_distance_m=max_distance_m)
+
+    def get_address_or_fallback(self, lat: float, lng: float) -> str:
+        """Get address with automatic fallback to coordinates if geocoding fails."""
+        address = self.reverse_geocode(lat, lng)
+        return address if address else f"{lat:.6f}, {lng:.6f}"
+
+    def get_address(self, lat: float, lng: float) -> Optional[str]:
+        """Address or None (no coordinate fallback) — used by FallbackGeocodingService."""
+        return self.reverse_geocode(lat, lng)
+
+
 # Singleton instances
 _geocoding_service = None
 _google_geocoding_service = None
 _photon_geocoding_service = None
+_database_geocoding_service = None
 
 def get_geocoding_service() -> GeocodingService:
     """Get or create the singleton Nominatim geocoding service instance."""
@@ -596,11 +626,19 @@ def get_photon_geocoding_service() -> PhotonGeocodingService:
         _photon_geocoding_service = PhotonGeocodingService()
     return _photon_geocoding_service
 
+def get_database_geocoding_service() -> DatabaseGeocodingService:
+    """Get or create the singleton database (local OSM data) geocoding service instance."""
+    global _database_geocoding_service
+    if _database_geocoding_service is None:
+        _database_geocoding_service = DatabaseGeocodingService()
+    return _database_geocoding_service
+
 # Maps GEOCODING_PROVIDER values to their singleton factory functions.
 _GEOCODING_PROVIDER_FACTORIES = {
     'google': get_google_geocoding_service,
     'nominatim': get_geocoding_service,
     'photon': get_photon_geocoding_service,
+    'database': get_database_geocoding_service,
 }
 
 

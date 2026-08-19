@@ -31,17 +31,15 @@ def _mp_start_date(delay: timedelta = timedelta()) -> str:
 def _mp_start_date_now() -> str:
     return _mp_start_date(_MP_START_DATE_BUFFER)
 
-def _first_charge_start_date(frequency: int, frequency_type: str) -> str:
+def _first_charge_start_date(free_days: int) -> str:
     """
-    Planos mensais (frequency=1, frequency_type='months'): primeira cobrança só
-    daqui a 1 mês, seguindo o ciclo normal do plano — sem cobrança na criação.
-    Qualquer outro plano: cobrança imediata (com margem de segurança), assim
-    que o cliente autorizar.
+    Plano sem dias grátis (free_days=0 ou None): cobrança imediata (com margem
+    de segurança), assim que o cliente autorizar. Plano com free_days>0: adia a
+    primeira cobrança por esse número de dias, seguindo o valor configurado no
+    plano em vez de uma regra fixa por frequency/frequency_type.
     """
-    if frequency == 1 and frequency_type == 'months':
-        return _mp_start_date(timedelta(days=30))
-    if frequency == 1 and frequency_type == 'weeks':
-        return _mp_start_date(timedelta(weeks=1))
+    if free_days and free_days > 0:
+        return _mp_start_date(timedelta(days=free_days))
     return _mp_start_date_now()
 
 subscription_create_model = api.model('SubscriptionCreate', {
@@ -132,7 +130,7 @@ class SubscriptionResource(Resource):
                     'company_id': str(current_customer.company_id.id),
                     'plan_id': str(plan.id),
                 },
-                start_date=_first_charge_start_date(plan.frequency, plan.frequency_type)
+                start_date=_first_charge_start_date(plan.free_days)
             )
             if not mp_subscription or mp_subscription.get('error'):
                 mp_msg = mp_subscription.get('message', '') if mp_subscription else ''

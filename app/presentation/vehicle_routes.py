@@ -7,7 +7,7 @@ import logging
 from bson.objectid import ObjectId
 from datetime import datetime
 from app.infrastructure.redis_cache import vehicle_cache
-from app.infrastructure.geocoding_service import get_photon_geocoding_service
+from app.infrastructure.geocoding_service import get_database_geocoding_service
 import re
 
 logger = logging.getLogger(__name__)
@@ -495,7 +495,7 @@ class VehicleByPlaca(Resource):
 
             address = 'N/A'
             if lat != 0.0 and lng != 0.0:
-                geocoding = get_photon_geocoding_service()
+                geocoding = get_database_geocoding_service()
                 address = geocoding.get_address_or_fallback(lat, lng)
 
             vehicle_data = vehicle.to_dict()

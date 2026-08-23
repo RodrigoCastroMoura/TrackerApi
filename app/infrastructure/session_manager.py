@@ -1,258 +1,391 @@
 import logging
-import json
-import threading
-from dataclasses import dataclass, field, asdict
-from typing import Optional, List
-from datetime import datetime
+from typing import Optional
 from config import Config
+from app.infrastructure.session_manager import ChatSession, ChatVehicle
+from app.infrastructure.whatsapp_client import WhatsAppClient
+from app.infrastructure.business_service import BusinessService
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ChatVehicle:
-    id: str
-    plate: str
-    model: str
-    imei: str
-    is_blocked: bool = False
+class MessageHandler:
 
-
-@dataclass
-class ChatUser:
-    id: str
-    name: str
-    email: str
-    token: str
-    company_id: str = ""
-    vehicles: List[ChatVehicle] = field(default_factory=list)
-    intrudution_shown: bool = False
-
-
-@dataclass
-class ChatSession:
-    phone_number: str
-    state: str = "UNAUTHENTICATED"
-    user: Optional[ChatUser] = None
-    selected_vehicle: Optional[ChatVehicle] = None
-    pending_identifier: Optional[str] = None
-    last_activity: datetime = field(default_factory=datetime.utcnow)
-
-    def is_expired(self, timeout_minutes: int = 30) -> bool:
-        elapsed = (datetime.utcnow() - self.last_activity).total_seconds() / 60
-        return elapsed > timeout_minutes
-
-    def refresh(self):
-        self.last_activity = datetime.utcnow()
-
-    def to_dict(self) -> dict:
-        data = {
-            "phone_number": self.phone_number,
-            "state": self.state,
-            "pending_identifier": self.pending_identifier,
-            "last_activity": self.last_activity.isoformat(),
+    def __init__(self, whatsapp: WhatsAppClient, business: BusinessService):
+        self.whatsapp = whatsapp
+        self.business = business
+        self.handlers = {
+            "UNAUTHENTICATED": self._handle_unauthenticated,
+            "WAITING_CPF": self._handle_waiting_cpf,
+            "WAITING_PASSWORD": self._handle_waiting_password,
+            "AUTHENTICATED": self._handle_authenticated,
+            "VEHICLE_SELECTED": self._handle_vehicle_action
         }
-        if self.user:
-            vehicles_list = []
-            for v in self.user.vehicles:
-                vehicles_list.append({
-                    "id": v.id,
-                    "plate": v.plate,
-                    "model": v.model,
-                    "imei": v.imei,
-                    "is_blocked": v.is_blocked,
-                })
-            data["user"] = {
-                "id": self.user.id,
-                "name": self.user.name,
-                "email": self.user.email,
-                "token": self.user.token,
-                "company_id": self.user.company_id,
-                "vehicles": vehicles_list,
-                "intrudution_shown": self.user.intrudution_shown,
-            }
+
+    def handle(self, session: ChatSession, message: str, message_type: str = "text") -> None:
+        handler = self.handlers.get(session.state)
+
+        if handler:
+            handler(session, message, message_type)
         else:
-            data["user"] = None
+            logger.error(f"Estado desconhecido: {session.state}")
+            self._reset_session(session)
 
-        if self.selected_vehicle:
-            data["selected_vehicle"] = {
-                "id": self.selected_vehicle.id,
-                "plate": self.selected_vehicle.plate,
-                "model": self.selected_vehicle.model,
-                "imei": self.selected_vehicle.imei,
-                "is_blocked": self.selected_vehicle.is_blocked,
-            }
-        else:
-            data["selected_vehicle"] = None
+    def _handle_unauthenticated(self, session: ChatSession, message: str, message_type: str = "text") -> None:
+        logger.info(f"[UNAUTH] {session.phone_number}: '{message}'")
 
-        return data
+        phone_number = self._remover_caracteres_esquerda(session.phone_number)
 
-    @classmethod
-    def from_dict(cls, data: dict) -> "ChatSession":
-        user = None
-        if data.get("user"):
-            u = data["user"]
-            vehicles = [
-                ChatVehicle(
-                    id=v["id"],
-                    plate=v["plate"],
-                    model=v["model"],
-                    imei=v.get("imei", ""),
-                    is_blocked=v.get("is_blocked", False),
-                )
-                for v in u.get("vehicles", [])
-            ]
-            user = ChatUser(
-                id=u["id"],
-                name=u["name"],
-                email=u["email"],
-                token=u["token"],
-                company_id=u.get("company_id", ""),
-                vehicles=vehicles,
-                intrudution_shown=u.get("intrudution_shown", False),
-            )
-
-        selected_vehicle = None
-        if data.get("selected_vehicle"):
-            sv = data["selected_vehicle"]
-            selected_vehicle = ChatVehicle(
-                id=sv["id"],
-                plate=sv["plate"],
-                model=sv["model"],
-                imei=sv.get("imei", ""),
-                is_blocked=sv.get("is_blocked", False),
-            )
-
-        last_activity = datetime.utcnow()
-        if data.get("last_activity"):
-            try:
-                last_activity = datetime.fromisoformat(data["last_activity"])
-            except (ValueError, TypeError):
-                pass
-
-        return cls(
-            phone_number=data["phone_number"],
-            state=data.get("state", "UNAUTHENTICATED"),
-            user=user,
-            selected_vehicle=selected_vehicle,
-            pending_identifier=data.get("pending_identifier"),
-            last_activity=last_activity,
+        user = self.business.authenticate_by_phone(
+            phone_number,
+            Config.PASSWORD_CHATBOT_SALT
         )
 
-
-class RedisSessionManager:
-
-    def __init__(self, redis_url: str):
-        import redis as redis_lib
-        self._redis = redis_lib.from_url(redis_url, decode_responses=True)
-        self._prefix = "chatbot:session:"
-        self._ttl = Config.SESSION_TIMEOUT_MINUTES * 60
-        self._redis.ping()
-        logger.info("Redis session manager initialized successfully")
-
-    def _key(self, phone_number: str) -> str:
-        return f"{self._prefix}{phone_number}"
-
-    def get_or_create(self, phone_number: str) -> ChatSession:
-        try:
-            key = self._key(phone_number)
-            raw = self._redis.get(key)
-
-            if raw:
-                try:
-                    data = json.loads(raw)
-                    session = ChatSession.from_dict(data)
-                    if session.is_expired(Config.SESSION_TIMEOUT_MINUTES):
-                        logger.info(f"Session expired for {phone_number}, creating new one")
-                        session = ChatSession(phone_number=phone_number)
-                    else:
-                        session.refresh()
-                    self._save(session)
-                    return session
-                except (json.JSONDecodeError, KeyError, TypeError) as e:
-                    logger.warning(f"Failed to deserialize session for {phone_number}: {e}")
-
-            session = ChatSession(phone_number=phone_number)
-            self._save(session)
-            return session
-        except Exception as e:
-            logger.error(f"Redis error in get_or_create: {e}")
-            return ChatSession(phone_number=phone_number)
-
-    def _save(self, session: ChatSession) -> None:
-        try:
-            key = self._key(session.phone_number)
-            self._redis.setex(key, self._ttl, json.dumps(session.to_dict()))
-        except Exception as e:
-            logger.error(f"Redis error saving session: {e}")
-
-    def save(self, session: ChatSession) -> None:
-        self._save(session)
-
-    def remove(self, phone_number: str) -> None:
-        try:
-            self._redis.delete(self._key(phone_number))
-        except Exception as e:
-            logger.error(f"Redis error removing session: {e}")
-
-    def cleanup_expired(self) -> int:
-        return 0
-
-
-class InMemorySessionManager:
-
-    def __init__(self):
-        self._sessions: dict[str, ChatSession] = {}
-        self._lock = threading.Lock()
-        logger.info("In-memory session manager initialized (sessions will not persist across restarts)")
-
-    def get_or_create(self, phone_number: str) -> ChatSession:
-        with self._lock:
-            session = self._sessions.get(phone_number)
-
-            if session:
-                if session.is_expired(Config.SESSION_TIMEOUT_MINUTES):
-                    logger.info(f"Session expired for {phone_number}, creating new one")
-                    session = ChatSession(phone_number=phone_number)
-                    self._sessions[phone_number] = session
-                else:
-                    session.refresh()
+        if user:
+            session.user = user
+            session.user.intrudution_shown = False
+            session.state = "AUTHENTICATED"
+            logger.info(f"[AUTH] Usuario autenticado por telefone: {user.name}, {len(user.vehicles)} veiculos")
+            self._show_vehicles(session)
+        else:
+            msg_clean = message.strip()
+            if len(msg_clean) >= 11 and msg_clean.replace(".", "").replace("-", "").replace("/", "").isdigit():
+                session.state = "WAITING_PASSWORD"
+                session.pending_identifier = msg_clean
+                logger.info(f"[UNAUTH] CPF recebido, aguardando senha: {session.pending_identifier}")
+                self.whatsapp.send_message(
+                    session.phone_number,
+                    "Agora, por favor, digite sua *senha* 🔒:"
+                )
             else:
-                session = ChatSession(phone_number=phone_number)
-                self._sessions[phone_number] = session
+                self.whatsapp.send_message(
+                    session.phone_number,
+                    "Bem-vindo ao Sistema de Rastreamento MonitoraNet! 🚗\n\n"
+                    "Para acessar, por favor, digite seu *CPF*:"
+                )
 
-            return session
+    def _handle_waiting_password(self, session: ChatSession, message: str, message_type: str = "text") -> None:
+        logger.info(f"[WAITING_PWD] {session.phone_number}: senha recebida")
 
-    def save(self, session: ChatSession) -> None:
-        with self._lock:
-            self._sessions[session.phone_number] = session
+        password = message.strip()
+        identifier = session.pending_identifier or ""
 
-    def remove(self, phone_number: str) -> None:
-        with self._lock:
-            self._sessions.pop(phone_number, None)
+        user = self.business.authenticate_by_credentials(identifier, password)
 
-    def cleanup_expired(self) -> int:
-        with self._lock:
-            expired = [
-                phone for phone, session in self._sessions.items()
-                if session.is_expired(Config.SESSION_TIMEOUT_MINUTES)
+        if user and len(user.vehicles) > 0:
+            session.user = user
+            session.user.intrudution_shown = False
+            session.state = "AUTHENTICATED"
+            session.pending_identifier = None
+            logger.info(f"[AUTH] Usuario autenticado por credenciais: {user.name}, {len(user.vehicles)} veiculos")
+            self._show_vehicles(session)
+        else:
+            session.state = "UNAUTHENTICATED"
+            session.pending_identifier = None
+            logger.warning(f"[WAITING_PWD] Credenciais invalidas para: {identifier}")
+            self.whatsapp.send_message(
+                session.phone_number,
+                "⚠️ CPF ou senha incorretos, ou nenhum veiculo encontrado.\n\n"
+                "Por favor, digite seu *CPF* para tentar novamente:"
+            )
+
+    def _handle_authenticated(self, session: ChatSession, message: str, message_type: str = "text") -> None:
+        msg_lower = message.lower().strip()
+
+        logger.info(f"[AUTH] {session.phone_number} | Tipo: {message_type} | Msg: '{message}'")
+
+        if msg_lower in ["sair", "exit", "quit"]:
+            self._reset_session(session)
+            return
+
+        if msg_lower in ["outraconta"]:
+            self._switch_account(session)
+            return
+
+        action_commands = ["localizacao", "loc", "l", "bloquear", "block", "b",
+                           "desbloquear", "unblock", "d", "voltar", "back", "menu"]
+        if msg_lower in action_commands and session.selected_vehicle:
+            logger.info(f"[AUTH] Comando de acao com veiculo ja selecionado, redirecionando para action handler")
+            session.state = "VEHICLE_SELECTED"
+            self._handle_vehicle_action(session, message, message_type)
+            return
+
+        if msg_lower in action_commands and len(session.user.vehicles) == 1:
+            vehicle = session.user.vehicles[0]
+            logger.info(f"[AUTH] Comando de acao com 1 veiculo, auto-selecionando: {vehicle.plate}")
+            session.state = "VEHICLE_SELECTED"
+            session.selected_vehicle = vehicle
+            self._handle_vehicle_action(session, message, message_type)
+            return
+
+        vehicle = None
+
+        if message_type == "interactive":
+            logger.info(f"[AUTH] Buscando veiculo por ID: '{message}'")
+            vehicle = self._get_vehicle_by_id(session, message)
+            if vehicle:
+                logger.info(f"[AUTH] Encontrado por ID: {vehicle.plate}")
+
+        if not vehicle:
+            logger.info(f"[AUTH] Buscando veiculo por placa/modelo: '{msg_lower}'")
+            vehicle = self._get_vehicle_by_plate(session, msg_lower)
+            if vehicle:
+                logger.info(f"[AUTH] Encontrado por placa/modelo: {vehicle.plate}")
+
+        if vehicle:
+            logger.info(f"[AUTH] SELECIONANDO VEICULO: {vehicle.plate} (ID: {vehicle.id})")
+            session.state = "VEHICLE_SELECTED"
+            session.selected_vehicle = vehicle
+            self._show_vehicle_options(session)
+        else:
+            logger.warning(f"[AUTH] Veiculo nao encontrado para: '{message}'")
+            self._show_vehicles(session)
+
+    def _show_vehicles(self, session: ChatSession) -> None:
+        session.selected_vehicle = None
+
+        if not session.user or not session.user.vehicles:
+            self.whatsapp.send_message(
+                session.phone_number,
+                "Nenhum veiculo cadastrado."
+            )
+            return
+
+        greeting = ""
+        if not session.user.intrudution_shown:
+            greeting = f"Ola, {session.user.name}!\n"
+            session.user.intrudution_shown = True
+
+        if len(session.user.vehicles) == 1:
+            vehicle = session.user.vehicles[0]
+            session.state = "VEHICLE_SELECTED"
+            session.selected_vehicle = vehicle
+
+            self.whatsapp.send_interactive_buttons(
+                session.phone_number,
+                f"{greeting}Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
+                f"🚙 Veiculo: {vehicle.plate}\n"
+                f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
+                f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}",
+                [
+                    {"id": "localizacao", "title": "📍 Localizacao"},
+                    {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
+                     "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
+                    {"id": "outraconta", "title": "🔄 Outra Conta"}
+                ]
+            )
+        else:
+            sections = [{
+                "title": "Seus Veiculos",
+                "rows": [
+                    {
+                        "id": v.id,
+                        "title": v.plate,
+                        "description": f"{v.brand} {v.model}".strip()
+                    } for v in session.user.vehicles
+                ]
+            }]
+
+            self.whatsapp.send_list(
+                session.phone_number,
+                f"{greeting}Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
+                f"Selecione um veiculo para ver opcoes:",
+                "🚙 Ver Veiculos",
+                sections
+            )
+
+    def _show_vehicle_options(self, session: ChatSession) -> None:
+        vehicle = session.selected_vehicle
+
+        if not vehicle:
+            logger.error("[OPTIONS] selected_vehicle e None!")
+            self._show_vehicles(session)
+            return
+
+        logger.info(f"[OPTIONS] Mostrando opcoes para: {vehicle.plate}")
+
+        # WhatsApp limite: 3 botões por mensagem
+        if len(session.user.vehicles) > 1:
+            # [Localizacao, Bloquear, Menu] — Sair via texto ou voltando ao menu
+            buttons = [
+                {"id": "localizacao", "title": "📍 Localizacao"},
+                {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
+                 "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
+                {"id": "menu", "title": "📋 Menu"},
             ]
-            for phone in expired:
-                del self._sessions[phone]
-            if expired:
-                logger.info(f"Cleaned up {len(expired)} expired sessions")
-            return len(expired)
+        else:
+            # [Localizacao, Bloquear, Sair]
+            buttons = [
+                {"id": "localizacao", "title": "📍 Localizacao"},
+                {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
+                 "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
+                {"id": "sair", "title": "👋 Sair"},
+            ]
 
+        self.whatsapp.send_interactive_buttons(
+            session.phone_number,
+            f"Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
+            f"🚙 Veiculo: {vehicle.plate}\n"
+            f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
+            f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}\n\n"
+            f"Escolha uma opcao:",
+            buttons
+        )
 
-def _create_session_manager():
-    redis_url = Config.REDIS_URL
-    if redis_url:
-        try:
-            return RedisSessionManager(redis_url)
-        except Exception as e:
-            logger.error(f"Failed to connect to Redis: {e}")
-            logger.warning("Falling back to in-memory session manager")
-    return InMemorySessionManager()
+    def _handle_vehicle_action(self, session: ChatSession, message: str, message_type: str = "text") -> None:
+        msg_lower = message.lower().strip()
+        vehicle = session.selected_vehicle
 
+        if not vehicle:
+            logger.error(f"[ACTION] selected_vehicle e None! Estado inconsistente.")
+            session.state = "AUTHENTICATED"
+            self._show_vehicles(session)
+            return
 
-session_manager = _create_session_manager()
+        logger.info(f"[ACTION] {session.phone_number} | Veiculo: {vehicle.plate} | Acao: '{msg_lower}'")
+
+        _action_commands = {
+            "localizacao", "loc", "l",
+            "bloquear", "block", "b",
+            "desbloquear", "unblock", "d",
+            "voltar", "back", "menu", "sair", "exit", "quit",
+            "outraconta"
+        }
+        if message_type == "interactive" and msg_lower not in _action_commands:
+            new_vehicle = self._get_vehicle_by_id(session, message)
+            if new_vehicle and new_vehicle.id != vehicle.id:
+                logger.info(f"[ACTION] Trocando veiculo para: {new_vehicle.plate}")
+                session.selected_vehicle = new_vehicle
+                self._show_vehicle_options(session)
+                return
+
+        buttons = [
+            {"id": "voltar", "title": "↩️ Voltar"}
+        ]
+
+        if len(session.user.vehicles) > 1:
+            buttons.append({"id": "menu", "title": "📋 Menu"})
+
+        buttons.append({"id": "sair", "title": "👋 Sair"})
+
+        if msg_lower in ["localizacao", "loc", "l"]:
+            logger.info(f"[ACTION] Buscando localizacao para {vehicle.plate}")
+            location = self.business.get_vehicle_location(vehicle, session)
+
+            if location:
+                self.whatsapp.send_interactive_buttons(
+                    session.phone_number,
+                    f"📍 Localizacao do veiculo {vehicle.brand} {vehicle.model}, placa {vehicle.plate}:\n\n"
+                    f"🏠 Endereco: {location['address']}\n"
+                    f"💨 Velocidade: {location['speed']} km/h\n"
+                    f"🕐 Ultima atualizacao: {location['last_update']}\n\n"
+                    f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}",
+                    buttons
+                )
+            else:
+                self.whatsapp.send_interactive_buttons(
+                    session.phone_number,
+                    f"❌ Nao foi possivel obter a localizacao do veiculo {vehicle.plate}.",
+                    buttons
+                )
+
+        elif msg_lower in ["bloquear", "block", "b"]:
+            logger.info(f"[ACTION] Bloqueando {vehicle.plate}")
+            success, message_text = self.business.block_vehicle(vehicle, session)
+            self.whatsapp.send_interactive_buttons(
+                session.phone_number,
+                message_text,
+                buttons
+            )
+
+        elif msg_lower in ["desbloquear", "unblock", "d"]:
+            logger.info(f"[ACTION] Desbloqueando {vehicle.plate}")
+            success, message_text = self.business.unblock_vehicle(vehicle, session)
+            self.whatsapp.send_interactive_buttons(
+                session.phone_number,
+                message_text,
+                buttons
+            )
+
+        elif msg_lower in ["voltar", "back"]:
+            logger.info(f"[ACTION] Voltar para opcoes de {vehicle.plate}")
+            self._show_vehicle_options(session)
+
+        elif msg_lower in ["menu"]:
+            logger.info(f"[ACTION] Voltando para menu principal")
+            session.state = "AUTHENTICATED"
+            session.selected_vehicle = None
+            self._show_vehicles(session)
+
+        elif msg_lower in ["outraconta"]:
+            logger.info(f"[ACTION] Troca de conta solicitada por {session.phone_number}")
+            self._switch_account(session)
+
+        elif msg_lower in ["sair", "exit", "quit"]:
+            logger.info(f"[ACTION] Saindo do sistema")
+            self._reset_session(session)
+
+        else:
+            logger.warning(f"[ACTION] Comando nao reconhecido: '{msg_lower}'")
+            self._show_vehicle_options(session)
+
+    def _get_vehicle_by_plate(self, session: ChatSession, plate: str) -> Optional[ChatVehicle]:
+        for vehicle in session.user.vehicles:
+            if vehicle.plate.lower().strip() == plate:
+                return vehicle
+            if vehicle.model.lower().strip() == plate:
+                return vehicle
+        return None
+
+    def _get_vehicle_by_id(self, session: ChatSession, vehicle_id: str) -> Optional[ChatVehicle]:
+        logger.debug(f"[ID_SEARCH] Buscando ID: '{vehicle_id}'")
+
+        for vehicle in session.user.vehicles:
+            if str(vehicle.id).strip() == str(vehicle_id).strip():
+                logger.debug(f"[ID_SEARCH] MATCH: {vehicle.plate} (ID: {vehicle.id})")
+                return vehicle
+            else:
+                logger.debug(f"[ID_SEARCH] No match: {vehicle.plate} (ID: {vehicle.id})")
+
+        logger.warning(f"[ID_SEARCH] Nenhum veiculo encontrado com ID: '{vehicle_id}'")
+        return None
+
+    def _handle_waiting_cpf(self, session: ChatSession, message: str, _message_type: str = "text") -> None:
+        identifier = message.strip()
+        logger.info(f"[WAITING_CPF] {session.phone_number}: identificador recebido")
+
+        session.pending_identifier = identifier
+        session.state = "WAITING_PASSWORD"
+
+        self.whatsapp.send_message(
+            session.phone_number,
+            "Agora, por favor, digite sua *senha* 🔒:"
+        )
+
+    def _switch_account(self, session: ChatSession) -> None:
+        logger.info(f"[SWITCH] Trocando conta para {session.phone_number}")
+
+        session.user = None
+        session.state = "WAITING_CPF"
+        session.selected_vehicle = None
+        session.pending_identifier = None
+
+        self.whatsapp.send_message(
+            session.phone_number,
+            "🔄 Para acessar outra conta, por favor, digite o *CPF*:"
+        )
+
+    def _reset_session(self, session: ChatSession) -> None:
+        logger.info(f"[RESET] Resetando sessao de {session.phone_number}")
+
+        session.user = None
+        session.state = "UNAUTHENTICATED"
+        session.selected_vehicle = None
+        session.pending_identifier = None
+
+        self.whatsapp.send_message(
+            session.phone_number,
+            "Ate logo! 👋"
+        )
+
+    def _remover_caracteres_esquerda(self, numero_str, quantidade=2):
+        return numero_str[quantidade:]

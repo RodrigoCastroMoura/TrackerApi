@@ -164,7 +164,7 @@ class MessageHandler:
                 session.phone_number,
                 f"{greeting}Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
                 f"🚙 Veiculo: {vehicle.plate}\n"
-                f"🏷️ Modelo: {vehicle.model}\n"
+                f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
                 f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}",
                 [
                     {"id": "localizacao", "title": "📍 Localizacao"},
@@ -180,7 +180,7 @@ class MessageHandler:
                     {
                         "id": v.id,
                         "title": v.plate,
-                        "description": v.model
+                        "description": f"{v.brand} {v.model}".strip()
                     } for v in session.user.vehicles
                 ]
             }]
@@ -225,7 +225,7 @@ class MessageHandler:
             session.phone_number,
             f"Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
             f"🚙 Veiculo: {vehicle.plate}\n"
-            f"🏷️ Modelo: {vehicle.model}\n"
+            f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
             f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}\n\n"
             f"Escolha uma opcao:",
             buttons
@@ -274,7 +274,7 @@ class MessageHandler:
             if location:
                 self.whatsapp.send_interactive_buttons(
                     session.phone_number,
-                    f"📍 Localizacao do veiculo modelo {vehicle.model} de placa {vehicle.plate}:\n\n"
+                    f"📍 Localizacao do veiculo {vehicle.brand} {vehicle.model}, placa {vehicle.plate}:\n\n"
                     f"🏠 Endereco: {location['address']}\n"
                     f"💨 Velocidade: {location['speed']} km/h\n"
                     f"🕐 Ultima atualizacao: {location['last_update']}\n\n"

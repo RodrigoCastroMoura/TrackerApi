@@ -99,6 +99,7 @@ class BusinessService:
                     id=str(v.id),
                     plate=v.dsplaca or "N/A",
                     model=v.dsmodelo or "N/A",
+                    brand=v.dsmarca or "",
                     imei=v.IMEI or "N/A",
                     is_blocked=v.bloqueado or False
                 )
@@ -192,15 +193,16 @@ class BusinessService:
             }
             vehicle_cache.update_vehicle_fields(imei, updates)
 
-            msg = f"Comando de {comando} enviado para: \n"
-            msg += f"Veiculo de placa: {vehicle.dsplaca}\n"
-            msg += f"Modelo: {vehicle.dsmodelo}\n"
-           
+            emoji = "🔒" if comando == "bloquear" else "🔓"
+            msg = f"{emoji} Comando de {comando} enviado com sucesso!\n\n"
+            msg += f"🚙 Veiculo: {vehicle.dsmarca} {vehicle.dsmodelo}\n"
+            msg += f"🔖 Placa: {vehicle.dsplaca}\n"
+
             return True, msg
 
         except Exception as e:
             logger.error(f"[BIZ] Block command error: {str(e)}")
-            return False, f"Erro ao enviar comando para {chat_vehicle.plate}."
+            return False, f"❌ Erro ao enviar comando para {chat_vehicle.plate}."
 
 
 

@@ -54,12 +54,12 @@ class MessageHandler:
                 logger.info(f"[UNAUTH] CPF recebido, aguardando senha: {session.pending_identifier}")
                 self.whatsapp.send_message(
                     session.phone_number,
-                    "Agora, por favor, digite sua *senha*:"
+                    "Agora, por favor, digite sua *senha* 🔒:"
                 )
             else:
                 self.whatsapp.send_message(
                     session.phone_number,
-                    "Bem-vindo ao Sistema de Rastreamento! \n\n"
+                    "Bem-vindo ao Sistema de Rastreamento MonitoraNet! 🚗\n\n"
                     "Para acessar, por favor, digite seu *CPF*:"
                 )
 
@@ -84,7 +84,7 @@ class MessageHandler:
             logger.warning(f"[WAITING_PWD] Credenciais invalidas para: {identifier}")
             self.whatsapp.send_message(
                 session.phone_number,
-                "CPF ou senha incorretos, ou nenhum veiculo encontrado.\n\n"
+                "⚠️ CPF ou senha incorretos, ou nenhum veiculo encontrado.\n\n"
                 "Por favor, digite seu *CPF* para tentar novamente:"
             )
 
@@ -162,15 +162,15 @@ class MessageHandler:
 
             self.whatsapp.send_interactive_buttons(
                 session.phone_number,
-                f"{greeting}Voce esta no sistema de Rastreamento!\n\n"
-                f"Veiculo: {vehicle.plate}\n"
-                f"Modelo: {vehicle.model}\n"
-                f"Status: {'Bloqueado' if vehicle.is_blocked else 'Desbloqueado'}",
+                f"{greeting}Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
+                f"🚙 Veiculo: {vehicle.plate}\n"
+                f"🏷️ Modelo: {vehicle.model}\n"
+                f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}",
                 [
-                    {"id": "localizacao", "title": "Localizacao"},
+                    {"id": "localizacao", "title": "📍 Localizacao"},
                     {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
-                     "title": "Bloquear" if not vehicle.is_blocked else "Desbloquear"},
-                    {"id": "outraconta", "title": "Outra Conta"}
+                     "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
+                    {"id": "outraconta", "title": "🔄 Outra Conta"}
                 ]
             )
         else:
@@ -187,9 +187,9 @@ class MessageHandler:
 
             self.whatsapp.send_list(
                 session.phone_number,
-                f"{greeting}Voce esta no sistema de Rastreamento!\n\n"
+                f"{greeting}Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
                 f"Selecione um veiculo para ver opcoes:",
-                "Ver Veiculos",
+                "🚙 Ver Veiculos",
                 sections
             )
 
@@ -207,26 +207,26 @@ class MessageHandler:
         if len(session.user.vehicles) > 1:
             # [Localizacao, Bloquear, Menu] — Sair via texto ou voltando ao menu
             buttons = [
-                {"id": "localizacao", "title": "Localizacao"},
+                {"id": "localizacao", "title": "📍 Localizacao"},
                 {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
-                 "title": "Bloquear" if not vehicle.is_blocked else "Desbloquear"},
-                {"id": "menu", "title": "Menu"},
+                 "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
+                {"id": "menu", "title": "📋 Menu"},
             ]
         else:
             # [Localizacao, Bloquear, Sair]
             buttons = [
-                {"id": "localizacao", "title": "Localizacao"},
+                {"id": "localizacao", "title": "📍 Localizacao"},
                 {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
-                 "title": "Bloquear" if not vehicle.is_blocked else "Desbloquear"},
-                {"id": "sair", "title": "Sair"},
+                 "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
+                {"id": "sair", "title": "👋 Sair"},
             ]
 
         self.whatsapp.send_interactive_buttons(
             session.phone_number,
-            f"Voce esta no sistema de Rastreamento!\n\n"
-            f"Veiculo: {vehicle.plate}\n"
-            f"Modelo: {vehicle.model}\n"
-            f"Status: {'Bloqueado' if vehicle.is_blocked else 'Desbloqueado'}\n\n"
+            f"Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
+            f"🚙 Veiculo: {vehicle.plate}\n"
+            f"🏷️ Modelo: {vehicle.model}\n"
+            f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}\n\n"
             f"Escolha uma opcao:",
             buttons
         )
@@ -259,13 +259,13 @@ class MessageHandler:
                 return
 
         buttons = [
-            {"id": "voltar", "title": "Voltar"}
+            {"id": "voltar", "title": "↩️ Voltar"}
         ]
 
         if len(session.user.vehicles) > 1:
-            buttons.append({"id": "menu", "title": "Menu"})
+            buttons.append({"id": "menu", "title": "📋 Menu"})
 
-        buttons.append({"id": "sair", "title": "Sair"})
+        buttons.append({"id": "sair", "title": "👋 Sair"})
 
         if msg_lower in ["localizacao", "loc", "l"]:
             logger.info(f"[ACTION] Buscando localizacao para {vehicle.plate}")
@@ -274,17 +274,17 @@ class MessageHandler:
             if location:
                 self.whatsapp.send_interactive_buttons(
                     session.phone_number,
-                    f"Localizacao do veiculo modelo {vehicle.model} de placa {vehicle.plate}:\n\n"
-                    f"Endereco: {location['address']}\n"
-                    f"Velocidade: {location['speed']} km/h\n"
-                    f"Ultima atualizacao: {location['last_update']}\n\n"
-                    f"Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}",
+                    f"📍 Localizacao do veiculo modelo {vehicle.model} de placa {vehicle.plate}:\n\n"
+                    f"🏠 Endereco: {location['address']}\n"
+                    f"💨 Velocidade: {location['speed']} km/h\n"
+                    f"🕐 Ultima atualizacao: {location['last_update']}\n\n"
+                    f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}",
                     buttons
                 )
             else:
                 self.whatsapp.send_interactive_buttons(
                     session.phone_number,
-                    f"Nao foi possivel obter a localizacao do veiculo {vehicle.plate}.",
+                    f"❌ Nao foi possivel obter a localizacao do veiculo {vehicle.plate}.",
                     buttons
                 )
 
@@ -358,7 +358,7 @@ class MessageHandler:
 
         self.whatsapp.send_message(
             session.phone_number,
-            "Agora, por favor, digite sua *senha*:"
+            "Agora, por favor, digite sua *senha* 🔒:"
         )
 
     def _switch_account(self, session: ChatSession) -> None:
@@ -371,7 +371,7 @@ class MessageHandler:
 
         self.whatsapp.send_message(
             session.phone_number,
-            "Para acessar outra conta, por favor, digite o *CPF*:"
+            "🔄 Para acessar outra conta, por favor, digite o *CPF*:"
         )
 
     def _reset_session(self, session: ChatSession) -> None:
@@ -384,7 +384,7 @@ class MessageHandler:
 
         self.whatsapp.send_message(
             session.phone_number,
-            "Ate logo!"
+            "Ate logo! 👋"
         )
 
     def _remover_caracteres_esquerda(self, numero_str, quantidade=2):

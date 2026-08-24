@@ -43,6 +43,9 @@ class RedisVehicleCache:
     def _vehicle_key(self, imei: str) -> str:
         return f"vehicle:{imei}"
 
+    def _customer_key(self, customer_id: str) -> str:
+        return f"customer:{customer_id}"
+
     def _vehicle_id_key(self, vehicle_id: str) -> str:
         return f"vehicle:id:{vehicle_id}"
 
@@ -209,6 +212,28 @@ class RedisVehicleCache:
             logger.debug(f"Redis SET location {company_id}:{imei} (TTL: {self.location_ttl}s)")
         except Exception as e:
             logger.error(f"Redis set location error for {company_id}:{imei}: {e}")
+
+    def set_customer(self, customer_id: str, customer_data: Any):
+        """Atualiza o cache do customer (mesma chave 'customer:{id}' lida pelos serviços Tracker/gv50/J16)."""
+        if not self.enabled or not self.client:
+            return
+
+        try:
+            serialized = self._serialize_vehicle(customer_data)
+            self.client.setex(self._customer_key(customer_id), self.ttl, serialized)
+            logger.debug(f"Redis SET customer {customer_id} (TTL: {self.ttl}s)")
+        except Exception as e:
+            logger.error(f"Redis set error for customer {customer_id}: {e}")
+
+    def invalidate_customer(self, customer_id: str):
+        if not self.enabled or not self.client:
+            return
+
+        try:
+            self.client.delete(self._customer_key(customer_id))
+            logger.debug(f"Redis INVALIDATE customer {customer_id}")
+        except Exception as e:
+            logger.error(f"Redis invalidate error for customer {customer_id}: {e}")
 
     def get_stats(self) -> Dict[str, Any]:
         if not self.enabled or not self.client:

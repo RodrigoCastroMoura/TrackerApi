@@ -308,15 +308,12 @@ class Customer(BaseDocument):
 
     has_accepted_terms = BooleanField(default=False)
     require_payment_method = BooleanField(default=True)
-
-    # Plan change tracking
-    current_plan_name = StringField()  # Nome do plano atual
-    previous_plan_name = StringField()  # Nome do plano anterior
-    previous_plan_amount = FloatField()  # Valor do plano anterior
-    plan_changed_at = DateTimeField()  # Data da última troca de plano
     can_change_plan = BooleanField(default=False)  # Flag que indica se o usuario pode trocar de plano
 
-    
+    #flag configuração de notificação do push
+    fl_notification_ignicao_enabled = BooleanField(default=True)
+    fl_notification_command_enabled = BooleanField(default=True)
+
     meta = {
         'collection': 'customers',
         'indexes': [
@@ -366,11 +363,9 @@ class Customer(BaseDocument):
             'fcm_token': self.fcm_token,
             'has_accepted_terms': self.has_accepted_terms,
             'require_payment_method': self.require_payment_method,
-            'current_plan_name': self.current_plan_name,
-            'previous_plan_name': self.previous_plan_name,
-            'previous_plan_amount': self.previous_plan_amount,
-            'plan_changed_at': self.plan_changed_at.isoformat() if self.plan_changed_at else None,
             'can_change_plan': self.can_change_plan,
+            'fl_notification_ignicao_enabled': self.fl_notification_ignicao_enabled,
+            'fl_notification_command_enabled': self.fl_notification_command_enabled,
         })
         return base_dict
 

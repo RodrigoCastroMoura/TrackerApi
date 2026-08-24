@@ -4,6 +4,7 @@ from app.domain.models import Customer, Document
 from app.presentation.auth_routes import token_required, customer_token_required, require_permission, generate_temporary_password
 from app.infrastructure.contract_generator import generate_customer_contract
 from app.infrastructure.firebase_storage import FirebaseStorage
+from app.infrastructure.redis_cache import vehicle_cache
 from mongoengine.errors import NotUniqueError, ValidationError, DoesNotExist
 import logging
 from bson.objectid import ObjectId
@@ -479,6 +480,114 @@ class CustomerSignature(Resource):
         except Exception as e:
             logger.error(f"Error updating customer signature: {str(e)}")
             return {'message': 'Erro ao atualizar assinatura'}, 500
+
+
+@api.route('/notification-settings')
+class CustomerNotificationSettings(Resource):
+
+    @api.doc('get_customer_notification_settings',
+             responses={
+                 200: 'Success',
+                 401: 'Não autenticado',
+                 404: 'Cliente não encontrado',
+                 500: 'Erro interno do servidor'
+             })
+    @customer_token_required
+    def get(self, current_customer):
+        """Obter configuração de notificações push do cliente (ignição / bloqueio-desbloqueio)"""
+        try:
+            return {
+                'fl_notification_ignicao_enabled': current_customer.fl_notification_ignicao_enabled,
+                'fl_notification_command_enabled': current_customer.fl_notification_command_enabled
+            }, 200
+
+        except Exception as e:
+            logger.error(f"Error getting customer notification settings: {str(e)}")
+            return {'message': 'Erro ao buscar configuração de notificações'}, 500
+
+
+@api.route('/notification-settings/ignicao')
+class CustomerNotificationIgnicaoToggle(Resource):
+    toggle_model = api.model(
+        'CustomerNotificationIgnicaoToggle', {
+            'enabled':
+            fields.Boolean(required=True, description='Habilita/desabilita notificação push de ignição')
+        })
+
+    @api.doc('toggle_customer_notification_ignicao',
+             responses={
+                 200: 'Success',
+                 400: 'Dados inválidos',
+                 401: 'Não autenticado',
+                 404: 'Cliente não encontrado',
+                 500: 'Erro interno do servidor'
+             })
+    @api.expect(toggle_model)
+    @customer_token_required
+    def put(self, current_customer):
+        """Habilitar/desabilitar notificação push de ignição"""
+        try:
+            data = request.get_json()
+            if not data or 'enabled' not in data:
+                return {'message': 'Campo enabled é obrigatório'}, 400
+
+            if not isinstance(data['enabled'], bool):
+                return {'message': 'enabled deve ser um booleano'}, 400
+
+            current_customer.fl_notification_ignicao_enabled = data['enabled']
+            current_customer.save()
+            vehicle_cache.set_customer(str(current_customer.id), current_customer)
+
+            return {
+                'message': 'Notificação de ignição atualizada com sucesso',
+                'fl_notification_ignicao_enabled': current_customer.fl_notification_ignicao_enabled
+            }, 200
+
+        except Exception as e:
+            logger.error(f"Error toggling customer ignicao notification: {str(e)}")
+            return {'message': 'Erro ao atualizar notificação de ignição'}, 500
+
+
+@api.route('/notification-settings/command')
+class CustomerNotificationCommandToggle(Resource):
+    toggle_model = api.model(
+        'CustomerNotificationCommandToggle', {
+            'enabled':
+            fields.Boolean(required=True, description='Habilita/desabilita notificação push de comando (bloqueio/desbloqueio)')
+        })
+
+    @api.doc('toggle_customer_notification_command',
+             responses={
+                 200: 'Success',
+                 400: 'Dados inválidos',
+                 401: 'Não autenticado',
+                 404: 'Cliente não encontrado',
+                 500: 'Erro interno do servidor'
+             })
+    @api.expect(toggle_model)
+    @customer_token_required
+    def put(self, current_customer):
+        """Habilitar/desabilitar notificação push de comando (bloqueio/desbloqueio)"""
+        try:
+            data = request.get_json()
+            if not data or 'enabled' not in data:
+                return {'message': 'Campo enabled é obrigatório'}, 400
+
+            if not isinstance(data['enabled'], bool):
+                return {'message': 'enabled deve ser um booleano'}, 400
+
+            current_customer.fl_notification_command_enabled = data['enabled']
+            current_customer.save()
+            vehicle_cache.set_customer(str(current_customer.id), current_customer)
+
+            return {
+                'message': 'Notificação de comando atualizada com sucesso',
+                'fl_notification_command_enabled': current_customer.fl_notification_command_enabled
+            }, 200
+
+        except Exception as e:
+            logger.error(f"Error toggling customer command notification: {str(e)}")
+            return {'message': 'Erro ao atualizar notificação de comando'}, 500
 
 
 @api.route('/search')

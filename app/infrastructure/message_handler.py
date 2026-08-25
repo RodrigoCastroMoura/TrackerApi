@@ -35,6 +35,11 @@ class MessageHandler:
 
         phone_number = self._remover_caracteres_esquerda(session.phone_number)
 
+        # user = self.business.authenticate_by_phone(
+        #     phone_number,
+        #     Config.PASSWORD_CHATBOT_SALT
+        # )
+
         user = None
 
         if user:
@@ -43,22 +48,15 @@ class MessageHandler:
             session.state = "AUTHENTICATED"
             logger.info(f"[AUTH] Usuario autenticado por telefone: {user.name}, {len(user.vehicles)} veiculos")
             self._show_vehicles(session)
-        else:
-            msg_clean = message.strip()
-            if len(msg_clean) >= 11 and msg_clean.replace(".", "").replace("-", "").replace("/", "").isdigit():
-                session.state = "WAITING_PASSWORD"
-                session.pending_identifier = msg_clean
-                logger.info(f"[UNAUTH] CPF recebido, aguardando senha: {session.pending_identifier}")
-                self.whatsapp.send_message(
-                    session.phone_number,
-                    "Agora, por favor, digite sua *senha* 🔒:"
-                )
-            else:
-                self.whatsapp.send_message(
-                    session.phone_number,
-                    "Bem-vindo ao Sistema de Rastreamento MonitoraNet! 🚗\n\n"
-                    "Para acessar, por favor, digite seu *CPF*:"
-                )
+            return
+
+        logger.info(f"[UNAUTH] Telefone nao reconhecido, solicitando CPF: {session.phone_number}")
+        session.state = "WAITING_CPF"
+        self.whatsapp.send_message(
+            session.phone_number,
+            "Bem-vindo ao Sistema de Rastreamento MonitoraNet! 🚗\n\n"
+            "Para acessar, por favor, digite seu *CPF*:"
+        )
 
     def _handle_waiting_password(self, session: ChatSession, message: str, message_type: str = "text") -> None:
         logger.info(f"[WAITING_PWD] {session.phone_number}: senha recebida")
@@ -349,6 +347,14 @@ class MessageHandler:
     def _handle_waiting_cpf(self, session: ChatSession, message: str, _message_type: str = "text") -> None:
         identifier = message.strip()
         logger.info(f"[WAITING_CPF] {session.phone_number}: identificador recebido")
+
+        msg_clean = identifier.replace(".", "").replace("-", "").replace("/", "")
+        if len(msg_clean) < 11 or not msg_clean.isdigit():
+            self.whatsapp.send_message(
+                session.phone_number,
+                "⚠️ CPF invalido. Por favor, digite um *CPF* valido:"
+            )
+            return
 
         session.pending_identifier = identifier
         session.state = "WAITING_PASSWORD"

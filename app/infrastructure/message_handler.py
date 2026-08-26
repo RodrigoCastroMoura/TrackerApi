@@ -1,5 +1,6 @@
 import logging
 from typing import Optional
+from datetime import datetime, timezone, timedelta
 from config import Config
 from app.infrastructure.session_manager import ChatSession, ChatVehicle
 from app.infrastructure.whatsapp_client import WhatsAppClient
@@ -35,12 +36,10 @@ class MessageHandler:
 
         phone_number = self._remover_caracteres_esquerda(session.phone_number)
 
-        # user = self.business.authenticate_by_phone(
-        #     phone_number,
-        #     Config.PASSWORD_CHATBOT_SALT
-        # )
-
-        user = None
+        user = self.business.authenticate_by_phone(
+            phone_number,
+            Config.PASSWORD_CHATBOT_SALT
+        )
 
         if user:
             session.user = user
@@ -54,8 +53,10 @@ class MessageHandler:
         session.state = "WAITING_CPF"
         self.whatsapp.send_message(
             session.phone_number,
-            "Bem-vindo ao Sistema de Rastreamento MonitoraNet! 🚗\n\n"
-            "Para acessar, por favor, digite seu *CPF*:"
+            f"{self._saudacao()}! 👋 Aqui e da *MonitoraNet* 📍\n\n"
+            "Seu carro protegido 24h por nossa Inteligencia Artificial (IA) 🚗🔒\n"
+            "Localize, bloqueie ou desbloqueie seu veiculo, tudo por aqui!\n\n"
+            "Para acessar, digite seu *CPF*:"
         )
 
     def _handle_waiting_password(self, session: ChatSession, message: str, message_type: str = "text") -> None:
@@ -147,7 +148,10 @@ class MessageHandler:
 
         greeting = ""
         if not session.user.intrudution_shown:
-            greeting = f"Ola, {session.user.name}!\n"
+            greeting = (
+                f"{self._saudacao()}, {session.user.name}! 👋 Aqui e da *MonitoraNet* 📍\n"
+                f"Seu carro protegido 24h por nossa Inteligencia Artificial (IA) 🚗🔒\n\n"
+            )
             session.user.intrudution_shown = True
 
         if len(session.user.vehicles) == 1:
@@ -157,7 +161,7 @@ class MessageHandler:
 
             self.whatsapp.send_interactive_buttons(
                 session.phone_number,
-                f"{greeting}Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
+                f"{greeting}Voce esta no sistema de Rastreamento! 🚗\n\n"
                 f"🚙 Veiculo: {vehicle.plate}\n"
                 f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
                 f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}",
@@ -182,7 +186,7 @@ class MessageHandler:
 
             self.whatsapp.send_list(
                 session.phone_number,
-                f"{greeting}Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
+                f"{greeting}Voce esta no sistema de Rastreamento! 🚗\n\n"
                 f"Selecione um veiculo para ver opcoes:",
                 "🚙 Ver Veiculos",
                 sections
@@ -392,3 +396,14 @@ class MessageHandler:
 
     def _remover_caracteres_esquerda(self, numero_str, quantidade=2):
         return numero_str[quantidade:]
+
+    def _saudacao(self) -> str:
+        br_tz = timezone(timedelta(hours=-3))
+        hora = datetime.now(br_tz).hour
+
+        if 5 <= hora < 12:
+            return "Bom dia"
+        elif 12 <= hora < 18:
+            return "Boa tarde"
+        else:
+            return "Boa noite"

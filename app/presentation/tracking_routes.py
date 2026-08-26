@@ -32,6 +32,7 @@ vehicle_tracking_model = api.model('VehicleTracking', {
     'id': fields.String(readonly=True),
     'plate': fields.String(description='Placa do veículo'),
     'model': fields.String(description='Modelo do veículo'),
+    'dsmarca': fields.String(description='Marca do veículo'),
     'type': fields.String(description='Tipo do veículo'),
     'block': fields.String(description='Status do veículo'),
     'location': fields.Nested(vehicle_tracking_location_model, allow_null=True),
@@ -155,6 +156,7 @@ class VehicleTrackingList(Resource):
                     'plate': vehicle.dsplaca or 'N/A',
                     'model': vehicle.dsmodelo or 'N/A',
                     'type': vehicle.tipo,
+                    'dsmarca': vehicle.dsmarca or 'N/A',
                     'block': 'bloqueado' if vehicle.bloqueado else "desbloqueado",
                     'location': location,
                     'tsusermanu': vehicle.tsusermanu

@@ -1,45 +1,34 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import SubscriptionPlan, Company, FREQUENCY_TYPES, to_mercadopago_frequency
+from app.domain.models import SubscriptionPlan, Company, FREQUENCY_TYPES, to_pagarme_interval
 from app.presentation.auth_routes import token_required, require_permission
-from app.infrastructure.mercadopago_service import MercadoPagoService
+from app.presentation.subscription_plan_routes import parse_frequency
+from app.infrastructure.pagarme_service import PagarmeService
 import logging
 
 logger = logging.getLogger(__name__)
 
-api = Namespace('subscription-plans', description='Subscription plan management operations')
+api = Namespace('subscription-plans-pagarme', description='Gestão de planos de assinatura no Pagar.me (Stone)')
 
-def parse_frequency(data):
-    """
-    Lê (frequency, frequency_type) do payload. frequency_type deve ser um de
-    FREQUENCY_TYPES ('days', 'weeks', 'months', 'years'). Retorna (None, None)
-    se o valor informado não for reconhecido.
-    """
-    frequency_type = (data.get('frequency_type') or 'months').lower().strip()
-    if frequency_type not in FREQUENCY_TYPES:
-        return None, None
 
-    frequency = int(data.get('frequency') or 1)
-    return frequency, frequency_type
+def _amount_cents(amount) -> int:
+    return int(round((amount or 0) * 100))
 
-subscription_plan_model = api.model('SubscriptionPlan', {
+
+subscription_plan_model = api.model('SubscriptionPlanPagarme', {
     'name': fields.String(required=True, description='Plan name', example='Plano Básico'),
     'description': fields.String(description='Plan description', example='Até 10 veículos'),
     'amount': fields.Float(required=True, description='Amount in BRL', example=39.99),
-    'frequency': fields.Integer(description='Multiplicador do ciclo de cobrança (ex: 2 + frequency_type=weeks = a cada 2 semanas)', example=1),
-    'frequency_type': fields.String(
-        description='Unidade do ciclo de cobrança',
-        enum=list(FREQUENCY_TYPES),
-        example='months'
-    ),
+    'frequency': fields.Integer(description='Multiplicador do ciclo (ex: 2 + frequency_type=weeks = a cada 2 semanas)', example=1),
+    'frequency_type': fields.String(description='Unidade do ciclo de cobrança', enum=list(FREQUENCY_TYPES), example='months'),
     'features': fields.List(fields.String, description='List of features', example=['Rastreamento em tempo real']),
     'max_vehicles': fields.Integer(description='Maximum number of vehicles', example=10),
-    'free_days': fields.Integer(description='Number of free trial days before first billing', example=0),
-    'is_active': fields.Boolean(description='If plan is available for new subscriptions', example=True)
+    'free_days': fields.Integer(description='Dias de trial antes da primeira cobrança', example=0),
+    'is_active': fields.Boolean(description='If plan is available for new subscriptions', example=True),
 })
 
-subscription_plan_response = api.model('SubscriptionPlanResponse', {
-    'id': fields.String(description='Plan ID'),
+subscription_plan_response = api.model('SubscriptionPlanPagarmeResponse', {
+    'id': fields.String(description='Plan ID (local)'),
     'company_id': fields.String(description='Company ID'),
     'name': fields.String(description='Plan name'),
     'description': fields.String(description='Plan description'),
@@ -47,26 +36,44 @@ subscription_plan_response = api.model('SubscriptionPlanResponse', {
     'currency': fields.String(description='Currency'),
     'frequency': fields.Integer(description='Billing frequency'),
     'frequency_type': fields.String(description='Frequency type'),
-    'provider_plan_id': fields.String(description='ID do plano no provedor de pagamento'),
+    'provider_plan_id': fields.String(description='ID do plano no Pagar.me (plan_...)'),
     'features': fields.List(fields.String, description='List of features'),
     'max_vehicles': fields.Integer(description='Maximum number of vehicles'),
-    'free_days': fields.Integer(description='Number of free trial days before first billing'),
+    'free_days': fields.Integer(description='Dias de trial antes da primeira cobrança'),
     'is_active': fields.Boolean(description='If plan is active'),
     'visible': fields.Boolean(description='If plan is visible'),
     'created_at': fields.String(description='Creation date'),
-    'updated_at': fields.String(description='Last update date')
+    'updated_at': fields.String(description='Last update date'),
 })
 
+
+def _create_pagarme_plan(plan) -> tuple:
+    """Cria o plano no Pagar.me a partir de um SubscriptionPlan local já salvo.
+    Retorna (plan_id, error_response_or_None)."""
+    interval_count, interval = to_pagarme_interval(plan.frequency, plan.frequency_type)
+    result = PagarmeService.create_plan(
+        name=plan.name,
+        amount_cents=_amount_cents(plan.amount),
+        interval=interval,
+        interval_count=interval_count,
+        trial_period_days=plan.free_days or 0,
+    )
+    if not result or result.get('error'):
+        msg = result.get('message', '') if result else ''
+        return None, ({'message': msg or 'Erro ao criar plano no Pagar.me'}, 502)
+    return result['plan_id'], None
+
+
 @api.route('/')
-class SubscriptionPlanListResource(Resource):
-    @api.doc('list_subscription_plans', security=None)
+class SubscriptionPlanPagarmeListResource(Resource):
+
+    @api.doc('list_subscription_plans_pagarme', security=None)
     @api.marshal_list_with(subscription_plan_response)
     def get(self):
-        """List all active subscription plans (public endpoint)"""
+        """Lista os planos já sincronizados com o Pagar.me (endpoint público)"""
         try:
             company_id = request.args.get('company_id')
-
-            query = {'visible': True}
+            query = {'visible': True, 'provider_plan_id__startswith': 'plan_'}
             if company_id:
                 company = Company.objects(id=company_id, visible=True).first()
                 if not company:
@@ -75,40 +82,27 @@ class SubscriptionPlanListResource(Resource):
 
             plans = SubscriptionPlan.objects(**query)
             return [plan.to_dict() for plan in plans], 200
-
         except Exception as e:
-            logger.error(f"Error listing subscription plans: {str(e)}")
+            logger.error(f"Error listing Pagar.me subscription plans: {str(e)}")
             return {'message': 'Error listing subscription plans'}, 500
 
-    @api.doc('create_subscription_plan', security='Bearer')
+    @api.doc('create_subscription_plan_pagarme', security='Bearer')
     @token_required
     @api.expect(subscription_plan_model)
     @api.marshal_with(subscription_plan_response, code=201)
     def post(self, current_user):
-        """Create a new subscription plan (admin only)"""
+        """Cria um plano local e o plano correspondente no Pagar.me (admin)"""
         try:
-            data = request.json
+            data = request.json or {}
 
             if not data.get('name') or not data.get('amount'):
                 return {'message': 'Name and amount are required'}, 400
-
             if data['amount'] <= 0:
                 return {'message': 'Amount must be greater than zero'}, 400
 
             frequency, frequency_type = parse_frequency(data)
             if frequency_type is None:
                 return {'message': f"frequency_type inválido: {data.get('frequency_type')}. Use days, weeks, months ou years."}, 400
-
-            mp_frequency, mp_frequency_type = to_mercadopago_frequency(frequency, frequency_type)
-
-            mp_result = MercadoPagoService.create_subscription_plan(
-                plan_name=data['name'],
-                amount=data['amount'],
-                frequency=mp_frequency,
-                frequency_type=mp_frequency_type
-            )
-
-            mp_plan_id = mp_result.get('plan_id') if mp_result else None
 
             plan = SubscriptionPlan(
                 company_id=current_user.company_id,
@@ -122,63 +116,63 @@ class SubscriptionPlanListResource(Resource):
                 max_vehicles=data.get('max_vehicles'),
                 free_days=data.get('free_days', 0),
                 is_active=data.get('is_active', True),
-                provider_plan_id=mp_plan_id,
                 created_by=current_user,
-                updated_by=current_user
+                updated_by=current_user,
             )
             plan.save()
 
-            if mp_plan_id:
-                logger.info(f"Mercado Pago plan created: {mp_plan_id} for plan {plan.name}")
-            else:
-                logger.warning(f"Could not create Mercado Pago plan for {plan.name} — saved locally only")
+            plan_id, err = _create_pagarme_plan(plan)
+            if err:
+                # Sem plano remoto o registro local não serve para assinatura Pagar.me
+                plan.visible = False
+                plan.is_active = False
+                plan.save()
+                return err
 
-            logger.info(f"Subscription plan created: {plan.name} by user {current_user.email}")
+            plan.provider_plan_id = plan_id
+            plan.save()
 
+            logger.info(f"Pagar.me plan created: {plan_id} for plan {plan.name} by {current_user.email}")
             return plan.to_dict(), 201
-
         except Exception as e:
-            logger.error(f"Error creating subscription plan: {str(e)}")
+            logger.error(f"Error creating Pagar.me subscription plan: {str(e)}")
             return {'message': 'Error creating subscription plan'}, 500
 
 
 @api.route('/<plan_id>')
-@api.param('plan_id', 'The subscription plan identifier')
-class SubscriptionPlanResource(Resource):
-    @api.doc('get_subscription_plan', security=None)
+@api.param('plan_id', 'The subscription plan identifier (local)')
+class SubscriptionPlanPagarmeResource(Resource):
+
+    @api.doc('get_subscription_plan_pagarme', security=None)
     @api.marshal_with(subscription_plan_response)
     def get(self, plan_id):
-        """Get subscription plan details (public endpoint)"""
+        """Detalhe de um plano (endpoint público)"""
         try:
             plan = SubscriptionPlan.objects(id=plan_id, visible=True).first()
-
             if not plan:
                 return {'message': 'Subscription plan not found'}, 404
-
             return plan.to_dict(), 200
-
         except Exception as e:
-            logger.error(f"Error getting subscription plan: {str(e)}")
+            logger.error(f"Error getting Pagar.me subscription plan: {str(e)}")
             return {'message': 'Error getting subscription plan'}, 500
 
-    @api.doc('update_subscription_plan', security='Bearer')
+    @api.doc('update_subscription_plan_pagarme', security='Bearer')
     @token_required
     @api.expect(subscription_plan_model)
     @api.marshal_with(subscription_plan_response)
     def put(self, current_user, plan_id):
-        """Update a subscription plan (admin only)"""
+        """Atualiza os campos locais do plano (admin).
+
+        Não re-sincroniza valor/intervalo com o Pagar.me — o plano remoto é
+        imutável nesses campos; troca de valor é feita na assinatura."""
         try:
             plan = SubscriptionPlan.objects(
-                id=plan_id,
-                company_id=current_user.company_id,
-                visible=True
+                id=plan_id, company_id=current_user.company_id, visible=True
             ).first()
-
             if not plan:
                 return {'message': 'Subscription plan not found'}, 404
 
-            data = request.json
-
+            data = request.json or {}
             if 'name' in data:
                 plan.name = data['name']
             if 'description' in data:
@@ -209,26 +203,21 @@ class SubscriptionPlanResource(Resource):
             plan.updated_by = current_user
             plan.save()
 
-            logger.info(f"Subscription plan updated: {plan.name} by user {current_user.email}")
-
+            logger.info(f"Pagar.me subscription plan updated: {plan.name} by {current_user.email}")
             return plan.to_dict(), 200
-
         except Exception as e:
-            logger.error(f"Error updating subscription plan: {str(e)}")
+            logger.error(f"Error updating Pagar.me subscription plan: {str(e)}")
             return {'message': 'Error updating subscription plan'}, 500
 
-    @api.doc('delete_subscription_plan', security='Bearer')
+    @api.doc('delete_subscription_plan_pagarme', security='Bearer')
     @token_required
     @require_permission('subscription_plan', 'delete')
     def delete(self, current_user, plan_id):
-        """Delete a subscription plan (soft delete, admin only)"""
+        """Soft delete do plano local (admin)"""
         try:
             plan = SubscriptionPlan.objects(
-                id=plan_id,
-                company_id=current_user.company_id,
-                visible=True
+                id=plan_id, company_id=current_user.company_id, visible=True
             ).first()
-
             if not plan:
                 return {'message': 'Subscription plan not found'}, 404
 
@@ -237,32 +226,49 @@ class SubscriptionPlanResource(Resource):
             plan.updated_by = current_user
             plan.save()
 
-            logger.info(f"Subscription plan deleted: {plan.name} by user {current_user.email}")
-
+            logger.info(f"Pagar.me subscription plan deleted: {plan.name} by {current_user.email}")
             return {'message': 'Subscription plan deleted successfully'}, 200
-
         except Exception as e:
-            logger.error(f"Error deleting subscription plan: {str(e)}")
+            logger.error(f"Error deleting Pagar.me subscription plan: {str(e)}")
             return {'message': 'Error deleting subscription plan'}, 500
 
 
-@api.route('/int/<max_vehicles>')
-@api.param('max_vehicles', 'The maximum number of vehicles for the subscription plan')
-class SubscriptionPlanMaxVehiclesResource(Resource):
-    @api.doc('list_subscription_plans_by_max_vehicles', security=None)
-    @api.marshal_list_with(subscription_plan_response)
-    def get(self, max_vehicles):
-        """List subscription plans by max_vehicles (public endpoint)"""
+@api.route('/<plan_id>/sync')
+@api.param('plan_id', 'The subscription plan identifier (local)')
+class SubscriptionPlanPagarmeSyncResource(Resource):
+
+    @api.doc('sync_subscription_plan_pagarme', security='Bearer')
+    @token_required
+    @api.marshal_with(subscription_plan_response)
+    def post(self, current_user, plan_id):
+        """Cria no Pagar.me o plano correspondente a um SubscriptionPlan que já
+        existe localmente (ex.: criado antes só para o Mercado Pago)."""
         try:
-            try:
-                max_vehicles_int = int(max_vehicles)
-            except (ValueError, TypeError):
-                return {'message': 'Invalid max_vehicles value. Must be an integer.'}, 400
+            plan = SubscriptionPlan.objects(
+                id=plan_id, company_id=current_user.company_id, visible=True
+            ).first()
+            if not plan:
+                return {'message': 'Subscription plan not found'}, 404
 
-            plans = SubscriptionPlan.objects(max_vehicles=max_vehicles_int, is_active=True)
+            existing = plan.provider_plan_id
+            if existing and existing.startswith('plan_'):
+                return plan.to_dict(), 200
+            if existing and not existing.startswith('plan_'):
+                return {
+                    'message': 'Este plano já está vinculado a outro provedor (Mercado Pago). '
+                               'Crie um plano dedicado para o Pagar.me em POST /api/subscription-plans-pagarme.'
+                }, 409
 
-            return [plan.to_dict() for plan in plans], 200
+            plan_id_remote, err = _create_pagarme_plan(plan)
+            if err:
+                return err
 
+            plan.provider_plan_id = plan_id_remote
+            plan.updated_by = current_user
+            plan.save()
+
+            logger.info(f"Pagar.me plan synced: {plan_id_remote} for local plan {plan.id} by {current_user.email}")
+            return plan.to_dict(), 200
         except Exception as e:
-            logger.error(f"Error listing subscription plans by max_vehicles: {str(e)}")
-            return {'message': 'Error listing subscription plans'}, 500
+            logger.error(f"Error syncing Pagar.me subscription plan: {str(e)}")
+            return {'message': 'Error syncing subscription plan'}, 500

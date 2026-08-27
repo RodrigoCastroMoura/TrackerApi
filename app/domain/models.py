@@ -26,6 +26,15 @@ def to_mercadopago_frequency(frequency: int, frequency_type: str) -> tuple:
         return frequency * 12, 'months'
     return frequency, frequency_type
 
+# O Pagar.me aceita as quatro unidades no singular (day/week/month/year) + interval_count,
+# então o vocabulário do domínio mapeia 1:1 (sem conversão de semanas/anos como no MP).
+_PAGARME_INTERVAL = {'days': 'day', 'weeks': 'week', 'months': 'month', 'years': 'year'}
+
+def to_pagarme_interval(frequency: int, frequency_type: str) -> tuple:
+    """Converte (frequency, frequency_type) do domínio para (interval_count, interval)
+    no formato do Pagar.me."""
+    return (frequency or 1), _PAGARME_INTERVAL.get(frequency_type, 'month')
+
 class TipoVeiculo(Enum):
     """Vehicle type enum with numeric and string values"""
     CARRO = (1, 'carro')
@@ -381,8 +390,8 @@ class SubscriptionPlan(BaseDocument):
     frequency = IntField(default=1)
     frequency_type = StringField(default='months', choices=list(FREQUENCY_TYPES))
 
-    # Mercado Pago integration
-    mp_preapproval_plan_id = StringField(unique=True, sparse=True)  # Mercado Pago plan ID
+    # ID do plano no provedor de pagamento (Mercado Pago, Pagar.me, ...)
+    provider_plan_id = StringField(unique=True, sparse=True)
     
     features = ListField(StringField())  # Lista de funcionalidades do plano
     max_vehicles = IntField()  # Maximum number of vehicles (optional)
@@ -397,7 +406,7 @@ class SubscriptionPlan(BaseDocument):
         'indexes': [
             {'fields': ['company_id']},
             {'fields': ['is_active']},
-            {'fields': ['mp_preapproval_plan_id'], 'unique': True, 'sparse': True},
+            {'fields': ['provider_plan_id'], 'unique': True, 'sparse': True},
         ],
         'strict': False  # Allow extra fields from old schema versions
     }
@@ -413,7 +422,7 @@ class SubscriptionPlan(BaseDocument):
             'currency': self.currency,
             'frequency': self.frequency,
             'frequency_type': self.frequency_type,
-            'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
+            'provider_plan_id': self.provider_plan_id,
             'features': self.features or [],
             'max_vehicles': self.max_vehicles,
             'free_days': self.free_days or 0,
@@ -424,7 +433,7 @@ class SubscriptionPlan(BaseDocument):
 
 class SubscriptionPayment(EmbeddedDocument):
     """Registro de um pagamento mensal da assinatura"""
-    mp_authorized_payment_id = StringField(required=True)
+    provider_payment_id = StringField(required=True)
     amount = FloatField(required=True)
     currency = StringField(default='BRL')
     status = StringField(choices=['approved', 'rejected', 'pending'], default='pending')
@@ -434,7 +443,7 @@ class SubscriptionPayment(EmbeddedDocument):
 
     def to_dict(self):
         return {
-            'mp_authorized_payment_id': self.mp_authorized_payment_id,
+            'provider_payment_id': self.provider_payment_id,
             'amount': self.amount,
             'currency': self.currency,
             'status': self.status,
@@ -516,11 +525,12 @@ class Subscription(BaseDocument):
     customer_id = ReferenceField('Customer', required=True)
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
 
-    # Mercado Pago data
-    mp_subscription_id = StringField(unique=True, sparse=True)
-    mp_payer_id = StringField()
-    mp_preapproval_plan_id = StringField()
-    mp_status = StringField(
+    # Dados do provedor de pagamento (Mercado Pago, Pagar.me, ...) — nomes
+    # neutros para padronizar entre meios de pagamento.
+    provider_subscription_id = StringField(unique=True, sparse=True)
+    provider_customer_id = StringField()
+    provider_plan_id = StringField()
+    provider_status = StringField(
         choices=['pending', 'processing', 'succeeded', 'failed', 'canceled', 'refunded'],
         default='pending'
     )
@@ -560,7 +570,7 @@ class Subscription(BaseDocument):
         'collection': 'subscriptions',
         'indexes': [
             {'fields': ['customer_id']},
-            {'fields': ['mp_subscription_id'], 'unique': True, 'sparse': True},
+            {'fields': ['provider_subscription_id'], 'unique': True, 'sparse': True},
             {'fields': ['company_id']},
             {'fields': ['status']},
         ]
@@ -572,9 +582,9 @@ class Subscription(BaseDocument):
         base_dict.update({
             'customer_id': str(self.customer_id.id) if self.customer_id else None,
             'company_id': str(self.company_id.id) if self.company_id else None,
-            'mp_subscription_id': self.mp_subscription_id,
-            'mp_preapproval_plan_id': self.mp_preapproval_plan_id,
-            'mp_status': self.mp_status,
+            'provider_subscription_id': self.provider_subscription_id,
+            'provider_plan_id': self.provider_plan_id,
+            'provider_status': self.provider_status,
             'payment_url': self.payment_url,
             'payment_date': self.payment_date.isoformat() if self.payment_date else None,
             'failure_message': self.failure_message,

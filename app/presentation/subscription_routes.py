@@ -60,7 +60,7 @@ class SubscriptionResource(Resource):
             if not data.get('plan_id'):
                 return {'message': 'Campo plan_id é obrigatório'}, 400
             
-            # Step 1: Fetch subscription plan — aceita ObjectId do banco ou mp_preapproval_plan_id
+            # Step 1: Fetch subscription plan — aceita ObjectId do banco ou provider_plan_id
             plan_id_input = data['plan_id']
             plan = None
 
@@ -77,9 +77,9 @@ class SubscriptionResource(Resource):
                     pass
 
             if not plan:
-                # Tenta pelo mp_preapproval_plan_id (ID do Mercado Pago)
+                # Tenta pelo provider_plan_id (ID do Mercado Pago)
                 plan = SubscriptionPlan.objects(
-                    mp_preapproval_plan_id=plan_id_input,
+                    provider_plan_id=plan_id_input,
                     company_id=current_customer.company_id,
                     is_active=True,
                     visible=True
@@ -90,7 +90,7 @@ class SubscriptionResource(Resource):
 
             # Step 2: Create subscription plan on Mercado Pago if not already created
             mp_frequency, mp_frequency_type = to_mercadopago_frequency(plan.frequency, plan.frequency_type)
-            mp_plan_id = plan.mp_preapproval_plan_id
+            mp_plan_id = plan.provider_plan_id
 
             if not mp_plan_id:
                 mp_plan = MercadoPagoService.create_subscription_plan(
@@ -104,7 +104,7 @@ class SubscriptionResource(Resource):
                     return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
 
                 mp_plan_id = mp_plan['plan_id']
-                plan.mp_preapproval_plan_id = mp_plan_id
+                plan.provider_plan_id = mp_plan_id
                 plan.save()
             
             # Bloqueia se já tem assinatura ativa
@@ -140,15 +140,15 @@ class SubscriptionResource(Resource):
 
             if active_subscription and active_subscription.status in ['canceled','pending']:
                 if active_subscription and active_subscription.status == 'pending':
-                    if active_subscription.mp_subscription_id:
-                        MercadoPagoService.cancel_subscription(active_subscription.mp_subscription_id)
+                    if active_subscription.provider_subscription_id:
+                        MercadoPagoService.cancel_subscription(active_subscription.provider_subscription_id)
                 # Se a assinatura anterior foi cancelada, podemos reativá-la
-                active_subscription.mp_subscription_id = mp_subscription['subscription_id']
-                active_subscription.mp_preapproval_plan_id = mp_plan_id
+                active_subscription.provider_subscription_id = mp_subscription['subscription_id']
+                active_subscription.provider_plan_id = mp_plan_id
                 active_subscription.plan_name = plan.name
                 active_subscription.amount = plan.amount
                 active_subscription.status = 'pending'
-                active_subscription.mp_status = 'pending'
+                active_subscription.provider_status = 'pending'
                 active_subscription.billing_cycle = mp_frequency_type
                 active_subscription.frequency = mp_frequency
                 active_subscription.currency = 'BRL'
@@ -168,7 +168,7 @@ class SubscriptionResource(Resource):
                         'amount': plan.amount,
                         'billing_cycle': plan.frequency_type,
                         'payment_url': mp_subscription['init_point'],
-                        'mp_subscription_id': mp_subscription['subscription_id'],
+                        'provider_subscription_id': mp_subscription['subscription_id'],
                         'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
                     }, 200
                 except Exception as db_error:
@@ -183,12 +183,12 @@ class SubscriptionResource(Resource):
                 subscription = Subscription(
                     customer_id=current_customer,
                     company_id=current_customer.company_id,
-                    mp_subscription_id=mp_sub_id,
-                    mp_preapproval_plan_id=mp_plan_id,
+                    provider_subscription_id=mp_sub_id,
+                    provider_plan_id=mp_plan_id,
                     plan_name=plan.name,
                     amount=plan.amount,
                     status='pending',
-                    mp_status='pending',
+                    provider_status='pending',
                     billing_cycle=mp_frequency_type,
                     frequency=mp_frequency,
                     currency='BRL',
@@ -211,7 +211,7 @@ class SubscriptionResource(Resource):
                 'amount': plan.amount,
                 'billing_cycle': plan.frequency_type,
                 'payment_url': mp_subscription['init_point'],
-                'mp_subscription_id': mp_sub_id,
+                'provider_subscription_id': mp_sub_id,
                 'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
             }, 201
 
@@ -265,7 +265,7 @@ class SubscriptionResource(Resource):
             
             if not new_plan:
                 new_plan = SubscriptionPlan.objects(
-                    mp_preapproval_plan_id=plan_id_input,
+                    provider_plan_id=plan_id_input,
                     company_id=current_customer.company_id,
                     is_active=True,
                     visible=True
@@ -287,7 +287,7 @@ class SubscriptionResource(Resource):
             # new_plan.frequency/frequency_type usam o vocabulário amigável do domínio
             # (days/weeks/months/years); o Mercado Pago só aceita days/months.
             mp_new_frequency, mp_new_frequency_type = to_mercadopago_frequency(new_plan.frequency, new_plan.frequency_type)
-            mp_plan_id = new_plan.mp_preapproval_plan_id
+            mp_plan_id = new_plan.provider_plan_id
             was_canceled = existing.status == 'canceled'
 
             if was_canceled:
@@ -322,11 +322,11 @@ class SubscriptionResource(Resource):
 
             else:
                 # Subscription ativa/pendente → atualiza a preapproval existente no MP
-                if not existing.mp_subscription_id:
+                if not existing.provider_subscription_id:
                     return {'message': 'ID da assinatura no Mercado Pago não encontrado'}, 400
 
                 mp_updated = MercadoPagoService.update_subscription(
-                    subscription_id=existing.mp_subscription_id,
+                    subscription_id=existing.provider_subscription_id,
                     plan_name=new_plan.name,
                     amount=new_plan.amount
                 )
@@ -334,7 +334,7 @@ class SubscriptionResource(Resource):
                 if not mp_updated:
                     return {'message': 'Erro ao atualizar assinatura no Mercado Pago'}, 500
 
-                new_mp_sub_id = existing.mp_subscription_id
+                new_mp_sub_id = existing.provider_subscription_id
                 new_payment_url = existing.payment_url
                 requires_authorization = False
 
@@ -343,8 +343,8 @@ class SubscriptionResource(Resource):
                 customer.save()
 
             # Atualiza o mesmo documento de assinatura no banco
-            existing.mp_subscription_id = new_mp_sub_id
-            existing.mp_preapproval_plan_id = mp_plan_id
+            existing.provider_subscription_id = new_mp_sub_id
+            existing.provider_plan_id = mp_plan_id
             existing.plan_name = new_plan.name
             existing.amount = new_plan.amount
             existing.billing_cycle = mp_new_frequency_type
@@ -352,7 +352,7 @@ class SubscriptionResource(Resource):
             existing.currency = 'BRL'
             existing.payment_url = new_payment_url
             existing.status = 'pending' if was_canceled else existing.status
-            existing.mp_status = 'pending' if was_canceled else existing.mp_status
+            existing.provider_status = 'pending' if was_canceled else existing.provider_status
             existing.failure_message = None
             existing.cancel_at_period_end = False
             existing.canceled_at = None
@@ -369,7 +369,7 @@ class SubscriptionResource(Resource):
                 'plan_name': new_plan.name,
                 'amount': new_plan.amount,
                 'billing_cycle': new_plan.frequency_type,
-                'mp_subscription_id': new_mp_sub_id,
+                'provider_subscription_id': new_mp_sub_id,
                 'requires_authorization': requires_authorization,
             }
 
@@ -400,14 +400,14 @@ class SubscriptionStatus(Resource):
                 return {
                     'has_subscription': False,
                     'status': None,
-                    'mp_status': None,
+                    'provider_status': None,
                     'require_payment_method': current_customer.require_payment_method,
                 }, 200
 
             return {
                 'has_subscription': True,
                 'status': subscription.status,
-                'mp_status': subscription.mp_status,
+                'provider_status': subscription.provider_status,
                 'require_payment_method': current_customer.require_payment_method,
             }, 200
 
@@ -441,10 +441,10 @@ class SubscriptionCancel(Resource):
                 return {'message': 'Assinatura já está cancelada'}, 400
             
             # Cancel on Mercado Pago if subscription ID exists
-            if subscription.mp_subscription_id:
-                success = MercadoPagoService.cancel_subscription(subscription.mp_subscription_id)
+            if subscription.provider_subscription_id:
+                success = MercadoPagoService.cancel_subscription(subscription.provider_subscription_id)
                 if not success:
-                    logger.warning(f"Failed to cancel subscription on Mercado Pago: {subscription.mp_subscription_id}")
+                    logger.warning(f"Failed to cancel subscription on Mercado Pago: {subscription.provider_subscription_id}")
             
             # Mark as canceled
             subscription.status = 'canceled'

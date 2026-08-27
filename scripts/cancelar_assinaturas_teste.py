@@ -51,7 +51,7 @@ def cancelar_assinaturas(email: str = None, todos: bool = False):
     erros = 0
 
     for sub in subs:
-        mp_id = sub.mp_subscription_id
+        mp_id = sub.provider_subscription_id
         print(f'[{sub.id}] status={sub.status} | mp_id={mp_id or "(sem MP id)"}')
 
         if mp_id:

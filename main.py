@@ -14,7 +14,9 @@ from app.presentation.company_routes import api as company_ns
 from app.presentation.tracking_routes import api as tracking_ns
 from app.presentation.report_routes import api as report_ns
 from app.presentation.subscription_routes import api as subscription_ns
+from app.presentation.subscription_pagarme_routes import api as subscription_pagarme_ns
 from app.presentation.subscription_plan_routes import api as subscription_plan_ns
+from app.presentation.subscription_plan_pagarme_routes import api as subscription_plan_pagarme_ns
 from app.presentation.webhook_routes import api as webhook_ns
 from app.presentation.cep_routes import api as cep_ns
 from app.presentation.pdf_analyzer_routes import api as pdf_analyzer_ns
@@ -177,7 +179,9 @@ def create_app():
         api.add_namespace(tracking_ns, path='/api/tracking')
         api.add_namespace(report_ns, path='/api/reports')
         api.add_namespace(subscription_plan_ns, path='/api/subscription-plans')
+        api.add_namespace(subscription_plan_pagarme_ns, path='/api/subscription-plans-pagarme')
         api.add_namespace(subscription_ns, path='/api/subscriptions')
+        api.add_namespace(subscription_pagarme_ns, path='/api/subscriptions-pagarme')
         api.add_namespace(webhook_ns, path='/api/webhooks')
         api.add_namespace(cep_ns, path='/api/cep')
         api.add_namespace(pdf_analyzer_ns, path='/api/pdf-analyzer')

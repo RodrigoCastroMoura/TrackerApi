@@ -22,24 +22,59 @@ def _epoch_to_dt(value):
         return None
 
 
+def _stripe_sub_id_from_obj(obj):
+    """Extrai o id da assinatura (sub_...) de um objeto de evento da Stripe,
+    cobrindo tanto a API antiga (invoice.subscription / session.subscription no
+    topo) quanto a nova 2025-10 (invoice.parent.subscription_details.subscription
+    e lines[].parent.subscription_item_details.subscription)."""
+    obj = obj or {}
+    if str(obj.get('object')) == 'subscription':
+        return obj.get('id')
+
+    sub_id = obj.get('subscription')
+    if sub_id:
+        return sub_id
+
+    parent = obj.get('parent') or {}
+    sub_id = (parent.get('subscription_details') or {}).get('subscription')
+    if sub_id:
+        return sub_id
+
+    for line in ((obj.get('lines') or {}).get('data') or []):
+        l_sub = ((line.get('parent') or {}).get('subscription_item_details') or {}).get('subscription')
+        if l_sub:
+            return l_sub
+    return None
+
+
+def _stripe_local_id_from_obj(obj):
+    """Procura o metadata.local_subscription_id em todos os lugares onde a Stripe
+    pode colocá-lo, dependendo do tipo de objeto e da versão da API."""
+    obj = obj or {}
+    parent = obj.get('parent') or {}
+    buckets = [
+        obj.get('metadata') or {},
+        (parent.get('subscription_details') or {}).get('metadata') or {},
+    ]
+    for line in ((obj.get('lines') or {}).get('data') or []):
+        buckets.append(line.get('metadata') or {})
+    for md in buckets:
+        if md.get('local_subscription_id'):
+            return md['local_subscription_id']
+    return obj.get('client_reference_id')
+
+
 def _find_stripe_subscription(obj):
     """Localiza a Subscription local de um objeto de evento da Stripe: primeiro
     pelo provider_subscription_id (sub_... já preenchido), senão pelo
     metadata.local_subscription_id / client_reference_id enviado no checkout."""
-    sub_id = None
-    if str(obj.get('object')) == 'subscription':
-        sub_id = obj.get('id')
-    sub_id = sub_id or obj.get('subscription')
+    sub_id = _stripe_sub_id_from_obj(obj)
     if sub_id:
         found = Subscription.objects(provider_subscription_id=str(sub_id), visible=True).first()
         if found:
             return found
 
-    metadata = obj.get('metadata') or {}
-    local_id = (
-        metadata.get('local_subscription_id')
-        or obj.get('client_reference_id')
-    )
+    local_id = _stripe_local_id_from_obj(obj)
     if local_id:
         try:
             return Subscription.objects(id=local_id, visible=True).first()
@@ -93,8 +128,9 @@ class StripeWebhook(Resource):
                 if obj.get('mode') != 'subscription':
                     return {'message': 'Webhook recebido'}, 200
 
-                stripe_sub_id = obj.get('subscription')
-                subscription.provider_subscription_id = str(stripe_sub_id or subscription.provider_subscription_id)
+                stripe_sub_id = _stripe_sub_id_from_obj(obj)
+                if stripe_sub_id:
+                    subscription.provider_subscription_id = str(stripe_sub_id)
                 subscription.provider_customer_id = obj.get('customer') or subscription.provider_customer_id
 
                 info = StripeService.get_subscription(str(stripe_sub_id)) if stripe_sub_id else None
@@ -126,7 +162,11 @@ class StripeWebhook(Resource):
                 subscription.provider_customer_id = obj.get('customer') or subscription.provider_customer_id
 
                 if sub_status in ('active', 'trialing'):
-                    period_end = _epoch_to_dt(obj.get('current_period_end'))
+                    # na API 2025-10 o current_period_end saiu da subscription e
+                    # passou a ficar em cada item (items.data[].current_period_end).
+                    sub_items = ((obj.get('items') or {}).get('data') or [])
+                    item_period_end = sub_items[0].get('current_period_end') if sub_items else None
+                    period_end = _epoch_to_dt(obj.get('current_period_end') or item_period_end)
                     next_payment_date = period_end or (now + timedelta(days=period_days))
                     subscription.status = 'active'
                     subscription.provider_status = 'succeeded'
@@ -175,7 +215,9 @@ class StripeWebhook(Resource):
                 )
                 line_items = ((obj.get('lines') or {}).get('data') or [])
                 line_period_end = (line_items[0].get('period') or {}).get('end') if line_items else None
-                period_end = _epoch_to_dt(obj.get('period_end') or line_period_end)
+                # o period_end do topo da invoice, em faturas de criação de assinatura,
+                # vem igual ao period_start — prioriza o fim do período da linha.
+                period_end = _epoch_to_dt(line_period_end or obj.get('period_end'))
                 next_payment_date = period_end or (now + timedelta(days=period_days))
                 grace_period_end = next_payment_date + timedelta(days=Config.STRIPE_DAYS_TO_EXPIRE)
 
@@ -185,8 +227,10 @@ class StripeWebhook(Resource):
                 subscription.provider_status = 'succeeded'
                 subscription.failure_message = None
                 subscription.canceled_at = None
-                if not subscription.provider_subscription_id and obj.get('subscription'):
-                    subscription.provider_subscription_id = str(obj.get('subscription'))
+                if not subscription.provider_subscription_id:
+                    recovered = _stripe_sub_id_from_obj(obj)
+                    if recovered:
+                        subscription.provider_subscription_id = str(recovered)
 
                 if not already_registered:
                     amount = obj.get('amount_paid')

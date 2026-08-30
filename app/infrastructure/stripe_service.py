@@ -1,0 +1,296 @@
+import logging
+from typing import Optional, Dict, Any
+
+import stripe
+
+from config import Config
+
+logger = logging.getLogger(__name__)
+
+stripe.api_key = Config.STRIPE_SECRET_KEY
+
+
+def _err(message: str, status: int = 502) -> Dict[str, Any]:
+    """Mesmo contrato de erro do PagarmeService: {'error': True, 'message', 'status'}."""
+    return {'error': True, 'message': message, 'status': status}
+
+
+class StripeService:
+    """Serviço de assinatura recorrente via Stripe (substitui o Mercado Pago).
+
+    Fluxos suportados:
+      * Checkout hospedado (mode=subscription) -> devolve a URL para enviar por
+        WhatsApp/e-mail. A Subscription na Stripe só nasce quando o cliente conclui
+        o pagamento; o webhook checkout.session.completed correlaciona pelo
+        metadata.local_subscription_id.
+      * PaymentIntent/Elements -> cria a Subscription já (estado incomplete) e
+        devolve o client_secret para a tela nativa do app confirmar o cartão.
+
+    Convenção de retorno (igual ao PagarmeService):
+      * dict normalizado em caso de sucesso;
+      * {'error': True, 'message': ..., 'status': ...} em erro da API da Stripe;
+      * None quando a chave não está configurada.
+    """
+
+    # ---------------------------------------------------------------- infra ---
+
+    @staticmethod
+    def _ready() -> bool:
+        if not Config.STRIPE_SECRET_KEY:
+            logger.error("STRIPE_SECRET_KEY not configured")
+            return False
+        # stripe.api_key é setado no import; reforça caso a config mude em runtime.
+        stripe.api_key = Config.STRIPE_SECRET_KEY
+        return True
+
+    @staticmethod
+    def _message(exc: Exception) -> str:
+        return getattr(exc, 'user_message', None) or str(exc)
+
+    # ---------------------------------------------------------------- plans ---
+
+    @staticmethod
+    def create_plan(
+        name: str,
+        amount_cents: int,
+        interval: str = 'month',
+        interval_count: int = 1,
+        trial_period_days: int = 0,
+    ) -> Optional[Dict[str, Any]]:
+        """Cria um Product + Price recorrente. Retorna {'plan_id': price_id} (o
+        price_... é guardado em SubscriptionPlan.provider_plan_id) ou {'error': ...}.
+
+        trial_period_days é aceito só para simetria com os outros provedores; na
+        Stripe o teste grátis é aplicado por assinatura (subscription_data), não no
+        Price — então aqui ele é ignorado."""
+        if not StripeService._ready():
+            return None
+        try:
+            product = stripe.Product.create(name=name)
+            price = stripe.Price.create(
+                product=product.id,
+                unit_amount=int(amount_cents),
+                currency='brl',
+                recurring={'interval': interval, 'interval_count': int(interval_count)},
+            )
+            logger.info(f"[STRIPE] created price {price.id} (product {product.id}) for '{name}'")
+            return {'plan_id': price.id, 'product_id': product.id}
+        except Exception as e:
+            logger.error(f"Error creating Stripe price for '{name}': {StripeService._message(e)}")
+            return _err(StripeService._message(e))
+
+    # --------------------------------------------------------- checkout link ---
+
+    @staticmethod
+    def create_checkout_subscription(
+        price_id: str,
+        customer_email: str,
+        local_subscription_id: str,
+        success_url: str,
+        cancel_url: str,
+        trial_period_days: int = 0,
+        metadata: Optional[Dict] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """POST /v1/checkout/sessions (mode=subscription). Devolve a URL hospedada
+        de checkout. A subscription só existe depois que o cliente paga; o webhook
+        checkout.session.completed traz subscription + metadata."""
+        if not StripeService._ready():
+            return None
+        try:
+            meta = dict(metadata or {})
+            meta['local_subscription_id'] = str(local_subscription_id)
+
+            subscription_data: Dict[str, Any] = {'metadata': meta}
+            if trial_period_days and trial_period_days > 0:
+                subscription_data['trial_period_days'] = int(trial_period_days)
+
+            session = stripe.checkout.Session.create(
+                mode='subscription',
+                line_items=[{'price': price_id, 'quantity': 1}],
+                customer_email=customer_email,
+                client_reference_id=str(local_subscription_id),
+                success_url=success_url,
+                cancel_url=cancel_url,
+                subscription_data=subscription_data,
+                metadata=meta,
+            )
+            logger.info(
+                f"[STRIPE] checkout session {session.id} for local sub {local_subscription_id}"
+            )
+            return {'session_id': session.id, 'url': session.url}
+        except Exception as e:
+            logger.error(f"Error creating Stripe checkout session: {StripeService._message(e)}")
+            return _err(StripeService._message(e))
+
+    # ------------------------------------------------------ elements / PI ---
+
+    @staticmethod
+    def create_subscription_elements(
+        price_id: str,
+        customer_email: str,
+        local_subscription_id: str,
+        trial_period_days: int = 0,
+        metadata: Optional[Dict] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Cria Customer + Subscription (payment_behavior=default_incomplete) e
+        devolve o client_secret para a tela nativa confirmar o pagamento com o
+        Stripe Elements / PaymentSheet."""
+        if not StripeService._ready():
+            return None
+        try:
+            meta = dict(metadata or {})
+            meta['local_subscription_id'] = str(local_subscription_id)
+
+            customer = stripe.Customer.create(email=customer_email, metadata=meta)
+
+            params: Dict[str, Any] = {
+                'customer': customer.id,
+                'items': [{'price': price_id}],
+                'payment_behavior': 'default_incomplete',
+                'payment_settings': {'save_default_payment_method': 'on_subscription'},
+                'expand': ['latest_invoice.payment_intent', 'pending_setup_intent'],
+                'metadata': meta,
+            }
+            if trial_period_days and trial_period_days > 0:
+                params['trial_period_days'] = int(trial_period_days)
+
+            subscription = stripe.Subscription.create(**params)
+
+            client_secret = None
+            invoice = getattr(subscription, 'latest_invoice', None)
+            if invoice and getattr(invoice, 'payment_intent', None):
+                client_secret = invoice.payment_intent.client_secret
+            if not client_secret and getattr(subscription, 'pending_setup_intent', None):
+                client_secret = subscription.pending_setup_intent.client_secret
+
+            logger.info(
+                f"[STRIPE] subscription {subscription.id} (elements) for local sub {local_subscription_id}"
+            )
+            return {
+                'subscription_id': subscription.id,
+                'client_secret': client_secret,
+                'customer_id': customer.id,
+                'publishable_key': Config.STRIPE_PUBLISHABLE_KEY,
+                'status': subscription.status,
+            }
+        except Exception as e:
+            logger.error(f"Error creating Stripe subscription (elements): {StripeService._message(e)}")
+            return _err(StripeService._message(e))
+
+    # -------------------------------------------------------- subscriptions ---
+
+    @staticmethod
+    def _normalize_subscription(sub) -> Dict[str, Any]:
+        items = (sub.get('items') or {}).get('data') or []
+        first = items[0] if items else {}
+        return {
+            'id': sub.get('id'),
+            'status': sub.get('status'),
+            'customer_id': sub.get('customer'),
+            'price_id': (first.get('price') or {}).get('id'),
+            'item_id': first.get('id'),
+            'current_period_end': sub.get('current_period_end'),  # epoch seconds
+            'cancel_at_period_end': sub.get('cancel_at_period_end'),
+        }
+
+    @staticmethod
+    def get_subscription(subscription_id: str) -> Optional[Dict[str, Any]]:
+        """GET /v1/subscriptions/{id} — dados normalizados da assinatura."""
+        if not StripeService._ready():
+            return None
+        try:
+            sub = stripe.Subscription.retrieve(subscription_id)
+            return StripeService._normalize_subscription(sub)
+        except Exception as e:
+            logger.error(f"Error fetching Stripe subscription {subscription_id}: {StripeService._message(e)}")
+            return None
+
+    @staticmethod
+    def update_subscription_price(
+        subscription_id: str,
+        new_price_id: str,
+        proration_behavior: str = 'none',
+    ) -> Optional[Dict[str, Any]]:
+        """Troca o Price da assinatura sem re-autorização do cliente
+        (PUT no item da subscription)."""
+        if not StripeService._ready():
+            return None
+        try:
+            sub = stripe.Subscription.retrieve(subscription_id)
+            items = (sub.get('items') or {}).get('data') or []
+            if not items:
+                logger.error(f"Stripe subscription {subscription_id} has no items to update")
+                return None
+            item_id = items[0]['id']
+            updated = stripe.Subscription.modify(
+                subscription_id,
+                items=[{'id': item_id, 'price': new_price_id}],
+                proration_behavior=proration_behavior,
+            )
+            return StripeService._normalize_subscription(updated)
+        except Exception as e:
+            logger.error(f"Error updating Stripe subscription {subscription_id}: {StripeService._message(e)}")
+            return None
+
+    @staticmethod
+    def cancel_subscription(subscription_id: str) -> bool:
+        """DELETE /v1/subscriptions/{id} — só retorna True se a Stripe confirmar
+        status 'canceled' (mesma cautela dos outros services)."""
+        if not StripeService._ready():
+            return False
+        try:
+            result = stripe.Subscription.cancel(subscription_id)
+            if result.get('status') != 'canceled':
+                logger.error(
+                    f"Stripe did not confirm cancellation for {subscription_id}: "
+                    f"got status={result.get('status')!r}"
+                )
+                return False
+            logger.info(f"Canceled Stripe subscription: {subscription_id}")
+            return True
+        except Exception as e:
+            msg = StripeService._message(e)
+            # Assinatura já cancelada / inexistente -> tratamos como sucesso idempotente.
+            if 'No such subscription' in msg or 'already canceled' in msg:
+                logger.warning(f"Stripe cancel {subscription_id}: {msg} (tratado como já cancelada)")
+                return True
+            logger.error(f"Error canceling Stripe subscription {subscription_id}: {msg}")
+            return False
+
+    # -------------------------------------------------------------- invoices ---
+
+    @staticmethod
+    def get_invoice(invoice_id: str) -> Optional[Dict[str, Any]]:
+        """GET /v1/invoices/{id} — dados normalizados de uma fatura recorrente."""
+        if not StripeService._ready():
+            return None
+        try:
+            inv = stripe.Invoice.retrieve(invoice_id)
+            paid_at = (inv.get('status_transitions') or {}).get('paid_at')
+            return {
+                'id': inv.get('id'),
+                'status': inv.get('status'),
+                'amount': (inv.get('amount_paid') or 0) / 100.0,
+                'currency': (inv.get('currency') or 'brl').upper(),
+                'paid_at': paid_at,  # epoch seconds
+                'subscription_id': inv.get('subscription'),
+            }
+        except Exception as e:
+            logger.error(f"Error fetching Stripe invoice {invoice_id}: {StripeService._message(e)}")
+            return None
+
+    # -------------------------------------------------------------- webhook ---
+
+    @staticmethod
+    def construct_webhook_event(payload: bytes, sig_header: str) -> Optional[Dict[str, Any]]:
+        """Valida a assinatura do header Stripe-Signature e devolve o evento.
+        Retorna None se o secret não estiver configurado ou a assinatura for inválida."""
+        secret = Config.STRIPE_WEBHOOK_SECRET
+        if not secret:
+            logger.warning("STRIPE_WEBHOOK_SECRET not configured - rejecting webhook")
+            return None
+        try:
+            return stripe.Webhook.construct_event(payload, sig_header, secret)
+        except Exception as e:
+            logger.error(f"Invalid Stripe webhook signature: {StripeService._message(e)}")
+            return None

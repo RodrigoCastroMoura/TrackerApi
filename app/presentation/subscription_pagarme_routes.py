@@ -4,10 +4,11 @@ from app.domain.models import (
     Customer,
     Subscription,
     SubscriptionPlan,
-    to_mercadopago_frequency,
+    to_provider_frequency,
 )
 from app.infrastructure.pagarme_service import PagarmeService
 from app.presentation.auth_routes import customer_token_required
+from bson import ObjectId
 from datetime import datetime, timezone
 import logging
 from config import Config
@@ -29,7 +30,7 @@ def _amount_cents(amount: float) -> int:
 
 
 def _resolve_plan(plan_id_input, company_id):
-    """Aceita ObjectId de 24 chars ou o provider_plan_id (mesma regra do MP)."""
+    """Aceita ObjectId de 24 chars ou o provider_plan_id (mesma regra da Stripe)."""
     plan = None
     if plan_id_input and len(plan_id_input) == 24:
         try:
@@ -63,7 +64,7 @@ def _require_pagarme_plan(plan):
     if existing and not existing.startswith('plan_'):
         return None, ({
             'message': 'Este plano está vinculado a outro provedor de pagamento '
-                       '(Mercado Pago). Use um plano criado em /api/subscription-plans-pagarme.'
+                       '(Stripe). Use um plano criado em /api/subscription-plans-pagarme.'
         }, 409)
     return None, ({
         'message': 'Plano ainda não sincronizado com o Pagar.me. Crie-o em '
@@ -100,14 +101,34 @@ class SubscriptionPagarmeResource(Resource):
             if err:
                 return err
 
-            mp_frequency, mp_frequency_type = to_mercadopago_frequency(
+            mp_frequency, mp_frequency_type = to_provider_frequency(
                 plan.frequency, plan.frequency_type
             )
 
-            # Cria a Subscription local ANTES do payment link para ter o id de
-            # correlação (metadata.local_subscription_id). O provider_subscription_id
-            # (id sub_... do Pagar.me) é preenchido pelo webhook subscription.created.
+            # 1º cria o checkout no Pagar.me; só grava a Subscription na base se der
+            # certo. O id local é gerado agora (sem persistir) para servir de chave
+            # de correlação no metadata do payment link — o webhook subscription.created
+            # usa esse local_subscription_id e preenche o provider_subscription_id (sub_...).
+            local_id = ObjectId()
+
+            link = PagarmeService.create_subscription_payment_link(
+                plan_id=plan_id,
+                local_subscription_id=str(local_id),
+                customer_id=str(current_customer.id),
+                company_id=str(current_customer.company_id.id),
+            )
+            if not link or link.get('error'):
+                motivo = (link or {}).get('message') or 'serviço indisponível no momento'
+                logger.warning(
+                    f"Falha ao criar checkout no Pagar.me para {current_customer.email}: {motivo}"
+                )
+                return {
+                    'message': f'Não foi possível iniciar a assinatura no Pagar.me ({motivo}). '
+                               f'A assinatura não foi criada — tente novamente em instantes.'
+                }, 502
+
             subscription = Subscription(
+                id=local_id,
                 customer_id=current_customer,
                 company_id=current_customer.company_id,
                 provider_plan_id=plan_id,
@@ -118,26 +139,10 @@ class SubscriptionPagarmeResource(Resource):
                 billing_cycle=mp_frequency_type,
                 frequency=mp_frequency,
                 currency='BRL',
+                payment_url=link['url'],
                 created_by=None,
                 updated_by=None,
             )
-            subscription.save()
-
-            link = PagarmeService.create_subscription_payment_link(
-                plan_id=plan_id,
-                local_subscription_id=str(subscription.id),
-                customer_id=str(current_customer.id),
-                company_id=str(current_customer.company_id.id),
-            )
-            if not link or link.get('error'):
-                # Evita Subscription órfã se o Pagar.me falhar
-                subscription.visible = False
-                subscription.status = 'canceled'
-                subscription.save()
-                msg = link.get('message', '') if link else ''
-                return {'message': msg or 'Erro ao criar link de pagamento no Pagar.me'}, 502
-
-            subscription.payment_url = link['url']
             subscription.save()
 
             logger.info(
@@ -200,7 +205,7 @@ class SubscriptionPagarmeResource(Resource):
             if err:
                 return err
 
-            mp_frequency, mp_frequency_type = to_mercadopago_frequency(
+            mp_frequency, mp_frequency_type = to_provider_frequency(
                 new_plan.frequency, new_plan.frequency_type
             )
             was_canceled = existing.status == 'canceled'

@@ -19,13 +19,13 @@ from mongoengine import connect
 connect(host=os.environ.get('MONGODB_URI'))
 
 from app.domain.models import Subscription, Customer
-from app.infrastructure.mercadopago_service import MercadoPagoService
+from app.infrastructure.stripe_service import StripeService
+from config import Config
 
 
 def cancelar_assinaturas(email: str = None, todos: bool = False):
-    sdk = MercadoPagoService.get_sdk()
-    if not sdk:
-        print('ERRO: MERCADOPAGO_ACCESS_TOKEN não configurado.')
+    if not Config.STRIPE_SECRET_KEY:
+        print('ERRO: STRIPE_SECRET_KEY não configurada.')
         sys.exit(1)
 
     if todos:
@@ -51,28 +51,18 @@ def cancelar_assinaturas(email: str = None, todos: bool = False):
     erros = 0
 
     for sub in subs:
-        mp_id = sub.provider_subscription_id
-        print(f'[{sub.id}] status={sub.status} | mp_id={mp_id or "(sem MP id)"}')
+        stripe_id = sub.provider_subscription_id
+        print(f'[{sub.id}] status={sub.status} | stripe_id={stripe_id or "(sem Stripe id)"}')
 
-        if mp_id:
-            try:
-                resp = sdk.preapproval().update(mp_id, {'status': 'cancelled'})
-                http = resp.get('status')
-                if http in [200, 201]:
-                    print(f'  → Mercado Pago: cancelada ✓')
-                    canceladas += 1
-                elif http == 400:
-                    msg = resp.get('response', {}).get('message', 'bad request')
-                    print(f'  → Mercado Pago: já cancelada ou inválida ({msg})')
-                    canceladas += 1
-                else:
-                    print(f'  → Mercado Pago: HTTP {http}')
-                    erros += 1
-            except Exception as e:
-                print(f'  → Mercado Pago: erro — {e}')
+        if stripe_id:
+            if StripeService.cancel_subscription(stripe_id):
+                print(f'  → Stripe: cancelada ✓')
+                canceladas += 1
+            else:
+                print(f'  → Stripe: falha ao cancelar')
                 erros += 1
         else:
-            print(f'  → Sem MP id, pulando cancelamento no MP')
+            print(f'  → Sem Stripe id, pulando cancelamento na Stripe')
             canceladas += 1
 
         sub.status = 'canceled'

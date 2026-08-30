@@ -20,7 +20,7 @@ PyPDF2
 pytesseract
 reportlab
 requests
-mercadopago
+stripe
 Flask-Dance
 Flask-Login
 Flask-SQLAlchemy

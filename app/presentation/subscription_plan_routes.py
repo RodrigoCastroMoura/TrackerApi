@@ -1,8 +1,8 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import SubscriptionPlan, Company, FREQUENCY_TYPES, to_mercadopago_frequency
+from app.domain.models import SubscriptionPlan, Company, FREQUENCY_TYPES, to_provider_interval
 from app.presentation.auth_routes import token_required, require_permission
-from app.infrastructure.mercadopago_service import MercadoPagoService
+from app.infrastructure.stripe_service import StripeService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -99,16 +99,21 @@ class SubscriptionPlanListResource(Resource):
             if frequency_type is None:
                 return {'message': f"frequency_type inválido: {data.get('frequency_type')}. Use days, weeks, months ou years."}, 400
 
-            mp_frequency, mp_frequency_type = to_mercadopago_frequency(frequency, frequency_type)
+            interval_count, interval = to_provider_interval(frequency, frequency_type)
 
-            mp_result = MercadoPagoService.create_subscription_plan(
-                plan_name=data['name'],
-                amount=data['amount'],
-                frequency=mp_frequency,
-                frequency_type=mp_frequency_type
+            stripe_result = StripeService.create_plan(
+                name=data['name'],
+                amount_cents=int(round(data['amount'] * 100)),
+                interval=interval,
+                interval_count=interval_count,
+                trial_period_days=data.get('free_days', 0) or 0,
             )
 
-            mp_plan_id = mp_result.get('plan_id') if mp_result else None
+            provider_plan_id = (
+                stripe_result.get('plan_id')
+                if stripe_result and not stripe_result.get('error')
+                else None
+            )
 
             plan = SubscriptionPlan(
                 company_id=current_user.company_id,
@@ -122,16 +127,16 @@ class SubscriptionPlanListResource(Resource):
                 max_vehicles=data.get('max_vehicles'),
                 free_days=data.get('free_days', 0),
                 is_active=data.get('is_active', True),
-                provider_plan_id=mp_plan_id,
+                provider_plan_id=provider_plan_id,
                 created_by=current_user,
                 updated_by=current_user
             )
             plan.save()
 
-            if mp_plan_id:
-                logger.info(f"Mercado Pago plan created: {mp_plan_id} for plan {plan.name}")
+            if provider_plan_id:
+                logger.info(f"Stripe price created: {provider_plan_id} for plan {plan.name}")
             else:
-                logger.warning(f"Could not create Mercado Pago plan for {plan.name} — saved locally only")
+                logger.warning(f"Could not create Stripe price for {plan.name} — saved locally only")
 
             logger.info(f"Subscription plan created: {plan.name} by user {current_user.email}")
 

@@ -1,208 +1,208 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import Customer, Subscription, SubscriptionPlan, to_mercadopago_frequency
-from app.infrastructure.mercadopago_service import MercadoPagoService
+from app.domain.models import (
+    Customer,
+    Subscription,
+    SubscriptionPlan,
+    to_provider_frequency,
+    to_provider_interval,
+)
+from app.infrastructure.stripe_service import StripeService
 from app.presentation.auth_routes import customer_token_required
-from mongoengine import DoesNotExist
-from datetime import datetime, timedelta, timezone
+from bson import ObjectId
+from datetime import datetime, timezone
 import logging
 from config import Config
 
 logger = logging.getLogger(__name__)
 
-api = Namespace('subscriptions', description='Operações de assinatura e pagamento com Mercado Pago')
+api = Namespace('subscriptions', description='Operações de assinatura e pagamento com Stripe')
 
-# Margem de segurança para start_date "imediato": o Mercado Pago rejeita
-# auto_recurring.start_date se, no instante em que a requisição chega lá,
-# já estiver no passado. Calcular "agora" sem nenhuma folga faz a própria
-# latência de rede até o MP invalidar o campo (erro "cannot be a past date").
-_MP_START_DATE_BUFFER = timedelta(minutes=5)
 
-def _mp_start_date(delay: timedelta = timedelta()) -> str:
-    """
-    Data/hora atual deslocada por `delay`, formatada no padrão ISO 8601 exigido
-    pelo Mercado Pago (com milissegundos e offset), usada como
-    auto_recurring.start_date. Sem esse campo o MP só cobra a partir do próximo
-    ciclo depois da autorização.
-    """
-    when = datetime.now(timezone.utc) + delay
-    return when.strftime('%Y-%m-%dT%H:%M:%S.000+00:00')
+def _amount_cents(amount) -> int:
+    return int(round((amount or 0) * 100))
 
-def _mp_start_date_now() -> str:
-    return _mp_start_date(_MP_START_DATE_BUFFER)
 
-def _first_charge_start_date(free_days: int) -> str:
-    """
-    Plano sem dias grátis (free_days=0 ou None): cobrança imediata (com margem
-    de segurança), assim que o cliente autorizar. Plano com free_days>0: adia a
-    primeira cobrança por esse número de dias, seguindo o valor configurado no
-    plano em vez de uma regra fixa por frequency/frequency_type.
-    """
-    if free_days and free_days > 0:
-        return _mp_start_date(timedelta(days=free_days))
-    return _mp_start_date_now()
+def _resolve_plan(plan_id_input, company_id):
+    """Aceita ObjectId de 24 chars ou o provider_plan_id (price_... da Stripe)."""
+    plan = None
+    if plan_id_input and len(plan_id_input) == 24:
+        try:
+            plan = SubscriptionPlan.objects(
+                id=plan_id_input, company_id=company_id, is_active=True, visible=True
+            ).first()
+        except Exception:
+            plan = None
+    if not plan:
+        plan = SubscriptionPlan.objects(
+            provider_plan_id=plan_id_input,
+            company_id=company_id,
+            is_active=True,
+            visible=True,
+        ).first()
+    return plan
+
+
+def _ensure_stripe_price(plan):
+    """Garante que o SubscriptionPlan tenha um Price na Stripe (provider_plan_id
+    price_...). Cria sob demanda, como o fluxo do Mercado Pago fazia. Retorna
+    (price_id, None) ou (None, (body, status))."""
+    price_id = plan.provider_plan_id
+    if price_id and price_id.startswith('price_'):
+        return price_id, None
+
+    interval_count, interval = to_provider_interval(plan.frequency, plan.frequency_type)
+    result = StripeService.create_plan(
+        name=plan.name,
+        amount_cents=_amount_cents(plan.amount),
+        interval=interval,
+        interval_count=interval_count,
+        trial_period_days=plan.free_days or 0,
+    )
+    if not result or result.get('error'):
+        motivo = (result or {}).get('message') or 'serviço indisponível no momento'
+        return None, ({'message': f'Erro ao criar plano de assinatura na Stripe ({motivo})'}, 502)
+
+    price_id = result['plan_id']
+    plan.provider_plan_id = price_id
+    plan.save()
+    return price_id, None
+
 
 subscription_create_model = api.model('SubscriptionCreate', {
     'plan_id': fields.String(required=True, description='ID do plano de assinatura cadastrado'),
 })
 
+
 @api.route('/')
 class SubscriptionResource(Resource):
-    
+
     @api.doc('create_subscription')
     @api.expect(subscription_create_model)
     @customer_token_required
     def post(self, current_customer):
-        """Criar assinatura a partir de um plano cadastrado"""
+        """Criar assinatura a partir de um plano cadastrado (checkout hospedado da Stripe)"""
         try:
-            data = request.get_json()
-            
+            data = request.get_json() or {}
+
             if not data.get('plan_id'):
                 return {'message': 'Campo plan_id é obrigatório'}, 400
-            
-            # Step 1: Fetch subscription plan — aceita ObjectId do banco ou provider_plan_id
-            plan_id_input = data['plan_id']
-            plan = None
 
-            if len(plan_id_input) == 24:
-                # Formato ObjectId do MongoDB
-                try:
-                    plan = SubscriptionPlan.objects(
-                        id=plan_id_input,
-                        company_id=current_customer.company_id,
-                        is_active=True,
-                        visible=True
-                    ).first()
-                except Exception:
-                    pass
-
-            if not plan:
-                # Tenta pelo provider_plan_id (ID do Mercado Pago)
-                plan = SubscriptionPlan.objects(
-                    provider_plan_id=plan_id_input,
-                    company_id=current_customer.company_id,
-                    is_active=True,
-                    visible=True
-                ).first()
-
+            plan = _resolve_plan(data['plan_id'], current_customer.company_id)
             if not plan:
                 return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
 
-            # Step 2: Create subscription plan on Mercado Pago if not already created
-            mp_frequency, mp_frequency_type = to_mercadopago_frequency(plan.frequency, plan.frequency_type)
-            mp_plan_id = plan.provider_plan_id
+            price_id, err = _ensure_stripe_price(plan)
+            if err:
+                return err
 
-            if not mp_plan_id:
-                mp_plan = MercadoPagoService.create_subscription_plan(
-                    plan_name=plan.name,
-                    amount=plan.amount,
-                    frequency=mp_frequency,
-                    frequency_type=mp_frequency_type
-                )
-
-                if not mp_plan:
-                    return {'message': 'Erro ao criar plano de assinatura no Mercado Pago'}, 500
-
-                mp_plan_id = mp_plan['plan_id']
-                plan.provider_plan_id = mp_plan_id
-                plan.save()
-            
-            # Bloqueia se já tem assinatura ativa
+            # Bloqueia se já tem assinatura ativa/pendente de pagamento
             active_subscription = Subscription.objects(
-                customer_id=current_customer.id,
-                visible=True
+                customer_id=current_customer.id, visible=True
             ).first()
 
             if active_subscription and active_subscription.status in ['active', 'pendingPayment']:
                 return {'message': 'Já existe uma assinatura ativa ou pendente para este cliente'}, 400
 
-            # Step 3: Create pending subscription — generates payment link for the customer
-            mp_subscription = MercadoPagoService.create_pending_subscription(
-                reason=plan.name,
-                payer_email=current_customer.email,
-                amount=plan.amount,
-                frequency=mp_frequency,
-                frequency_type=mp_frequency_type,
-                back_url=Config.MERCADOPAGO_URL_RETURN,
-                external_reference=str(current_customer.id),
+            frequency, billing_cycle = to_provider_frequency(plan.frequency, plan.frequency_type)
+
+            # O id local é gerado agora (sem persistir se ainda não existir doc) para
+            # servir de chave de correlação no metadata do checkout — o webhook
+            # checkout.session.completed usa esse local_subscription_id e preenche o
+            # provider_subscription_id (sub_...).
+            local_id = active_subscription.id if (
+                active_subscription and active_subscription.status in ['canceled', 'pending']
+            ) else ObjectId()
+
+            session = StripeService.create_checkout_subscription(
+                price_id=price_id,
+                customer_email=current_customer.email,
+                local_subscription_id=str(local_id),
+                success_url=Config.STRIPE_SUCCESS_URL,
+                cancel_url=Config.STRIPE_CANCEL_URL,
+                trial_period_days=plan.free_days or 0,
                 metadata={
                     'customer_id': str(current_customer.id),
                     'company_id': str(current_customer.company_id.id),
                     'plan_id': str(plan.id),
                 },
-                start_date=_first_charge_start_date(plan.free_days)
             )
-            if not mp_subscription or mp_subscription.get('error'):
-                mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
-                if 'real or test users' in mp_msg:
-                    return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
-                return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
+            if not session or session.get('error'):
+                motivo = (session or {}).get('message') or 'serviço indisponível no momento'
+                logger.warning(
+                    f"Falha ao criar checkout na Stripe para {current_customer.email}: {motivo}"
+                )
+                return {
+                    'message': f'Não foi possível iniciar a assinatura na Stripe ({motivo}). '
+                               f'A assinatura não foi criada — tente novamente em instantes.'
+                }, 502
 
-            if active_subscription and active_subscription.status in ['canceled','pending']:
-                if active_subscription and active_subscription.status == 'pending':
-                    if active_subscription.provider_subscription_id:
-                        MercadoPagoService.cancel_subscription(active_subscription.provider_subscription_id)
-                # Se a assinatura anterior foi cancelada, podemos reativá-la
-                active_subscription.provider_subscription_id = mp_subscription['subscription_id']
-                active_subscription.provider_plan_id = mp_plan_id
+            if active_subscription and active_subscription.status in ['canceled', 'pending']:
+                # Se havia uma assinatura pendente com sub_... na Stripe, cancela para
+                # não deixar assinatura órfã.
+                if active_subscription.status == 'pending' and active_subscription.provider_subscription_id:
+                    StripeService.cancel_subscription(active_subscription.provider_subscription_id)
+
+                active_subscription.provider_subscription_id = None
+                active_subscription.provider_plan_id = price_id
                 active_subscription.plan_name = plan.name
                 active_subscription.amount = plan.amount
                 active_subscription.status = 'pending'
                 active_subscription.provider_status = 'pending'
-                active_subscription.billing_cycle = mp_frequency_type
-                active_subscription.frequency = mp_frequency
+                active_subscription.billing_cycle = billing_cycle
+                active_subscription.frequency = frequency
                 active_subscription.currency = 'BRL'
-                active_subscription.payment_url = mp_subscription['init_point']
+                active_subscription.payment_url = session['url']
                 active_subscription.failure_message = None
-                active_subscription.cancel_at_period_end = None
+                active_subscription.cancel_at_period_end = False
                 active_subscription.canceled_at = None
                 active_subscription.updated_by = None
 
                 try:
                     active_subscription.save()
-                    logger.info(f"Reactivated canceled subscription {active_subscription.id} for customer {current_customer.email}")
+                    logger.info(
+                        f"Reactivated subscription {active_subscription.id} for customer {current_customer.email}"
+                    )
                     return {
                         'message': 'Assinatura criada com sucesso',
                         'subscription_id': str(active_subscription.id),
                         'plan_name': plan.name,
                         'amount': plan.amount,
                         'billing_cycle': plan.frequency_type,
-                        'payment_url': mp_subscription['init_point'],
-                        'provider_subscription_id': mp_subscription['subscription_id'],
-                        'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
+                        'payment_url': session['url'],
+                        'instructions': 'Acesse o link para autorizar os pagamentos recorrentes'
                     }, 200
                 except Exception as db_error:
                     logger.error(f"DB save failed while reactivating subscription: {db_error}")
-                    MercadoPagoService.cancel_subscription(mp_subscription['subscription_id'])
                     return {'message': 'Erro ao reativar assinatura. Tente novamente.'}, 500
-            
 
-            # Step 4: Salvar no banco — se falhar, cancela no MP para evitar órfão
-            mp_sub_id = mp_subscription['subscription_id']
+            # Cria novo documento de assinatura
             try:
                 subscription = Subscription(
+                    id=local_id,
                     customer_id=current_customer,
                     company_id=current_customer.company_id,
-                    provider_subscription_id=mp_sub_id,
-                    provider_plan_id=mp_plan_id,
+                    provider_plan_id=price_id,
                     plan_name=plan.name,
                     amount=plan.amount,
                     status='pending',
                     provider_status='pending',
-                    billing_cycle=mp_frequency_type,
-                    frequency=mp_frequency,
+                    billing_cycle=billing_cycle,
+                    frequency=frequency,
                     currency='BRL',
-                    payment_url=mp_subscription['init_point'],
+                    payment_url=session['url'],
                     created_by=None,
                     updated_by=None
                 )
                 subscription.save()
             except Exception as db_error:
-                logger.error(f"DB save failed, canceling MP subscription {mp_sub_id}: {db_error}")
-                MercadoPagoService.cancel_subscription(mp_sub_id)
+                logger.error(f"DB save failed for Stripe subscription: {db_error}")
                 return {'message': 'Erro ao salvar assinatura. Tente novamente.'}, 500
 
-            logger.info(f"Subscription created for customer {current_customer.email}, plan: {plan.name}, MP ID: {mp_sub_id}")
+            logger.info(
+                f"Subscription created for customer {current_customer.email}, plan: {plan.name}, "
+                f"local id: {subscription.id}"
+            )
 
             return {
                 'message': 'Assinatura recorrente criada com sucesso',
@@ -210,15 +210,14 @@ class SubscriptionResource(Resource):
                 'plan_name': plan.name,
                 'amount': plan.amount,
                 'billing_cycle': plan.frequency_type,
-                'payment_url': mp_subscription['init_point'],
-                'provider_subscription_id': mp_sub_id,
-                'instructions': 'Acesse o link para autorizar os pagamentos mensais recorrentes'
+                'payment_url': session['url'],
+                'instructions': 'Acesse o link para autorizar os pagamentos recorrentes'
             }, 201
 
         except Exception as e:
             logger.error(f"Error creating subscription: {str(e)}")
             return {'message': 'Erro ao criar assinatura'}, 500
-    
+
     @api.doc('get_my_subscription')
     @customer_token_required
     def get(self, current_customer):
@@ -228,12 +227,12 @@ class SubscriptionResource(Resource):
                 customer_id=current_customer.id,
                 visible=True
             ).order_by('-created_at').first()
-            
+
             if not subscription:
                 return {'message': 'Nenhuma assinatura encontrada'}, 404
-            
+
             return subscription.to_dict(), 200
-            
+
         except Exception as e:
             logger.error(f"Error getting subscription: {str(e)}")
             return {'message': 'Erro ao consultar assinatura'}, 500
@@ -244,37 +243,15 @@ class SubscriptionResource(Resource):
     def put(self, current_customer):
         """Trocar de plano ou reativar assinatura cancelada"""
         try:
-            data = request.get_json()
+            data = request.get_json() or {}
 
             if not data.get('plan_id'):
                 return {'message': 'Campo plan_id é obrigatório'}, 400
 
-            plan_id_input = data['plan_id']
-            new_plan = None
-
-            if len(plan_id_input) == 24:
-                try:
-                    new_plan = SubscriptionPlan.objects(
-                        id=plan_id_input,
-                        company_id=current_customer.company_id,
-                        is_active=True,
-                        visible=True
-                    ).first()
-                except Exception:
-                    pass
-            
-            if not new_plan:
-                new_plan = SubscriptionPlan.objects(
-                    provider_plan_id=plan_id_input,
-                    company_id=current_customer.company_id,
-                    is_active=True,
-                    visible=True
-                ).first()
-
+            new_plan = _resolve_plan(data['plan_id'], current_customer.company_id)
             if not new_plan:
                 return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
 
-            # Busca a assinatura existente
             existing = Subscription.objects(
                 customer_id=current_customer.id,
                 status__in=['active', 'canceled'],
@@ -284,84 +261,70 @@ class SubscriptionResource(Resource):
             if not existing:
                 return {'message': 'Nenhuma assinatura encontrada. Crie uma assinatura primeiro.'}, 404
 
-            # new_plan.frequency/frequency_type usam o vocabulário amigável do domínio
-            # (days/weeks/months/years); o Mercado Pago só aceita days/months.
-            mp_new_frequency, mp_new_frequency_type = to_mercadopago_frequency(new_plan.frequency, new_plan.frequency_type)
-            mp_plan_id = new_plan.provider_plan_id
+            price_id, err = _ensure_stripe_price(new_plan)
+            if err:
+                return err
+
+            frequency, billing_cycle = to_provider_frequency(new_plan.frequency, new_plan.frequency_type)
             was_canceled = existing.status == 'canceled'
 
             if was_canceled:
-                # Subscription cancelada → cria nova preapproval (cliente precisa re-autorizar).
-                # start_date=agora garante que a cobrança aconteça assim que o cliente
-                # reautorizar, em vez de só no próximo ciclo.
-                mp_subscription = MercadoPagoService.create_pending_subscription(
-                    reason=new_plan.name,
-                    payer_email=current_customer.email,
-                    amount=new_plan.amount,
-                    frequency=mp_new_frequency,
-                    frequency_type=mp_new_frequency_type,
-                    back_url=Config.MERCADOPAGO_URL_RETURN,
-                    external_reference=str(current_customer.id),
+                # Assinatura cancelada -> cliente precisa reautorizar via novo checkout
+                session = StripeService.create_checkout_subscription(
+                    price_id=price_id,
+                    customer_email=current_customer.email,
+                    local_subscription_id=str(existing.id),
+                    success_url=Config.STRIPE_SUCCESS_URL,
+                    cancel_url=Config.STRIPE_CANCEL_URL,
+                    trial_period_days=new_plan.free_days or 0,
                     metadata={
                         'customer_id': str(current_customer.id),
                         'company_id': str(current_customer.company_id.id),
                         'plan_id': str(new_plan.id),
                     },
-                    start_date=_mp_start_date_now()
                 )
+                if not session or session.get('error'):
+                    motivo = (session or {}).get('message') or 'serviço indisponível no momento'
+                    return {'message': f'Erro ao criar checkout na Stripe ({motivo})'}, 502
 
-                if not mp_subscription or mp_subscription.get('error'):
-                    mp_msg = mp_subscription.get('message', '') if mp_subscription else ''
-                    if 'real or test users' in mp_msg:
-                        return {'message': 'Erro de ambiente: no modo sandbox o email do cliente deve ser de um usuário de teste do Mercado Pago. Em produção use o token APP- e emails reais.', 'mp_error': mp_msg}, 400
-                    return {'message': mp_msg or 'Erro ao criar assinatura no Mercado Pago'}, 400
-
-                new_mp_sub_id = mp_subscription['subscription_id']
-                new_payment_url = mp_subscription['init_point']
+                existing.provider_subscription_id = None
+                existing.payment_url = session['url']
+                existing.status = 'pending'
+                existing.provider_status = 'pending'
                 requires_authorization = True
-
             else:
-                # Subscription ativa/pendente → atualiza a preapproval existente no MP
+                # Assinatura ativa -> troca o Price sem reautorização
                 if not existing.provider_subscription_id:
-                    return {'message': 'ID da assinatura no Mercado Pago não encontrado'}, 400
+                    return {'message': 'ID da assinatura na Stripe ainda não disponível'}, 400
 
-                mp_updated = MercadoPagoService.update_subscription(
+                updated = StripeService.update_subscription_price(
                     subscription_id=existing.provider_subscription_id,
-                    plan_name=new_plan.name,
-                    amount=new_plan.amount
+                    new_price_id=price_id,
                 )
-                
-                if not mp_updated:
-                    return {'message': 'Erro ao atualizar assinatura no Mercado Pago'}, 500
+                if not updated:
+                    return {'message': 'Erro ao atualizar assinatura na Stripe'}, 502
 
-                new_mp_sub_id = existing.provider_subscription_id
-                new_payment_url = existing.payment_url
                 requires_authorization = False
-
                 customer = Customer.objects(id=current_customer.id).first()
                 customer.can_change_plan = False
                 customer.save()
 
-            # Atualiza o mesmo documento de assinatura no banco
-            existing.provider_subscription_id = new_mp_sub_id
-            existing.provider_plan_id = mp_plan_id
+            existing.provider_plan_id = price_id
             existing.plan_name = new_plan.name
             existing.amount = new_plan.amount
-            existing.billing_cycle = mp_new_frequency_type
-            existing.frequency = mp_new_frequency
+            existing.billing_cycle = billing_cycle
+            existing.frequency = frequency
             existing.currency = 'BRL'
-            existing.payment_url = new_payment_url
-            existing.status = 'pending' if was_canceled else existing.status
-            existing.provider_status = 'pending' if was_canceled else existing.provider_status
             existing.failure_message = None
             existing.cancel_at_period_end = False
             existing.canceled_at = None
             existing.updated_by = None
-
             existing.save()
 
             action = 'reativada' if was_canceled else 'atualizada'
-            logger.info(f"Subscription {action} for customer {current_customer.email}, plan: {new_plan.name}, MP ID: {new_mp_sub_id}")
+            logger.info(
+                f"Subscription {action} for customer {current_customer.email}, plan: {new_plan.name}"
+            )
 
             response_body = {
                 'message': f'Assinatura {action} com sucesso.',
@@ -369,12 +332,11 @@ class SubscriptionResource(Resource):
                 'plan_name': new_plan.name,
                 'amount': new_plan.amount,
                 'billing_cycle': new_plan.frequency_type,
-                'provider_subscription_id': new_mp_sub_id,
                 'requires_authorization': requires_authorization,
             }
 
             if requires_authorization:
-                response_body['payment_url'] = new_payment_url
+                response_body['payment_url'] = existing.payment_url
                 response_body['message'] += ' Acesse o link para autorizar os pagamentos.'
 
             return response_body, 200
@@ -382,6 +344,122 @@ class SubscriptionResource(Resource):
         except Exception as e:
             logger.error(f"Error updating subscription: {str(e)}")
             return {'message': 'Erro ao atualizar assinatura'}, 500
+
+
+@api.route('/elements')
+class SubscriptionElements(Resource):
+
+    @api.doc('create_subscription_elements')
+    @api.expect(subscription_create_model)
+    @customer_token_required
+    def post(self, current_customer):
+        """Criar assinatura para a tela nativa do app (Stripe Elements / PaymentSheet).
+
+        Devolve client_secret + publishable_key. A Subscription na Stripe já nasce
+        aqui (estado incomplete); a ativação vem pelo webhook invoice.paid /
+        customer.subscription.updated após o app confirmar o cartão."""
+        try:
+            data = request.get_json() or {}
+
+            if not data.get('plan_id'):
+                return {'message': 'Campo plan_id é obrigatório'}, 400
+
+            plan = _resolve_plan(data['plan_id'], current_customer.company_id)
+            if not plan:
+                return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
+
+            price_id, err = _ensure_stripe_price(plan)
+            if err:
+                return err
+
+            active_subscription = Subscription.objects(
+                customer_id=current_customer.id, visible=True
+            ).first()
+            if active_subscription and active_subscription.status in ['active', 'pendingPayment']:
+                return {'message': 'Já existe uma assinatura ativa ou pendente para este cliente'}, 400
+
+            frequency, billing_cycle = to_provider_frequency(plan.frequency, plan.frequency_type)
+
+            reuse = bool(
+                active_subscription and active_subscription.status in ['canceled', 'pending']
+            )
+            local_id = active_subscription.id if reuse else ObjectId()
+
+            result = StripeService.create_subscription_elements(
+                price_id=price_id,
+                customer_email=current_customer.email,
+                local_subscription_id=str(local_id),
+                trial_period_days=plan.free_days or 0,
+                metadata={
+                    'customer_id': str(current_customer.id),
+                    'company_id': str(current_customer.company_id.id),
+                    'plan_id': str(plan.id),
+                },
+            )
+            if not result or result.get('error'):
+                motivo = (result or {}).get('message') or 'serviço indisponível no momento'
+                logger.warning(
+                    f"Falha ao criar assinatura Elements na Stripe para {current_customer.email}: {motivo}"
+                )
+                return {'message': f'Não foi possível iniciar a assinatura na Stripe ({motivo}).'}, 502
+
+            fields_ = dict(
+                provider_subscription_id=result['subscription_id'],
+                provider_customer_id=result.get('customer_id'),
+                provider_plan_id=price_id,
+                plan_name=plan.name,
+                amount=plan.amount,
+                status='pending',
+                provider_status='pending',
+                billing_cycle=billing_cycle,
+                frequency=frequency,
+                currency='BRL',
+                payment_url=None,
+                failure_message=None,
+                cancel_at_period_end=False,
+                canceled_at=None,
+                updated_by=None,
+            )
+
+            try:
+                if reuse:
+                    for k, v in fields_.items():
+                        setattr(active_subscription, k, v)
+                    subscription = active_subscription
+                else:
+                    subscription = Subscription(
+                        id=local_id,
+                        customer_id=current_customer,
+                        company_id=current_customer.company_id,
+                        created_by=None,
+                        **fields_,
+                    )
+                subscription.save()
+            except Exception as db_error:
+                logger.error(f"DB save failed for Stripe elements subscription: {db_error}")
+                StripeService.cancel_subscription(result['subscription_id'])
+                return {'message': 'Erro ao salvar assinatura. Tente novamente.'}, 500
+
+            logger.info(
+                f"Elements subscription created for customer {current_customer.email}, "
+                f"plan: {plan.name}, Stripe id: {result['subscription_id']}"
+            )
+
+            return {
+                'message': 'Assinatura recorrente criada com sucesso',
+                'subscription_id': str(subscription.id),
+                'provider_subscription_id': result['subscription_id'],
+                'client_secret': result.get('client_secret'),
+                'publishable_key': result.get('publishable_key'),
+                'plan_name': plan.name,
+                'amount': plan.amount,
+                'billing_cycle': plan.frequency_type,
+            }, 201
+
+        except Exception as e:
+            logger.error(f"Error creating elements subscription: {str(e)}")
+            return {'message': 'Erro ao criar assinatura'}, 500
+
 
 @api.route('/status')
 class SubscriptionStatus(Resource):
@@ -415,9 +493,10 @@ class SubscriptionStatus(Resource):
             logger.error(f"Error getting subscription status: {str(e)}")
             return {'message': 'Erro ao consultar status'}, 500
 
+
 @api.route('/cancel')
-class SubscriptionCancel(Resource): 
-    
+class SubscriptionCancel(Resource):
+
     @api.doc('cancel_subscription')
     @customer_token_required
     def post(self, current_customer):
@@ -433,33 +512,35 @@ class SubscriptionCancel(Resource):
 
             if not customer:
                 return {'message': 'Cliente não encontrado'}, 404
-            
+
             if not subscription:
                 return {'message': 'Nenhuma assinatura ativa encontrada'}, 404
-            
+
             if subscription.status == 'canceled':
                 return {'message': 'Assinatura já está cancelada'}, 400
-            
-            # Cancel on Mercado Pago if subscription ID exists
+
+            # Cancela na Stripe se houver ID da assinatura
             if subscription.provider_subscription_id:
-                success = MercadoPagoService.cancel_subscription(subscription.provider_subscription_id)
+                success = StripeService.cancel_subscription(subscription.provider_subscription_id)
                 if not success:
-                    logger.warning(f"Failed to cancel subscription on Mercado Pago: {subscription.provider_subscription_id}")
-            
-            # Mark as canceled
+                    logger.warning(
+                        f"Failed to cancel subscription on Stripe: {subscription.provider_subscription_id}"
+                    )
+
             subscription.status = 'canceled'
             subscription.canceled_at = datetime.now(timezone.utc)
             subscription.save()
-       
+
             logger.info(f"Subscription canceled for customer {current_customer.email}")
-            
+
             return {
                 'message': 'Assinatura cancelada com sucesso'
             }, 200
-            
+
         except Exception as e:
             logger.error(f"Error canceling subscription: {str(e)}")
             return {'message': 'Erro ao cancelar assinatura'}, 500
+
 
 @api.route('/statement')
 class SubscriptionStatement(Resource):

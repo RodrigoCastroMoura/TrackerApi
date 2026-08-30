@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource, fields
-from app.domain.models import SubscriptionPlan, Company, FREQUENCY_TYPES, to_pagarme_interval
+from app.domain.models import SubscriptionPlan, Company, FREQUENCY_TYPES, to_provider_interval
 from app.presentation.auth_routes import token_required, require_permission
 from app.presentation.subscription_plan_routes import parse_frequency
 from app.infrastructure.pagarme_service import PagarmeService
@@ -8,10 +8,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Mesmo contrato (request/response) do namespace subscription-plans do Mercado
-# Pago — a aplicação só precisa trocar o path de /api/subscription-plans para
+# Mesmo contrato (request/response) do namespace subscription-plans (Stripe) — a
+# aplicação só precisa trocar o path de /api/subscription-plans para
 # /api/subscription-plans-pagarme. A única diferença é o provedor onde o plano
-# remoto é criado (Pagar.me em vez de Mercado Pago).
+# remoto é criado (Pagar.me em vez de Stripe).
 api = Namespace('subscription-plans-pagarme', description='Subscription plan management operations (Pagar.me / Stone)')
 
 
@@ -56,9 +56,12 @@ subscription_plan_response = api.model('SubscriptionPlanPagarmeResponse', {
 
 
 def _create_pagarme_plan(plan):
-    """Cria o plano no Pagar.me a partir de um SubscriptionPlan local já salvo.
-    Retorna o plan_id (plan_...) ou None se a chamada falhar."""
-    interval_count, interval = to_pagarme_interval(plan.frequency, plan.frequency_type)
+    """Cria o plano no Pagar.me a partir de um SubscriptionPlan (salvo ou não).
+
+    Retorna (plan_id, None) em caso de sucesso, ou (None, (body, status)) com uma
+    mensagem de erro amigável quando a criação no Pagar.me falha.
+    """
+    interval_count, interval = to_provider_interval(plan.frequency, plan.frequency_type)
     result = PagarmeService.create_plan(
         name=plan.name,
         amount_cents=_amount_cents(plan.amount),
@@ -66,9 +69,16 @@ def _create_pagarme_plan(plan):
         interval_count=interval_count,
         trial_period_days=plan.free_days or 0,
     )
-    if not result or result.get('error'):
-        return None
-    return result.get('plan_id')
+
+    if result and not result.get('error') and result.get('plan_id'):
+        return result['plan_id'], None
+
+    motivo = (result or {}).get('message') or 'serviço indisponível no momento'
+    logger.warning(f"Falha ao criar plano no Pagar.me para '{plan.name}': {motivo}")
+    return None, ({
+        'message': f'Não foi possível criar o plano no Pagar.me ({motivo}). '
+                   f'O plano não foi salvo — verifique os dados e tente novamente.'
+    }, 502)
 
 
 @api.route('/')
@@ -113,6 +123,7 @@ class SubscriptionPlanPagarmeListResource(Resource):
             if frequency_type is None:
                 return {'message': f"frequency_type inválido: {data.get('frequency_type')}. Use days, weeks, months ou years."}, 400
 
+            # Monta o plano em memória (sem persistir) para gerar o payload do Pagar.me.
             plan = SubscriptionPlan(
                 company_id=current_user.company_id,
                 name=data['name'],
@@ -128,16 +139,16 @@ class SubscriptionPlanPagarmeListResource(Resource):
                 created_by=current_user,
                 updated_by=current_user
             )
+
+            # 1º cria no Pagar.me; só grava na base se der certo.
+            provider_plan_id, err = _create_pagarme_plan(plan)
+            if err:
+                return err
+
+            plan.provider_plan_id = provider_plan_id
             plan.save()
 
-            provider_plan_id = _create_pagarme_plan(plan)
-            if provider_plan_id:
-                plan.provider_plan_id = provider_plan_id
-                plan.save()
-                logger.info(f"Pagar.me plan created: {provider_plan_id} for plan {plan.name}")
-            else:
-                logger.warning(f"Could not create Pagar.me plan for {plan.name} — saved locally only")
-
+            logger.info(f"Pagar.me plan created: {provider_plan_id} for plan {plan.name}")
             logger.info(f"Subscription plan created: {plan.name} by user {current_user.email}")
 
             return plan.to_dict(), 201
@@ -173,7 +184,7 @@ class SubscriptionPlanPagarmeResource(Resource):
     def put(self, current_user, plan_id):
         """Update a subscription plan (admin only).
 
-        Igual ao Mercado Pago: atualiza só os campos locais. O plano remoto no
+        Igual ao fluxo da Stripe: atualiza só os campos locais. O plano remoto no
         Pagar.me é imutável em valor/intervalo — troca de valor é feita na
         assinatura."""
         try:
@@ -280,9 +291,9 @@ class SubscriptionPlanPagarmeMaxVehiclesResource(Resource):
 @api.route('/<plan_id>/sync')
 @api.param('plan_id', 'The subscription plan identifier (local)')
 class SubscriptionPlanPagarmeSyncResource(Resource):
-    """Extra (não existe no namespace do Mercado Pago): cria no Pagar.me o plano
-    remoto de um SubscriptionPlan que já existe localmente sem provider_plan_id
-    do Pagar.me. A aplicação pode ignorar este endpoint."""
+    """Extra (não existe no namespace da Stripe): cria no Pagar.me o plano remoto
+    de um SubscriptionPlan que já existe localmente sem provider_plan_id do
+    Pagar.me. A aplicação pode ignorar este endpoint."""
 
     @api.doc('sync_subscription_plan_pagarme', security='Bearer')
     @token_required
@@ -300,13 +311,13 @@ class SubscriptionPlanPagarmeSyncResource(Resource):
                 return plan.to_dict(), 200
             if existing and not existing.startswith('plan_'):
                 return {
-                    'message': 'Este plano já está vinculado a outro provedor (Mercado Pago). '
+                    'message': 'Este plano já está vinculado a outro provedor (Stripe). '
                                'Crie um plano dedicado em POST /api/subscription-plans-pagarme.'
                 }, 409
 
-            provider_plan_id = _create_pagarme_plan(plan)
-            if not provider_plan_id:
-                return {'message': 'Erro ao criar plano no Pagar.me'}, 502
+            provider_plan_id, err = _create_pagarme_plan(plan)
+            if err:
+                return err
 
             plan.provider_plan_id = provider_plan_id
             plan.updated_by = current_user

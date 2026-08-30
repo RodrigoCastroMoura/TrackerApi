@@ -60,22 +60,30 @@ class Config:
     # Rate Limiting Configuration
     RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', os.environ.get('REDIS_URL', 'memory://'))
     
-    # Mercado Pago Webhook Security
-    # IMPORTANT: Configure this in production to validate webhook signatures
-    MERCADOPAGO_WEBHOOK_SECRET = os.environ.get('MERCADOPAGO_WEBHOOK_SECRET')
-    MERCADOPAGO_ACCESS_TOKEN = os.environ.get('MERCADOPAGO_ACCESS_TOKEN')
-    MERCADOPAGO_URL_RETURN = os.environ.get('MERCADOPAGO_URL_RETURN')
-    MERCADOPAGO_DAYS_TO_EXPIRE = int(os.environ.get('MERCADOPAGO_DAYS_TO_EXPIRE', 0))
+    # Stripe - assinatura recorrente (substitui o Mercado Pago).
+    # IMPORTANT: configure STRIPE_WEBHOOK_SECRET em produção para validar a assinatura
+    # do header Stripe-Signature nos webhooks.
+    STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
+    STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY')
+    STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
+    STRIPE_SUCCESS_URL = os.environ.get('STRIPE_SUCCESS_URL')
+    STRIPE_CANCEL_URL = os.environ.get('STRIPE_CANCEL_URL', os.environ.get('STRIPE_SUCCESS_URL'))
+    STRIPE_DAYS_TO_EXPIRE = int(os.environ.get('STRIPE_DAYS_TO_EXPIRE', 0))
 
-    # Pagar.me (Stone) - segundo provedor de assinatura, coexiste com o Mercado Pago.
-    # Sandbox: PAGARME_API_URL=https://sdx-api.pagar.me/core/v5 e chave sk_test_...
+    # Pagar.me (Stone) - segundo provedor de assinatura, coexiste com a Stripe.
+    # Teste e produção usam o mesmo endpoint (https://api.pagar.me/core/v5); o tipo
+    # da chave (sk_test_... x sk_live_...) é que decide simulador x produção.
     PAGARME_SECRET_KEY = os.environ.get('PAGARME_SECRET_KEY')
     PAGARME_API_URL = os.environ.get('PAGARME_API_URL', 'https://api.pagar.me/core/v5')
+    # Base do produto Link de Pagamento/Checkout. Deixe vazio para usar a mesma
+    # base do core; a doc do /paymentlinks sugere host de teste próprio
+    # (https://sdx-api.pagar.me/core/v5) para esse recurso.
+    PAGARME_CHECKOUT_API_URL = os.environ.get('PAGARME_CHECKOUT_API_URL')
     PAGARME_URL_RETURN = os.environ.get('PAGARME_URL_RETURN')
     # Basic Auth do webhook (as credenciais são configuradas no dashboard do Pagar.me)
     PAGARME_WEBHOOK_USER = os.environ.get('PAGARME_WEBHOOK_USER')
     PAGARME_WEBHOOK_PASSWORD = os.environ.get('PAGARME_WEBHOOK_PASSWORD')
-    PAGARME_DAYS_TO_EXPIRE = int(os.environ.get('PAGARME_DAYS_TO_EXPIRE', os.environ.get('MERCADOPAGO_DAYS_TO_EXPIRE', 0)))
+    PAGARME_DAYS_TO_EXPIRE = int(os.environ.get('PAGARME_DAYS_TO_EXPIRE', os.environ.get('STRIPE_DAYS_TO_EXPIRE', 0)))
 
     PASSWORG_CHATBOT_SALT = os.environ.get('PASSWORG_CHATBOT_SALT', 'default_salt_for_chatbot')
 

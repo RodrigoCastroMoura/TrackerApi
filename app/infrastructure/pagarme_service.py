@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 
 PAGARME_SECRET_KEY = Config.PAGARME_SECRET_KEY
 PAGARME_API_URL = (Config.PAGARME_API_URL or 'https://api.pagar.me/core/v5').rstrip('/')
+# Base URL do produto Link de Pagamento / Checkout. A doc de referência do
+# /paymentlinks aponta um host de teste próprio (sdx-api.pagar.me); por padrão
+# usa a mesma base do core, mas pode ser sobrescrita por PAGARME_CHECKOUT_API_URL.
+PAGARME_CHECKOUT_API_URL = (Config.PAGARME_CHECKOUT_API_URL or PAGARME_API_URL).rstrip('/')
 
 # Cabeçalho exigido pela documentação de skill do Pagar.me.
 _USER_AGENT = 'pagarme-skill-generated/1.0'
@@ -18,23 +22,27 @@ _TIMEOUT = 20
 class PagarmeService:
     """Serviço de assinatura recorrente via Pagar.me (Stone).
 
-    Espelha a interface do MercadoPagoService, mas usa a API core v5 do Pagar.me
-    (HTTP Basic Auth com a secret key como usuário e senha vazia). Fluxo de
-    autorização do cliente é via Payment Link hospedado (type=subscription).
+    Usa a API core v5 do Pagar.me (HTTP Basic Auth com a secret key como usuário e
+    senha vazia). Fluxo de autorização do cliente é via Payment Link hospedado
+    (type=subscription).
     """
 
     # ---------------------------------------------------------------- infra ---
 
     @staticmethod
-    def _request(method: str, path: str, body: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
+    def _request(
+        method: str,
+        path: str,
+        body: Optional[Dict] = None,
+        base_url: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Chama a API do Pagar.me. Retorna o JSON de resposta em caso de sucesso,
-        ou {'error': True, 'message': ..., 'status': ...} em caso de erro 4xx/5xx —
-        mesmo contrato do MercadoPagoService.create_pending_subscription."""
+        ou {'error': True, 'message': ..., 'status': ...} em caso de erro 4xx/5xx."""
         if not PAGARME_SECRET_KEY:
             logger.error("PAGARME_SECRET_KEY not configured")
             return None
 
-        url = f"{PAGARME_API_URL}{path}"
+        url = f"{base_url or PAGARME_API_URL}{path}"
         headers = {
             'User-Agent': _USER_AGENT,
             'Content-Type': 'application/json',
@@ -70,6 +78,10 @@ class PagarmeService:
                             f"{k}: {', '.join(v) if isinstance(v, list) else v}"
                             for k, v in errors.items()
                         )
+                if not message and resp.status_code == 401:
+                    message = ('autenticação recusada pelo Pagar.me — verifique se a chave '
+                               'sk_test_/sk_live_ tem permissão e se o produto usado (ex.: Link '
+                               'de Pagamento/Checkout) está habilitado na conta')
                 return {
                     'error': True,
                     'message': message or f'Pagar.me retornou status {resp.status_code}',
@@ -134,7 +146,12 @@ class PagarmeService:
         pagamento; o webhook subscription.created correlaciona pelo metadata."""
         body = {
             'type': 'subscription',
-            'payment_settings': {'accepted_payment_methods': ['credit_card']},
+            'payment_settings': {
+                'accepted_payment_methods': ['credit_card'],
+                # Obrigatório pelo Pagar.me mesmo em subscription. Sem parcelamento
+                # nem split (não suportados em links type=subscription).
+                'credit_card_settings': {'operation_type': 'auth_and_capture'},
+            },
             'cart_settings': {
                 'recurrences': [{'plan_id': plan_id, 'start_in': start_in}]
             },
@@ -148,7 +165,9 @@ class PagarmeService:
         if expires_in:
             body['expires_in'] = int(expires_in)
 
-        resp = PagarmeService._request('POST', '/paymentlinks', body)
+        resp = PagarmeService._request(
+            'POST', '/paymentlinks', body, base_url=PAGARME_CHECKOUT_API_URL
+        )
         if not resp or resp.get('error'):
             return resp
         return {'paymentlink_id': resp.get('id'), 'url': resp.get('url')}
@@ -207,7 +226,7 @@ class PagarmeService:
     @staticmethod
     def cancel_subscription(subscription_id: str) -> bool:
         """DELETE /subscriptions/{id} — só retorna True se o Pagar.me confirmar
-        status 'canceled' (mesma cautela do MercadoPagoService.cancel_subscription)."""
+        status 'canceled'."""
         resp = PagarmeService._request('DELETE', f'/subscriptions/{subscription_id}')
         if not resp or resp.get('error'):
             logger.error(f"Pagar.me cancel error for {subscription_id}: {resp}")

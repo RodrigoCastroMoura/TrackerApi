@@ -5,8 +5,8 @@ from enum import Enum
 from config import Config
 
 # Unidades de frequência de cobrança suportadas em toda a aplicação (plano e assinatura).
-# O Mercado Pago só aceita 'days' e 'months' na API — 'weeks' e 'years' são convertidos
-# para essas duas na fronteira com o MP via to_mercadopago_frequency().
+# O campo Subscription.billing_cycle só aceita 'days' e 'months' — 'weeks' e 'years' são
+# convertidos para essas duas ao persistir a assinatura via to_provider_frequency().
 FREQUENCY_TYPES = ('days', 'weeks', 'months', 'years')
 
 _DAYS_PER_UNIT = {'days': 1, 'weeks': 7, 'months': 30, 'years': 365}
@@ -16,9 +16,10 @@ def period_days_for_frequency(frequency: int, frequency_type: str) -> int:
     frequency = frequency or 1
     return frequency * _DAYS_PER_UNIT.get(frequency_type, 30)
 
-def to_mercadopago_frequency(frequency: int, frequency_type: str) -> tuple:
+def to_provider_frequency(frequency: int, frequency_type: str) -> tuple:
     """Converte (frequency, frequency_type) do domínio — days/weeks/months/years —
-    para o formato aceito pela API do Mercado Pago, que só suporta 'days' e 'months'."""
+    para o par (frequency, billing_cycle) persistido em Subscription, cujo campo
+    billing_cycle só admite 'days' e 'months'."""
     frequency = frequency or 1
     if frequency_type == 'weeks':
         return frequency * 7, 'days'
@@ -26,14 +27,14 @@ def to_mercadopago_frequency(frequency: int, frequency_type: str) -> tuple:
         return frequency * 12, 'months'
     return frequency, frequency_type
 
-# O Pagar.me aceita as quatro unidades no singular (day/week/month/year) + interval_count,
-# então o vocabulário do domínio mapeia 1:1 (sem conversão de semanas/anos como no MP).
-_PAGARME_INTERVAL = {'days': 'day', 'weeks': 'week', 'months': 'month', 'years': 'year'}
+# Stripe e Pagar.me aceitam as quatro unidades no singular (day/week/month/year) +
+# interval_count, então o vocabulário do domínio mapeia 1:1 (sem colapsar semanas/anos).
+_PROVIDER_INTERVAL = {'days': 'day', 'weeks': 'week', 'months': 'month', 'years': 'year'}
 
-def to_pagarme_interval(frequency: int, frequency_type: str) -> tuple:
+def to_provider_interval(frequency: int, frequency_type: str) -> tuple:
     """Converte (frequency, frequency_type) do domínio para (interval_count, interval)
-    no formato do Pagar.me."""
-    return (frequency or 1), _PAGARME_INTERVAL.get(frequency_type, 'month')
+    no formato aceito pela Stripe e pelo Pagar.me."""
+    return (frequency or 1), _PROVIDER_INTERVAL.get(frequency_type, 'month')
 
 class TipoVeiculo(Enum):
     """Vehicle type enum with numeric and string values"""
@@ -390,7 +391,7 @@ class SubscriptionPlan(BaseDocument):
     frequency = IntField(default=1)
     frequency_type = StringField(default='months', choices=list(FREQUENCY_TYPES))
 
-    # ID do plano no provedor de pagamento (Mercado Pago, Pagar.me, ...)
+    # ID do plano no provedor de pagamento (Stripe price_..., Pagar.me plan_..., ...)
     provider_plan_id = StringField(unique=True, sparse=True)
     
     features = ListField(StringField())  # Lista de funcionalidades do plano
@@ -525,7 +526,7 @@ class Subscription(BaseDocument):
     customer_id = ReferenceField('Customer', required=True)
     company_id = ReferenceField('Company', required=True)  # Multi-tenancy
 
-    # Dados do provedor de pagamento (Mercado Pago, Pagar.me, ...) — nomes
+    # Dados do provedor de pagamento (Stripe, Pagar.me, ...) — nomes
     # neutros para padronizar entre meios de pagamento.
     provider_subscription_id = StringField(unique=True, sparse=True)
     provider_customer_id = StringField()
@@ -543,8 +544,8 @@ class Subscription(BaseDocument):
     plan_name = StringField(required=True)  # Nome do plano
     amount = FloatField(required=True)  # Valor mensal em reais
     currency = StringField(default='BRL')
-    billing_cycle = StringField(default='months', choices=['days', 'months'])  # frequency_type já convertido pra API do MP
-    frequency = IntField(default=1)  # frequency já convertido pra API do MP (ex: 7 + billing_cycle='days' = semanal)
+    billing_cycle = StringField(default='months', choices=['days', 'months'])  # frequency_type já normalizado por to_provider_frequency()
+    frequency = IntField(default=1)  # frequency já normalizado por to_provider_frequency() (ex: 7 + billing_cycle='days' = semanal)
 
     # Status and dates
     status = StringField(

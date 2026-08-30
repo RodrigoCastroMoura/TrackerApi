@@ -30,7 +30,7 @@ Preferred communication style: Simple, everyday language.
 ### Data Layer
 - **Database**: MongoDB with MongoEngine ODM.
 - **Connection Strategy**: Resilient connection with retry logic, connection pooling, and timeouts.
-- **Data Models**: Includes `BaseDocument` for audit fields, `Company`, `User`, `Permission`, `Customer`, `Vehicle`, `VehicleData`, `TokenBlacklist`, `UsedLinkToken`. Also includes `Subscription` and `Payment` for Mercado Pago integration.
+- **Data Models**: Includes `BaseDocument` for audit fields, `Company`, `User`, `Permission`, `Customer`, `Vehicle`, `VehicleData`, `TokenBlacklist`, `UsedLinkToken`. Also includes `Subscription` and `Payment` for the Stripe / Pagar.me subscription integration.
 - **Multi-Tenancy**: Data isolation by `company_id` across all primary resources.
 - **Indexing**: Automatic index creation, including TTL indexes for token expiration.
 
@@ -49,7 +49,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Security & Production Readiness
 - Mandatory environment variables: `FLASK_SECRET_KEY`, `MONGODB_URI`.
-- **Webhook Security**: HMAC-SHA256 signature validation for Mercado Pago webhooks using `MERCADOPAGO_WEBHOOK_SECRET`.
+- **Webhook Security**: Stripe-Signature validation for Stripe webhooks using `STRIPE_WEBHOOK_SECRET`; HTTP Basic Auth for Pagar.me webhooks.
 - Production WSGI server: Gunicorn.
 - CORS support with configurable origins.
 - Bootstrap CLI script (`bootstrap.py`) for secure admin creation.
@@ -67,14 +67,14 @@ Preferred communication style: Simple, everyday language.
     - `/api/reports`: Vehicle usage reports (summary, detailed, trips, stops).
     - `/api/subscription-plans`: Subscription plan management (list, create, update, delete).
     - `/api/subscriptions`: Monthly subscription management (create, view, cancel) and payment history (customer-only).
-    - `/api/webhooks/mercadopago`: Mercado Pago payment notification processing.
+    - `/api/webhooks/stripe`: Stripe payment/subscription notification processing.
     - `/api/chatbot/webhook`: WhatsApp chatbot webhook (GET=verification, POST=messages).
 - **Features**: Decorator-based authentication and authorization, multi-tenancy enforcement, consistent error handling, input validation, pagination, and filtering.
 
 ### Configuration Management
 - Environment-based configuration via `config.py`.
 - Critical environment variables: `FLASK_SECRET_KEY`, `MONGODB_URI`.
-- Optional variables for CORS, Rate Limiting, Firebase, Mercado Pago, Email, and Google Maps (`GOOGLE_MAPS_API_KEY`).
+- Optional variables for CORS, Rate Limiting, Firebase, Stripe, Pagar.me, Email, and Google Maps (`GOOGLE_MAPS_API_KEY`).
 
 ### Logging & Monitoring
 - Centralized logging (console + file) with structured format.
@@ -95,7 +95,8 @@ Preferred communication style: Simple, everyday language.
 - **Google Maps Geocoding API**: Premium reverse geocoding service via `googlemaps` library. Higher quality addresses, requires `GOOGLE_MAPS_API_KEY` environment variable. Includes LRU caching and automatic error handling.
 
 ### Payment Gateway
-- **Mercado Pago**: For monthly subscription payment processing, integrated via `mercadopago` SDK. Supports payment links, subscription management, and webhooks.
+- **Stripe**: For recurring subscription payment processing, integrated via the `stripe` SDK. Supports hosted Checkout links (send by WhatsApp/email), a PaymentIntent/Elements flow for the in-app card screen, subscription management, and `Stripe-Signature`-verified webhooks.
+- **Pagar.me (Stone)**: Second recurring-subscription provider, coexisting with Stripe under the `*-pagarme` namespaces.
 
 ### WhatsApp Chatbot
 - **Provider**: WhatsApp Cloud API (Meta).
@@ -113,5 +114,5 @@ Preferred communication style: Simple, everyday language.
 - **Authentication**: PyJWT, Werkzeug.
 - **Storage**: Firebase-admin.
 - **Geocoding**: Geopy (Nominatim), Googlemaps (Google Maps API).
-- **Payment**: Mercadopago.
+- **Payment**: Stripe, Pagar.me (HTTP).
 - **Production Server**: Gunicorn.

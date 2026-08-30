@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Optional, Dict, Any
 
@@ -13,6 +14,23 @@ stripe.api_key = Config.STRIPE_SECRET_KEY
 def _err(message: str, status: int = 502) -> Dict[str, Any]:
     """Mesmo contrato de erro do PagarmeService: {'error': True, 'message', 'status'}."""
     return {'error': True, 'message': message, 'status': status}
+
+
+def _as_dict(obj) -> Dict[str, Any]:
+    """Converte um StripeObject (que no stripe-python 15 NÃO é dict e não suporta
+    .get()) em um dict Python puro e aninhado, para o resto do código usar .get()
+    normalmente."""
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    try:
+        return json.loads(str(obj))
+    except (ValueError, TypeError):
+        try:
+            return dict(obj)
+        except Exception:
+            return {}
 
 
 class StripeService:
@@ -181,6 +199,7 @@ class StripeService:
 
     @staticmethod
     def _normalize_subscription(sub) -> Dict[str, Any]:
+        sub = _as_dict(sub)
         items = (sub.get('items') or {}).get('data') or []
         first = items[0] if items else {}
         return {
@@ -216,7 +235,7 @@ class StripeService:
         if not StripeService._ready():
             return None
         try:
-            sub = stripe.Subscription.retrieve(subscription_id)
+            sub = _as_dict(stripe.Subscription.retrieve(subscription_id))
             items = (sub.get('items') or {}).get('data') or []
             if not items:
                 logger.error(f"Stripe subscription {subscription_id} has no items to update")
@@ -239,7 +258,7 @@ class StripeService:
         if not StripeService._ready():
             return False
         try:
-            result = stripe.Subscription.cancel(subscription_id)
+            result = _as_dict(stripe.Subscription.cancel(subscription_id))
             if result.get('status') != 'canceled':
                 logger.error(
                     f"Stripe did not confirm cancellation for {subscription_id}: "
@@ -265,7 +284,7 @@ class StripeService:
         if not StripeService._ready():
             return None
         try:
-            inv = stripe.Invoice.retrieve(invoice_id)
+            inv = _as_dict(stripe.Invoice.retrieve(invoice_id))
             paid_at = (inv.get('status_transitions') or {}).get('paid_at')
             return {
                 'id': inv.get('id'),
@@ -283,14 +302,16 @@ class StripeService:
 
     @staticmethod
     def construct_webhook_event(payload: bytes, sig_header: str) -> Optional[Dict[str, Any]]:
-        """Valida a assinatura do header Stripe-Signature e devolve o evento.
+        """Valida a assinatura do header Stripe-Signature e devolve o evento como
+        dict Python puro e aninhado (o Event do stripe-python 15 não suporta .get()).
         Retorna None se o secret não estiver configurado ou a assinatura for inválida."""
         secret = Config.STRIPE_WEBHOOK_SECRET
         if not secret:
             logger.warning("STRIPE_WEBHOOK_SECRET not configured - rejecting webhook")
             return None
         try:
-            return stripe.Webhook.construct_event(payload, sig_header, secret)
+            event = stripe.Webhook.construct_event(payload, sig_header, secret)
+            return _as_dict(event)
         except Exception as e:
             logger.error(f"Invalid Stripe webhook signature: {StripeService._message(e)}")
             return None

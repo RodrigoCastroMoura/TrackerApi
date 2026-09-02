@@ -146,8 +146,8 @@ class VehicleTrackingList(Resource):
 
                 location = None
                 if vehicle.get('latitude') and vehicle.get('longitude'):
-                    lat = float(vehicle.get('latitude'))
-                    lng = float(vehicle.get('longitude'))
+                    lat = float(vehicle.latitude)
+                    lng = float(vehicle.longitude)
                 
                 if vehicle.latitude and vehicle.longitude and vehicle.tsusermanu \
                         and vehicle.tsusermanu.date() == datetime.now().date():
@@ -158,7 +158,7 @@ class VehicleTrackingList(Resource):
                         'lat': lat,
                         'lng': lng,
                         'address': address,
-                        'speed': vehicle.get('velocidade',0),
+                        'speed': vehicle.velocidade,
                     }
 
                 vehicle_data = {

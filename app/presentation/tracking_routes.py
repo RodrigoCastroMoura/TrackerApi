@@ -24,7 +24,9 @@ location_model = api.model('Location', {
 
 vehicle_tracking_location_model = api.model('VehicleTrackingLocation', {
     'lat': fields.Float(description='Latitude'),
-    'lng': fields.Float(description='Longitude')
+    'lng': fields.Float(description='Longitude'),
+    'address': fields.String(description='Endereço'),
+    'speed': fields.Float(description='Velocidade em km/h'),
 })
 
 vehicle_tracking_model = api.model('VehicleTracking', {
@@ -143,11 +145,20 @@ class VehicleTrackingList(Resource):
             for vehicle in vehicles:
 
                 location = None
+                if vehicle.get('latitude') and vehicle.get('longitude'):
+                    lat = float(vehicle.get('latitude'))
+                    lng = float(vehicle.get('longitude'))
+                
                 if vehicle.latitude and vehicle.longitude and vehicle.tsusermanu \
                         and vehicle.tsusermanu.date() == datetime.now().date():
+                    geocoding = get_database_geocoding_service()  #get_google_geocoding_service() if vehicle.get('velocidade',0) <= 0 else get_photon_geocoding_service()
+                    address = geocoding.get_address_or_fallback(lat, lng)
+
                     location = {
-                        'lat': float(vehicle.latitude),
-                        'lng': float(vehicle.longitude)
+                        'lat': lat,
+                        'lng': lng,
+                        'address': address,
+                        'speed': vehicle.get('velocidade',0),
                     }
 
                 vehicle_data = {

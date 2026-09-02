@@ -145,7 +145,7 @@ class VehicleTrackingList(Resource):
             for vehicle in vehicles:
 
                 location = None
-                if vehicle.get('latitude') and vehicle.get('longitude'):
+                if vehicle.latitude and vehicle.longitude:
                     lat = float(vehicle.latitude)
                     lng = float(vehicle.longitude)
                 

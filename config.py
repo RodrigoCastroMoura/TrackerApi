@@ -69,6 +69,10 @@ class Config:
     STRIPE_SUCCESS_URL = os.environ.get('STRIPE_SUCCESS_URL')
     STRIPE_CANCEL_URL = os.environ.get('STRIPE_CANCEL_URL', os.environ.get('STRIPE_SUCCESS_URL'))
     STRIPE_DAYS_TO_EXPIRE = int(os.environ.get('STRIPE_DAYS_TO_EXPIRE', 0))
+    # Opcional: fixa a versão da API da Stripe (ex.: '2025-03-31.basil') para o
+    # comportamento não mudar sozinho num upgrade da lib `stripe`. Sem a env var,
+    # usa a versão default da conta/lib.
+    STRIPE_API_VERSION = os.environ.get('STRIPE_API_VERSION') or None
 
     # Pagar.me (Stone) - segundo provedor de assinatura, coexiste com a Stripe.
     # Teste e produção usam o mesmo endpoint (https://api.pagar.me/core/v5); o tipo

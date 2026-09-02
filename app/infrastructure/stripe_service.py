@@ -10,6 +10,65 @@ logger = logging.getLogger(__name__)
 
 stripe.api_key = Config.STRIPE_SECRET_KEY
 
+# Fixa a versão da API se STRIPE_API_VERSION estiver configurado, para o comportamento
+# não mudar sozinho quando a lib `stripe` for atualizada. Sem a env var, usa a versão
+# default da conta/lib (com o fallback de compatibilidade abaixo em create_subscription_elements).
+if getattr(Config, 'STRIPE_API_VERSION', None):
+    stripe.api_version = Config.STRIPE_API_VERSION
+
+
+# Caminhos de expand para pegar o segredo do pagamento da 1ª fatura. O
+# `latest_invoice.payment_intent` só existe na API < 2025-03; nas novas ele é
+# recusado no expand -> _stripe_call_with_expand() derruba os caminhos inválidos e refaz.
+_SECRET_EXPAND = [
+    'latest_invoice.confirmation_secret',  # API 2025-03+ (substitui latest_invoice.payment_intent)
+    'latest_invoice.payment_intent',       # compat API antiga
+    'pending_setup_intent',                # planos com trial (free_days > 0)
+]
+
+
+def _stripe_call_with_expand(fn, *args, expand=None, **kwargs):
+    """Chama fn(*args, expand=[...], **kwargs) e, se a Stripe recusar um caminho de
+    expand (mudança de versão da API), remove o caminho citado no erro e tenta de
+    novo, até sobrar uma lista válida."""
+    paths = list(expand or [])
+    while True:
+        try:
+            return fn(*args, expand=paths, **kwargs) if paths else fn(*args, **kwargs)
+        except Exception as e:
+            # stripe.error.InvalidRequestError não é referenciado direto para não
+            # depender do layout de exceptions de uma versão específica da lib.
+            msg = str(getattr(e, 'user_message', None) or e)
+            is_invalid_request = 'InvalidRequest' in type(e).__name__ or getattr(e, 'code', None) == 'parameter_unknown'
+            bad = next((p for p in paths if p in msg), None)
+            if not bad or not is_invalid_request or 'expand' not in msg.lower():
+                raise
+            paths = [p for p in paths if p != bad]
+            logger.warning(f"[STRIPE] expand '{bad}' recusado pela API; refazendo sem ele")
+
+
+def _client_secret_from_subscription(subscription) -> Optional[str]:
+    """Extrai o client_secret de uma Subscription recém-criada/modificada, cobrindo:
+      * API 2025-03+  -> latest_invoice.confirmation_secret.client_secret
+      * API antiga     -> latest_invoice.payment_intent.client_secret
+      * trial / 1ª fatura R$0 -> pending_setup_intent.client_secret
+    """
+    client_secret = None
+    invoice = getattr(subscription, 'latest_invoice', None)
+    if invoice is not None:
+        conf = getattr(invoice, 'confirmation_secret', None)          # API nova
+        if conf is not None:
+            client_secret = getattr(conf, 'client_secret', None)
+        if not client_secret:                                         # API antiga
+            pi = getattr(invoice, 'payment_intent', None)
+            if pi is not None:
+                client_secret = getattr(pi, 'client_secret', None)
+    if not client_secret:
+        psi = getattr(subscription, 'pending_setup_intent', None)     # trial / R$0
+        if psi is not None:
+            client_secret = getattr(psi, 'client_secret', None)
+    return client_secret
+
 
 def _err(message: str, status: int = 502) -> Dict[str, Any]:
     """Mesmo contrato de erro do PagarmeService: {'error': True, 'message', 'status'}."""
@@ -166,20 +225,22 @@ class StripeService:
                 'items': [{'price': price_id}],
                 'payment_behavior': 'default_incomplete',
                 'payment_settings': {'save_default_payment_method': 'on_subscription'},
-                'expand': ['latest_invoice.payment_intent', 'pending_setup_intent'],
                 'metadata': meta,
             }
             if trial_period_days and trial_period_days > 0:
                 params['trial_period_days'] = int(trial_period_days)
 
-            subscription = stripe.Subscription.create(**params)
+            subscription = _stripe_call_with_expand(
+                stripe.Subscription.create, expand=list(_SECRET_EXPAND), **params
+            )
 
-            client_secret = None
-            invoice = getattr(subscription, 'latest_invoice', None)
-            if invoice and getattr(invoice, 'payment_intent', None):
-                client_secret = invoice.payment_intent.client_secret
-            if not client_secret and getattr(subscription, 'pending_setup_intent', None):
-                client_secret = subscription.pending_setup_intent.client_secret
+            client_secret = _client_secret_from_subscription(subscription)
+            if not client_secret:
+                logger.error(
+                    f"[STRIPE] subscription {subscription.id} sem client_secret "
+                    f"(invoice/status={getattr(getattr(subscription, 'latest_invoice', None), 'status', None)})"
+                )
+                return _err('Stripe não retornou o client_secret da assinatura')
 
             logger.info(
                 f"[STRIPE] subscription {subscription.id} (elements) for local sub {local_subscription_id}"
@@ -250,6 +311,57 @@ class StripeService:
         except Exception as e:
             logger.error(f"Error updating Stripe subscription {subscription_id}: {StripeService._message(e)}")
             return None
+
+    @staticmethod
+    def change_plan_elements(
+        subscription_id: str,
+        new_price_id: str,
+        proration_behavior: str = 'create_prorations',
+    ) -> Optional[Dict[str, Any]]:
+        """Troca o Price da assinatura no fluxo nativo (Elements / PaymentSheet) e
+        devolve o client_secret para o app confirmar a cobrança do novo plano quando
+        houver valor a pagar (upgrade / proração). Se a Stripe conseguir cobrar de
+        imediato (mesmo valor, downgrade sem saldo, cartão já salvo) a assinatura já
+        volta 'active' e client_secret vem None.
+
+        Retorno: {'subscription_id', 'status', 'client_secret', 'requires_action'} ou
+        {'error': True, ...}."""
+        if not StripeService._ready():
+            return None
+        try:
+            sub = _as_dict(stripe.Subscription.retrieve(subscription_id))
+            items = (sub.get('items') or {}).get('data') or []
+            if not items:
+                logger.error(f"Stripe subscription {subscription_id} has no items to update")
+                return _err('Assinatura da Stripe sem itens para atualizar', 400)
+            item_id = items[0]['id']
+
+            updated = _stripe_call_with_expand(
+                stripe.Subscription.modify,
+                subscription_id,
+                expand=list(_SECRET_EXPAND),
+                items=[{'id': item_id, 'price': new_price_id}],
+                proration_behavior=proration_behavior,
+                payment_behavior='default_incomplete',
+            )
+
+            client_secret = _client_secret_from_subscription(updated)
+            status = getattr(updated, 'status', None)
+            logger.info(
+                f"[STRIPE] subscription {subscription_id} plan changed to {new_price_id} "
+                f"(status={status}, requires_action={bool(client_secret)})"
+            )
+            return {
+                'subscription_id': getattr(updated, 'id', subscription_id),
+                'status': status,
+                'client_secret': client_secret,
+                'requires_action': bool(client_secret),
+            }
+        except Exception as e:
+            logger.error(
+                f"Error changing plan for Stripe subscription {subscription_id}: {StripeService._message(e)}"
+            )
+            return _err(StripeService._message(e))
 
     @staticmethod
     def cancel_subscription(subscription_id: str) -> bool:

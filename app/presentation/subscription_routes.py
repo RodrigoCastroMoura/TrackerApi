@@ -460,6 +460,120 @@ class SubscriptionElements(Resource):
             logger.error(f"Error creating elements subscription: {str(e)}")
             return {'message': 'Erro ao criar assinatura'}, 500
 
+    @api.doc('change_subscription_plan_elements')
+    @api.expect(subscription_create_model)
+    @customer_token_required
+    def put(self, current_customer):
+        """Trocar o plano da assinatura na tela nativa (Stripe Elements / PaymentSheet)
+        e ativá-la.
+
+        Troca o Price na assinatura existente da Stripe. Quando houver valor a pagar
+        (upgrade / proração) devolve um novo `client_secret` para o app confirmar a
+        cobrança — a ativação definitiva vem pelo webhook. Quando a Stripe cobra na
+        hora (cartão já salvo, mesmo valor, downgrade sem saldo) a assinatura já volta
+        `active` e `requires_action` é `false`."""
+        try:
+            data = request.get_json() or {}
+
+            if not data.get('plan_id'):
+                return {'message': 'Campo plan_id é obrigatório'}, 400
+
+            new_plan = _resolve_plan(data['plan_id'], current_customer.company_id)
+            if not new_plan:
+                return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404
+
+            subscription = Subscription.objects(
+                customer_id=current_customer.id, visible=True
+            ).order_by('-created_at').first()
+            if not subscription:
+                return {'message': 'Nenhuma assinatura encontrada. Crie uma assinatura primeiro.'}, 404
+
+            if subscription.status == 'canceled':
+                return {
+                    'message': 'Assinatura cancelada — crie uma nova assinatura (POST /subscriptions/elements).'
+                }, 400
+
+            if not subscription.provider_subscription_id:
+                return {'message': 'ID da assinatura na Stripe ainda não disponível'}, 400
+
+            price_id, err = _ensure_stripe_price(new_plan)
+            if err:
+                return err
+
+            frequency, billing_cycle = to_provider_frequency(
+                new_plan.frequency, new_plan.frequency_type
+            )
+
+            result = StripeService.change_plan_elements(
+                subscription_id=subscription.provider_subscription_id,
+                new_price_id=price_id,
+            )
+            if not result or result.get('error'):
+                motivo = (result or {}).get('message') or 'serviço indisponível no momento'
+                logger.warning(
+                    f"Falha ao trocar plano (Elements) na Stripe para {current_customer.email}: {motivo}"
+                )
+                return {'message': f'Não foi possível trocar o plano na Stripe ({motivo}).'}, 502
+
+            requires_action = bool(result.get('requires_action'))
+            activated = result.get('status') in ('active', 'trialing')
+
+            subscription.provider_plan_id = price_id
+            subscription.plan_name = new_plan.name
+            subscription.amount = new_plan.amount
+            subscription.billing_cycle = billing_cycle
+            subscription.frequency = frequency
+            subscription.currency = 'BRL'
+            subscription.cancel_at_period_end = False
+            subscription.canceled_at = None
+            subscription.updated_by = None
+
+            if activated:
+                subscription.status = 'active'
+                subscription.provider_status = 'succeeded'
+                subscription.failure_message = None
+            else:
+                # aguardando o app confirmar o pagamento do novo plano
+                subscription.status = 'pendingPayment'
+                subscription.provider_status = 'pending'
+            subscription.save()
+
+            customer = Customer.objects(id=current_customer.id).first()
+            if customer:
+                customer.can_change_plan = False
+                if activated:
+                    customer.require_payment_method = False
+                customer.save()
+
+            logger.info(
+                f"Elements subscription plan changed for customer {current_customer.email}, "
+                f"plan: {new_plan.name}, activated: {activated}, requires_action: {requires_action}"
+            )
+
+            response_body = {
+                'message': (
+                    'Plano atualizado e assinatura ativada com sucesso.'
+                    if activated else
+                    'Plano atualizado. Confirme o pagamento no app para ativar o novo plano.'
+                ),
+                'subscription_id': str(subscription.id),
+                'provider_subscription_id': subscription.provider_subscription_id,
+                'plan_name': new_plan.name,
+                'amount': new_plan.amount,
+                'billing_cycle': new_plan.frequency_type,
+                'status': subscription.status,
+                'requires_action': requires_action,
+            }
+            if requires_action:
+                response_body['client_secret'] = result.get('client_secret')
+                response_body['publishable_key'] = Config.STRIPE_PUBLISHABLE_KEY
+
+            return response_body, 200
+
+        except Exception as e:
+            logger.error(f"Error changing elements subscription plan: {str(e)}")
+            return {'message': 'Erro ao trocar plano da assinatura'}, 500
+
 
 @api.route('/status')
 class SubscriptionStatus(Resource):

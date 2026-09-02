@@ -267,15 +267,15 @@ class SubscriptionResource(Resource):
 
             frequency, billing_cycle = to_provider_frequency(new_plan.frequency, new_plan.frequency_type)
             was_canceled = existing.status == 'canceled'
+            client_secret = publishable_key = None
 
             if was_canceled:
-                # Assinatura cancelada -> cliente precisa reautorizar via novo checkout
-                session = StripeService.create_checkout_subscription(
+                # Assinatura cancelada -> cliente precisa reautorizar. No fluxo nativo
+                # (Elements / PaymentSheet) devolvemos client_secret em vez de payment_url.
+                result = StripeService.create_subscription_elements(
                     price_id=price_id,
                     customer_email=current_customer.email,
                     local_subscription_id=str(existing.id),
-                    success_url=Config.STRIPE_SUCCESS_URL,
-                    cancel_url=Config.STRIPE_CANCEL_URL,
                     trial_period_days=new_plan.free_days or 0,
                     metadata={
                         'customer_id': str(current_customer.id),
@@ -283,15 +283,17 @@ class SubscriptionResource(Resource):
                         'plan_id': str(new_plan.id),
                     },
                 )
-                if not session or session.get('error'):
-                    motivo = (session or {}).get('message') or 'serviço indisponível no momento'
-                    return {'message': f'Erro ao criar checkout na Stripe ({motivo})'}, 502
+                if not result or result.get('error'):
+                    motivo = (result or {}).get('message') or 'serviço indisponível no momento'
+                    return {'message': f'Erro ao reativar assinatura na Stripe ({motivo})'}, 502
 
-                existing.provider_subscription_id = None
-                existing.payment_url = session['url']
-                existing.status = 'pending'
-                existing.provider_status = 'pending'
+                existing.provider_subscription_id = result['subscription_id']
+                existing.provider_customer_id = result.get('customer_id')
+                existing.payment_url = None
+                existing.status = existing.provider_status = 'pending'
                 requires_authorization = True
+                client_secret = result.get('client_secret')
+                publishable_key = result.get('publishable_key')
             else:
                 # Assinatura ativa -> troca o Price sem reautorização
                 if not existing.provider_subscription_id:
@@ -335,7 +337,11 @@ class SubscriptionResource(Resource):
                 'requires_authorization': requires_authorization,
             }
 
-            if requires_authorization:
+            if requires_authorization and client_secret:
+                response_body['client_secret'] = client_secret
+                response_body['publishable_key'] = publishable_key
+                response_body['message'] += ' Confirme o pagamento no app para ativar o plano.'
+            elif requires_authorization and existing.payment_url:
                 response_body['payment_url'] = existing.payment_url
                 response_body['message'] += ' Acesse o link para autorizar os pagamentos.'
 

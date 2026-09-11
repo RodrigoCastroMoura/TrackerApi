@@ -2,6 +2,7 @@ import logging
 from flask import request, jsonify
 from flask_restx import Namespace, Resource, fields
 from app.domain.models import User, Customer, Subscription
+from app.infrastructure.redis_cache import vehicle_cache
 from functools import wraps
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -659,6 +660,7 @@ class LoginCustomer(Resource):
                 else:
                     customer.fcm_token = fcm_token
                     customer.save()
+                    vehicle_cache.set_customer(str(customer.id), customer)
                     logger.debug(f"FCM token updated for customer: {customer.email}")
 
                 if not customer.has_accepted_terms:

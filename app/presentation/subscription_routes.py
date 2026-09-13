@@ -276,7 +276,7 @@ class SubscriptionResource(Resource):
                     price_id=price_id,
                     customer_email=current_customer.email,
                     local_subscription_id=str(existing.id),
-                    trial_period_days=new_plan.free_days or 0,
+                    trial_period_days=0,
                     metadata={
                         'customer_id': str(current_customer.id),
                         'company_id': str(current_customer.company_id.id),

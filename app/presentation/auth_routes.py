@@ -649,9 +649,11 @@ class LoginCustomer(Resource):
                 ).order_by('-created_at').first()
                 
                 can_change_plan = customer.can_change_plan
+                subscription_status : 'pending'
 
                 if customer.require_payment_method == False:
                     if active_sub:
+                        subscription_status = active_sub.status
                         if active_sub.status == 'canceled' and active_sub.grace_period_end and active_sub.grace_period_end > now:
                             can_change_plan = False  # Reativar a assinatura quanto o período de carência expirar e cancelar a assinatura
                     
@@ -681,6 +683,7 @@ class LoginCustomer(Resource):
                     'require_payment_method': customer.require_payment_method,
                     'requires_password_change': not customer.password_changed,
                     'can_change_plan': can_change_plan,
+                    'subscription_status':subscription_status,
                     'user': {
                         'id': str(customer.id),
                         'name': customer.name,

@@ -290,7 +290,7 @@ class SubscriptionResource(Resource):
                 existing.provider_subscription_id = result['subscription_id']
                 existing.provider_customer_id = result.get('customer_id')
                 existing.payment_url = None
-                existing.status = existing.provider_status = 'pending'
+                existing.provider_status = 'pending'
                 requires_authorization = True
                 client_secret = result.get('client_secret')
                 publishable_key = result.get('publishable_key')

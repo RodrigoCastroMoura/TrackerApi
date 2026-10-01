@@ -81,9 +81,10 @@ class MessageHandler:
 
         user = self.business.authenticate_by_credentials(identifier, password)
 
-        total_no_mes = vehicle_cache.increment_monthly_counter(user.id)
-
         if user and len(user.vehicles) > 0:
+            
+            total_no_mes = vehicle_cache.increment_monthly_counter(user.id)
+            
             if (total_no_mes <= Config.QUANT_ACCESS_WHATSAPP):
                 session.user = user
                 session.user.intrudution_shown = False

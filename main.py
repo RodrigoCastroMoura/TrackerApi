@@ -157,7 +157,7 @@ def create_app():
                   description='API completa para gerenciamento de rastreamento veicular multi-tenant com relatórios.',
                   authorizations=authorizations,
                   security='Bearer Auth',
-                  doc='/' if Config.SWAGGER_ENABLED else False)
+                  doc=False)
 
         if not Config.SWAGGER_ENABLED:
             logger.info("Swagger UI está desativado (SWAGGER_ENABLED=false)")
@@ -190,6 +190,12 @@ def create_app():
         from app.presentation.chatbot_routes import chatbot_bp
         app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')
         logger.info("WhatsApp chatbot blueprint registered at /api/chatbot")
+
+        from app.presentation.chatbot_user_routes import chatbot_user_bp
+        app.register_blueprint(chatbot_user_bp, url_prefix='/api/chatbotuser')
+
+
+
 
         logger.info(f"[pid={pid}] create_app() finished successfully — all namespaces registered")
         return app

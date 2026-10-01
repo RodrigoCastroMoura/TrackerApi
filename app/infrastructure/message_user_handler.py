@@ -5,12 +5,11 @@ from config import Config
 from app.infrastructure.session_manager import ChatSession, ChatVehicle
 from app.infrastructure.whatsapp_client import WhatsAppClient
 from app.infrastructure.business_service import BusinessService
-from app.infrastructure.redis_cache import RedisVehicleCache
 
 logger = logging.getLogger(__name__)
 
 
-class MessageHandler:
+class MessageUserHandler:
 
     def __init__(self, whatsapp: WhatsAppClient, business: BusinessService):
         self.whatsapp = whatsapp
@@ -43,24 +42,11 @@ class MessageHandler:
         )
 
         if user:
-
-            total_no_mes = RedisVehicleCache.increment_monthly_counter(user.id)
-
-            if (total_no_mes <= Config.QUANT_ACCESS_WHATSAPP):
-                session.user = user
-                session.user.intrudution_shown = False
-                session.state = "AUTHENTICATED"
-                logger.info(f"[AUTH] Usuario autenticado por telefone: {user.name}, {len(user.vehicles)} veiculos")
-                self._show_vehicles(session)
-            else:
-                self.whatsapp.send_message(
-                session.phone_number,
-                f"{self._saudacao()}! 👋 Aqui é da *MonitoraNet* 📍\n\n"
-                f"Você atingiu o limite de *{Config.QUANT_ACCESS_WHATSAPP}* acessos via WhatsApp. ⏳\n"
-                "Ela será renovada automaticamente no primeiro dia do próximo mês!\n\n"
-                "🚨 *PRECISA DE AJUDA URGENTE OU BLOQUEIO EMERGENCIAL?*\n"
-                f"Ligue agora para nossa Central Eletrônica 24h: *{Config.NUMBER_SERVICE}* ou acesse o aplicativo *MonitoraNet*."
-            )
+            session.user = user
+            session.user.intrudution_shown = False
+            session.state = "AUTHENTICATED"
+            logger.info(f"[AUTH] Usuario autenticado por telefone: {user.name}, {len(user.vehicles)} veiculos")
+            self._show_vehicles(session)
             return
 
         logger.info(f"[UNAUTH] Telefone nao reconhecido, solicitando CPF: {session.phone_number}")
@@ -68,7 +54,7 @@ class MessageHandler:
         self.whatsapp.send_message(
             session.phone_number,
             f"{self._saudacao()}! 👋 Aqui e da *MonitoraNet* 📍\n\n"
-            "Seu carro monitorado 24h por nossa Inteligencia Artificial (IA) 🚗🔒\n"
+            "Seu carro protegido 24h por nossa Inteligencia Artificial (IA) 🚗🔒\n"
             "Localize, bloqueie ou desbloqueie seu veiculo, tudo por aqui!\n\n"
             "Para acessar, digite seu *CPF*:"
         )
@@ -81,27 +67,13 @@ class MessageHandler:
 
         user = self.business.authenticate_by_credentials(identifier, password)
 
-        total_no_mes = RedisVehicleCache.increment_monthly_counter(user.id)
-
         if user and len(user.vehicles) > 0:
-            if (total_no_mes <= Config.QUANT_ACCESS_WHATSAPP):
-                session.user = user
-                session.user.intrudution_shown = False
-                session.state = "AUTHENTICATED"
-                session.pending_identifier = None
-                logger.info(f"[AUTH] Usuario autenticado por credenciais: {user.name}, {len(user.vehicles)} veiculos")
-                self._show_vehicles(session)
-            else:
-                self.whatsapp.send_message(
-                    session.phone_number,
-                    f"{self._saudacao()}! 👋 Aqui é da *MonitoraNet* 📍\n\n"
-                    f"Você atingiu o limite de *{Config.QUANT_ACCESS_WHATSAPP}* acessos via WhatsApp. ⏳\n"
-                    "Ela será renovada automaticamente no primeiro dia do próximo mês!\n\n"
-                    "🚨 *PRECISA DE AJUDA URGENTE OU BLOQUEIO EMERGENCIAL?*\n"
-                    f"Ligue agora para nossa Central Eletrônica 24h: *{Config.NUMBER_SERVICE}* ou acesse o aplicativo *MonitoraNet*."
-                )
-                return
-
+            session.user = user
+            session.user.intrudution_shown = False
+            session.state = "AUTHENTICATED"
+            session.pending_identifier = None
+            logger.info(f"[AUTH] Usuario autenticado por credenciais: {user.name}, {len(user.vehicles)} veiculos")
+            self._show_vehicles(session)
         else:
             session.state = "UNAUTHENTICATED"
             session.pending_identifier = None
@@ -178,7 +150,7 @@ class MessageHandler:
         if not session.user.intrudution_shown:
             greeting = (
                 f"{self._saudacao()}, {session.user.name}! 👋 Aqui e da *MonitoraNet* 📍\n"
-                f"Seu carro monitorado 24h por nossa Inteligencia Artificial (IA) 🚗🔒\n\n"
+                f"Seu carro protegido 24h por nossa Inteligencia Artificial (IA) 🚗🔒\n\n"
             )
             session.user.intrudution_shown = True
 
@@ -186,43 +158,20 @@ class MessageHandler:
             vehicle = session.user.vehicles[0]
             session.state = "VEHICLE_SELECTED"
             session.selected_vehicle = vehicle
-            location = self.business.get_vehicle_location(vehicle, session)
 
-            if location:
-                self.whatsapp.send_interactive_buttons(
-                    session.phone_number,
-                    f"{greeting}Voce esta no sistema de Rastreamento! 🚗\n\n"
-                    f"🚙 Veiculo: {vehicle.plate}\n"
-                    f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
-                    f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}"
-                    f"📍 Localizacao do veiculo {vehicle.brand} {vehicle.model}, placa {vehicle.plate}:\n\n"
-                    f"🏠 Endereco: {location['address']}\n"
-                    f"💨 Velocidade: {location['speed']} km/h\n"
-                    f"🕐 Ultima atualizacao: {location['last_update']}\n\n"
-                    f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}",
-                    [
-                        #{"id": "localizacao", "title": "📍 Localizacao"},
-                        {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
-                        "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
-                        {"id": "outraconta", "title": "🔄 Outra Conta"}
-                    ]
-                )
-            else:
-                self.whatsapp.send_interactive_buttons(
-                    session.phone_number,
-                    f"{greeting}Voce esta no sistema de Rastreamento! 🚗\n\n"
-                    f"🚙 Veiculo: {vehicle.plate}\n"
-                    f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
-                    f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}"
-                    f"❌ Nao foi possivel obter a localizacao do veiculo {vehicle.plate}.",
-                    [
-                        #{"id": "localizacao", "title": "📍 Localizacao"},
-                        {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
-                        "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
-                        {"id": "outraconta", "title": "🔄 Outra Conta"}
-                    ]
-                )
-
+            self.whatsapp.send_interactive_buttons(
+                session.phone_number,
+                f"{greeting}Voce esta no sistema de Rastreamento! 🚗\n\n"
+                f"🚙 Veiculo: {vehicle.plate}\n"
+                f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
+                f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}",
+                [
+                    {"id": "localizacao", "title": "📍 Localizacao"},
+                    {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
+                     "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
+                    {"id": "outraconta", "title": "🔄 Outra Conta"}
+                ]
+            )
         else:
             sections = [{
                 "title": "Seus Veiculos",
@@ -257,7 +206,7 @@ class MessageHandler:
         if len(session.user.vehicles) > 1:
             # [Localizacao, Bloquear, Menu] — Sair via texto ou voltando ao menu
             buttons = [
-                #{"id": "localizacao", "title": "📍 Localizacao"},
+                {"id": "localizacao", "title": "📍 Localizacao"},
                 {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
                  "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
                 {"id": "menu", "title": "📋 Menu"},
@@ -265,41 +214,21 @@ class MessageHandler:
         else:
             # [Localizacao, Bloquear, Sair]
             buttons = [
-                #{"id": "localizacao", "title": "📍 Localizacao"},
+                {"id": "localizacao", "title": "📍 Localizacao"},
                 {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
                  "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
                 {"id": "sair", "title": "👋 Sair"},
             ]
 
-        location = self.business.get_vehicle_location(vehicle, session)
-        
-        if location:
-            self.whatsapp.send_interactive_buttons(
-                session.phone_number,
-                f"Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
-                f"🚙 Veiculo: {vehicle.plate}\n"
-                f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
-                f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}\n\n"
-                f"📍 Localizacao do veiculo {vehicle.brand} {vehicle.model}, placa {vehicle.plate}:\n\n"
-                f"🏠 Endereco: {location['address']}\n"
-                f"💨 Velocidade: {location['speed']} km/h\n"
-                f"🕐 Ultima atualizacao: {location['last_update']}\n\n"
-                f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}",
-                f"Escolha uma opcao:",
-                buttons
-            )
-        else:
-            self.whatsapp.send_interactive_buttons(
-                session.phone_number,
-                f"Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
-                f"🚙 Veiculo: {vehicle.plate}\n"
-                f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
-                f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}"
-                f"❌ Nao foi possivel obter a localizacao do veiculo {vehicle.plate}.",
-                f"Escolha uma opcao:",
-                buttons
-            )
-
+        self.whatsapp.send_interactive_buttons(
+            session.phone_number,
+            f"Voce esta no sistema de Rastreamento MonitoraNet! 🚗\n\n"
+            f"🚙 Veiculo: {vehicle.plate}\n"
+            f"🏷️ Modelo: {vehicle.brand} {vehicle.model}\n"
+            f"🔐 Status: {'🔒 Bloqueado' if vehicle.is_blocked else '🔓 Desbloqueado'}\n\n"
+            f"Escolha uma opcao:",
+            buttons
+        )
 
     def _handle_vehicle_action(self, session: ChatSession, message: str, message_type: str = "text") -> None:
         msg_lower = message.lower().strip()

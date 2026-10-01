@@ -52,18 +52,20 @@ class RedisVehicleCache:
     def _location_key(self, company_id: str, imei: str) -> str:
         return f"location:{company_id}:{imei}"
 
+    # 🆕 Nova estrutura de chave para os contadores
+    def _counter_key(self, counter_name: str) -> str:
+        return f"counter:{counter_name}"
+
     def _serialize_vehicle(self, vehicle_data: Any) -> str:
-        # Se for objeto MongoEngine, converte para dict via to_mongo()
         if hasattr(vehicle_data, 'to_mongo'):
             vehicle_data = vehicle_data.to_mongo().to_dict()
         
-        # Se ainda não for dict, tenta via __dict__
         elif not isinstance(vehicle_data, dict):
             vehicle_data = vars(vehicle_data)
 
         serializable = {}
         for k, v in vehicle_data.items():
-            if k == '_id':  # ObjectId do Mongo
+            if k == '_id':  
                 serializable[k] = str(v)
             elif isinstance(v, datetime):
                 serializable[k] = v.isoformat()
@@ -183,11 +185,6 @@ class RedisVehicleCache:
         return response
 
     def get_location_response(self, company_id: str, imei: str) -> Optional[Dict[str, Any]]:
-        """Resposta já pronta do endpoint /vehicles/<imei>/location (curto TTL).
-
-        Usado para não estourar o serviço de geocoding (Google/Photon/Nominatim)
-        em polling frequente do cliente.
-        """
         if not self.enabled or not self.client:
             return None
 
@@ -214,7 +211,6 @@ class RedisVehicleCache:
             logger.error(f"Redis set location error for {company_id}:{imei}: {e}")
 
     def set_customer(self, customer_id: str, customer_data: Any):
-        """Atualiza o cache do customer (mesma chave 'customer:{id}' lida pelos serviços Tracker/gv50/J16)."""
         if not self.enabled or not self.client:
             return
 
@@ -261,5 +257,43 @@ class RedisVehicleCache:
         except Exception:
             return False
 
+    # =========================================================================
+    # 🆕 MÉTODOS NOVOS ADAPTADOS PARA O CONTADOR MENSAL
+    # =========================================================================
+
+    def _get_seconds_until_next_month(self) -> int:
+        """Calcula de forma privada os segundos restantes até o dia 1 do próximo mês."""
+        agora = datetime.now()
+        if agora.month == 12:
+            proximo_mes = datetime(agora.year + 1, 1, 1, 0, 0, 0)
+        else:
+            proximo_mes = datetime(agora.year, agora.month + 1, 1, 0, 0, 0)
+        return int((proximo_mes - agora).total_seconds())
+
+    def increment_monthly_counter(self, counter_name: str) -> Optional[int]:
+        """Incrementa de forma atômica o contador e define o TTL no primeiro acesso do mês."""
+        # Se o Redis estiver desativado ou sem conexão, ignora silenciosamente (padrão da sua classe)
+        if not self.enabled or not self.client:
+            return None
+
+        try:
+            key = self._counter_key(counter_name)
+            
+            # Executa o incremento atômico no Redis
+            current_value = self.client.incr(key)
+            
+            # Se retornar 1, significa que a chave é nova (novo mês começou ou chave nunca existiu)
+            if current_value == 1:
+                ttl = self._get_seconds_until_next_month()
+                self.client.expire(key, ttl)
+                logger.info(f"Contador mensal '{counter_name}' inicializado. TTL definido para {ttl}s.")
+                
+            logger.debug(f"Redis INCR para o contador '{counter_name}': {current_value}")
+            return current_value
+
+        except Exception as e:
+            # Captura erros de conexão/infraestrutura e gera o log sem derrubar sua aplicação
+            logger.error(f"Erro no Redis ao incrementar o contador '{counter_name}': {e}")
+            return None
 
 vehicle_cache = RedisVehicleCache()

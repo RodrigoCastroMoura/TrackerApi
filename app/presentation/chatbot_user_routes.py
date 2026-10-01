@@ -1,0 +1,115 @@
+import logging
+import hmac
+import hashlib
+from flask import Blueprint, request, jsonify
+from config import Config
+from app.presentation.auth_routes import limiter
+from app.infrastructure.session_manager import session_manager
+from app.infrastructure.whatsapp_client import whatsapp_client
+from app.infrastructure.business_service import business_service
+from app.infrastructure.message_user_handler import MessageUserHandler
+from app.infrastructure.message_dedup import message_deduplicator
+
+message_handler = MessageUserHandler(whatsapp_client, business_service)
+
+logger = logging.getLogger(__name__)
+
+chatbot_user_bp = Blueprint('chatbotUser', __name__)
+
+
+def verify_webhook_signature(request_obj) -> bool:
+    if not Config.WHATSAPP_APP_SECRET:
+        logger.warning("WHATSAPP_APP_SECRET not configured - skipping signature verification (NOT SAFE FOR PRODUCTION)")
+        return True
+
+    signature = request_obj.headers.get("X-Hub-Signature-256", "")
+    if not signature:
+        logger.warning("Missing X-Hub-Signature-256 header")
+        return False
+
+    payload = request_obj.get_data()
+    expected = "sha256=" + hmac.HMAC(
+        Config.WHATSAPP_APP_SECRET.encode("utf-8"),
+        msg=payload,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(signature, expected)
+
+
+@chatbot_user_bp.route('/webhook', methods=['GET'])
+@limiter.exempt
+def verify():
+    mode = request.args.get('hub.mode')
+    token = request.args.get('hub.verify_token')
+    challenge = request.args.get('hub.challenge')
+
+    if mode == 'subscribe' and token == Config.WHATSAPP_VERIFY_TOKEN:
+        logger.info("Webhook verified successfully")
+        return challenge, 200
+
+    logger.warning(f"Webhook verification failed: mode={mode}, token={token}")
+    return 'Forbidden', 403
+
+
+@chatbot_user_bp.route('/webhook', methods=['POST'])
+@limiter.exempt
+def webhook():
+    try:
+        if not verify_webhook_signature(request):
+            logger.warning("Invalid webhook signature")
+            return jsonify({"status": "error", "message": "Invalid signature"}), 403
+
+        data = request.get_json()
+        if not data:
+            return jsonify({"status": "ok"}), 200
+
+        entry = data.get("entry", [])
+        for e in entry:
+            changes = e.get("changes", [])
+            for change in changes:
+                value = change.get("value", {})
+
+                if "statuses" in value:
+                    continue
+
+                messages = value.get("messages", [])
+
+                for msg in messages:
+                    message_id = msg.get("id", "")
+                    if message_id and message_deduplicator.seen_before(message_id):
+                        logger.info(f"[WEBHOOK] Mensagem duplicada ignorada: {message_id}")
+                        continue
+
+                    phone_number = msg.get("from", "")
+                    msg_type = msg.get("type", "")
+
+                    text = ""
+                    message_type = "text"
+
+                    if msg_type == "text":
+                        text = msg.get("text", {}).get("body", "")
+                    elif msg_type == "interactive":
+                        interactive = msg.get("interactive", {})
+                        interactive_type = interactive.get("type", "")
+
+                        if interactive_type == "button_reply":
+                            text = interactive.get("button_reply", {}).get("id", "")
+                            message_type = "interactive"
+                        elif interactive_type == "list_reply":
+                            text = interactive.get("list_reply", {}).get("id", "")
+                            message_type = "interactive"
+                    else:
+                        continue
+
+                    if text and phone_number:
+                        logger.info(f"[WEBHOOK] From: {phone_number} | Type: {message_type} | Text: '{text}'")
+                        session = session_manager.get_or_create(phone_number)
+                        message_handler.handle(session, text, message_type)
+                        session_manager.save(session)
+
+        return jsonify({"status": "ok"}), 200
+
+    except Exception as e:
+        logger.error(f"Webhook error: {str(e)}", exc_info=True)
+        return jsonify({"status": "error"}), 500

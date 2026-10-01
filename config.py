@@ -28,7 +28,7 @@ class Config:
     MAX_CONTENT_LENGTH = 10 * 1024 * 1024  # 10MB max file size
 
     # Swagger Configuration - desative em produção por segurança
-    SWAGGER_ENABLED = os.environ.get('SWAGGER_ENABLED', 'true').lower() == 'true'
+    SWAGGER_ENABLED = os.environ.get('SWAGGER_ENABLED')
     
     # Email Configuration (optional for development)
     MAIL_SERVER = os.environ.get('MAIL_SERVER','smtp.gmail.com')
@@ -101,3 +101,6 @@ class Config:
     SESSION_TIMEOUT_MINUTES = int(os.environ.get("SESSION_TIMEOUT_MINUTES", 30))
 
     PATH_CONTRATO_ASSINATURA = os.environ.get("PATH_CONTRATO_ASSINATURA")
+
+    QUANT_ACCESS_WHATSAPP = os.environ.get("QUANT_ACCESS_WHATSAPP", 5)
+    NUMBER_SERVICE = os.environ.get("NUMBER_SERVICE")

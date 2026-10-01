@@ -10,7 +10,7 @@ from app.infrastructure.business_service import business_service
 from app.infrastructure.message_user_handler import MessageUserHandler
 from app.infrastructure.message_dedup import message_deduplicator
 
-whatsapp_client = WhatsAppClient(Config.WHATSAPP_PHONE_NUMBER_ID_TEST, Config.WHATSAPP_APP_SECRET_TEST)
+whatsapp_client = WhatsAppClient(Config.WHATSAPP_PHONE_NUMBER_ID_TEST, Config.WHATSAPP_TOKEN_TEST)
 message_handler = MessageUserHandler(whatsapp_client, business_service)
 
 logger = logging.getLogger(__name__)

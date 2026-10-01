@@ -284,7 +284,7 @@ class MessageHandler:
                 f"🏠 Endereco: {location['address']}\n"
                 f"💨 Velocidade: {location['speed']} km/h\n"
                 f"🕐 Ultima atualizacao: {location['last_update']}\n\n"
-                f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}",
+                f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}"
                 f"Escolha uma opcao:",
                 buttons
             )

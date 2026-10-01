@@ -270,14 +270,14 @@ class RedisVehicleCache:
             proximo_mes = datetime(agora.year, agora.month + 1, 1, 0, 0, 0)
         return int((proximo_mes - agora).total_seconds())
 
-    def increment_monthly_counter(self, counter_name: str) -> Optional[int]:
+    def increment_monthly_counter(self, nome_do_contador : str) -> Optional[int]:
         """Incrementa de forma atômica o contador e define o TTL no primeiro acesso do mês."""
         # Se o Redis estiver desativado ou sem conexão, ignora silenciosamente (padrão da sua classe)
         if not self.enabled or not self.client:
             return None
 
         try:
-            key = self._counter_key(counter_name)
+            key = self._counter_key(nome_do_contador)
             
             # Executa o incremento atômico no Redis
             current_value = self.client.incr(key)
@@ -286,14 +286,14 @@ class RedisVehicleCache:
             if current_value == 1:
                 ttl = self._get_seconds_until_next_month()
                 self.client.expire(key, ttl)
-                logger.info(f"Contador mensal '{counter_name}' inicializado. TTL definido para {ttl}s.")
+                logger.info(f"Contador mensal '{nome_do_contador }' inicializado. TTL definido para {ttl}s.")
                 
-            logger.debug(f"Redis INCR para o contador '{counter_name}': {current_value}")
+            logger.debug(f"Redis INCR para o contador '{nome_do_contador }': {current_value}")
             return current_value
 
         except Exception as e:
             # Captura erros de conexão/infraestrutura e gera o log sem derrubar sua aplicação
-            logger.error(f"Erro no Redis ao incrementar o contador '{counter_name}': {e}")
+            logger.error(f"Erro no Redis ao incrementar o contador '{nome_do_contador }': {e}")
             return None
 
 vehicle_cache = RedisVehicleCache()

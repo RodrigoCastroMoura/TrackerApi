@@ -7,10 +7,10 @@ logger = logging.getLogger(__name__)
 
 class WhatsAppClient:
 
-    def __init__(self):
+    def __init__(self, phone_number_id: str, token: str):
         self.api_url = Config.WHATSAPP_API_URL
-        self.phone_number_id = Config.WHATSAPP_PHONE_NUMBER_ID
-        self.token = Config.WHATSAPP_TOKEN
+        self.phone_number_id = phone_number_id
+        self.token = token
 
     @property
     def base_url(self):
@@ -106,5 +106,3 @@ class WhatsAppClient:
             logger.error(f"Error sending WhatsApp message: {str(e)}")
             return False
 
-
-whatsapp_client = WhatsAppClient()

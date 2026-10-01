@@ -93,6 +93,10 @@ class Config:
 
     WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "")
     WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "meu_token_secreto_123")
+
+    WHATSAPP_PHONE_NUMBER_ID_TEST = os.environ.get("PHONE_NUMBER_ID_TEST")
+    WHATSAPP_APP_SECRET_TEST = os.environ.get("WHATSAPP_TOKEN_TEST")
+    
     WHATSAPP_PHONE_NUMBER_ID = os.environ.get("PHONE_NUMBER_ID", "")
     WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "")
     PASSWORD_CHATBOT_SALT = os.environ.get("PASSWORD_CHATBOT_SALT", "")

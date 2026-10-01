@@ -5,11 +5,12 @@ from flask import Blueprint, request, jsonify
 from config import Config
 from app.presentation.auth_routes import limiter
 from app.infrastructure.session_manager import session_manager
-from app.infrastructure.whatsapp_client import whatsapp_client
+from app.infrastructure.whatsapp_client import WhatsAppClient
 from app.infrastructure.business_service import business_service
 from app.infrastructure.message_handler import MessageHandler
 from app.infrastructure.message_dedup import message_deduplicator
 
+whatsapp_client = WhatsAppClient(Config.WHATSAPP_PHONE_NUMBER_ID, Config.WHATSAPP_APP_SECRET)
 message_handler = MessageHandler(whatsapp_client, business_service)
 
 logger = logging.getLogger(__name__)

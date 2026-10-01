@@ -5,7 +5,7 @@ from config import Config
 from app.infrastructure.session_manager import ChatSession, ChatVehicle
 from app.infrastructure.whatsapp_client import WhatsAppClient
 from app.infrastructure.business_service import BusinessService
-from app.infrastructure.redis_cache import RedisVehicleCache
+from app.infrastructure.redis_cache import vehicle_cache
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ class MessageHandler:
 
         if user:
 
-            total_no_mes = RedisVehicleCache.increment_monthly_counter(user.id)
+            total_no_mes = vehicle_cache.increment_monthly_counter(user.id)
 
             if (total_no_mes <= Config.QUANT_ACCESS_WHATSAPP):
                 session.user = user
@@ -81,7 +81,7 @@ class MessageHandler:
 
         user = self.business.authenticate_by_credentials(identifier, password)
 
-        total_no_mes = RedisVehicleCache.increment_monthly_counter(user.id)
+        total_no_mes = vehicle_cache.increment_monthly_counter(user.id)
 
         if user and len(user.vehicles) > 0:
             if (total_no_mes <= Config.QUANT_ACCESS_WHATSAPP):

@@ -199,7 +199,8 @@ class MessageHandler:
                     f"🏠 Endereco: {location['address']}\n"
                     f"💨 Velocidade: {location['speed']} km/h\n"
                     f"🕐 Ultima atualizacao: {location['last_update']}\n\n"
-                    f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}",
+                    f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}\n\n"
+                     f"Escolha uma opcao:",
                     [
                         #{"id": "localizacao", "title": "📍 Localizacao"},
                         {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
@@ -261,6 +262,7 @@ class MessageHandler:
                 {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
                  "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
                 {"id": "menu", "title": "📋 Menu"},
+                {"id": "outraconta", "title": "🔄 Outra Conta"},
             ]
         else:
             # [Localizacao, Bloquear, Sair]
@@ -283,8 +285,8 @@ class MessageHandler:
                 f"📍 Localizacao do veiculo:\n"
                 f"🏠 Endereco: {location['address']}\n"
                 f"💨 Velocidade: {location['speed']} km/h\n"
-                f"🕐 Ultima atualizacao: {location['last_update']}\n\n"
-                f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}"
+                f"🕐 Ultima atualizacao: {location['last_update']}\n"
+                f"🗺️ Maps: https://maps.google.com/?q={location['latitude']},{location['longitude']}\n\n"
                 f"Escolha uma opcao:",
                 buttons
             )

@@ -157,7 +157,7 @@ def create_app():
                   description='API completa para gerenciamento de rastreamento veicular multi-tenant com relatórios.',
                   authorizations=authorizations,
                   security='Bearer Auth',
-                  doc=False)
+                  doc='/' if Config.SWAGGER_ENABLED else False)
 
         if not Config.SWAGGER_ENABLED:
             logger.info("Swagger UI está desativado (SWAGGER_ENABLED=false)")

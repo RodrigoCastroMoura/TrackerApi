@@ -82,7 +82,7 @@ class MessageHandler:
         user = self.business.authenticate_by_credentials(identifier, password)
 
         if user and len(user.vehicles) > 0:
-            
+
             total_no_mes = vehicle_cache.increment_monthly_counter(user.id)
             
             if (total_no_mes <= Config.QUANT_ACCESS_WHATSAPP):
@@ -104,7 +104,7 @@ class MessageHandler:
                 return
 
         else:
-            session.state = "UNAUTHENTICATED"
+            session.state = "WAITING_PASSWORD"
             session.pending_identifier = None
             logger.warning(f"[WAITING_PWD] Credenciais invalidas para: {identifier}")
             self.whatsapp.send_message(

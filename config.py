@@ -106,5 +106,5 @@ class Config:
 
     PATH_CONTRATO_ASSINATURA = os.environ.get("PATH_CONTRATO_ASSINATURA")
 
-    QUANT_ACCESS_WHATSAPP = os.environ.get("QUANT_ACCESS_WHATSAPP", 5)
+    QUANT_ACCESS_WHATSAPP =  int(os.environ.get("QUANT_ACCESS_WHATSAPP", 5))
     NUMBER_SERVICE = os.environ.get("NUMBER_SERVICE")

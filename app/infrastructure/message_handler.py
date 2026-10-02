@@ -104,7 +104,7 @@ class MessageHandler:
                 return
 
         else:
-            session.state = "WAITING_PASSWORD"
+            session.state = "WAITING_CPF"
             session.pending_identifier = None
             logger.warning(f"[WAITING_PWD] Credenciais invalidas para: {identifier}")
             self.whatsapp.send_message(

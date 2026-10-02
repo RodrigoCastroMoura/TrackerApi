@@ -67,7 +67,8 @@ class MessageHandler:
         session.state = "WAITING_CPF"
         self.whatsapp.send_message(
             session.phone_number,
-            f"{self._saudacao()}! 👋 Aqui e da *MonitoraNet* 📍\n\n"
+            f"{self._saudacao()}! 👋 \n"
+            "Aqui e da *MonitoraNet* 📍\n\n"
             "Seu carro monitorado 24h por nossa Inteligencia Artificial (IA) 🚗🔒\n"
             "Localize, bloqueie ou desbloqueie seu veiculo, tudo por aqui!\n\n"
             "Para acessar, digite seu *CPF*:"
@@ -95,7 +96,8 @@ class MessageHandler:
             else:
                 self.whatsapp.send_message(
                     session.phone_number,
-                    f"{self._saudacao()}! 👋 Aqui é da *MonitoraNet* 📍\n\n"
+                    f"{self._saudacao()}! 👋\n"
+                    "Aqui é da *MonitoraNet* 📍\n\n"
                     f"Você atingiu o limite de *{Config.QUANT_ACCESS_WHATSAPP}* acessos via WhatsApp. ⏳\n"
                     "Ela será renovada automaticamente no primeiro dia do próximo mês!\n\n"
                     "🚨 *PRECISA DE AJUDA URGENTE OU BLOQUEIO EMERGENCIAL?*\n"
@@ -263,7 +265,7 @@ class MessageHandler:
                 {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
                  "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
                 {"id": "menu", "title": "📋 Menu"},
-                {"id": "outraconta", "title": "🔄 Outra Conta"},
+                {"id": "outraconta", "title": "👋 Sair"},
             ]
         else:
             # [Localizacao, Bloquear, Sair]
@@ -271,7 +273,7 @@ class MessageHandler:
                 #{"id": "localizacao", "title": "📍 Localizacao"},
                 {"id": "bloquear" if not vehicle.is_blocked else "desbloquear",
                  "title": "🔒 Bloquear" if not vehicle.is_blocked else "🔓 Desbloquear"},
-                {"id": "sair", "title": "👋 Sair"},
+                {"id": "outraconta", "title": "👋 Sair"},
             ]
 
         location = self.business.get_vehicle_location(vehicle, session)
@@ -452,7 +454,11 @@ class MessageHandler:
 
         self.whatsapp.send_message(
             session.phone_number,
-            "🔄 Para acessar outra conta, por favor, digite o *CPF*:"
+            f"{self._saudacao()}! 🙂\n"
+            "Aqui e da *MonitoraNet* 📍\n\n"
+            "Seu carro monitorado 24h por nossa Inteligencia Artificial (IA) 🚗🔒\n"
+            "Localize, bloqueie ou desbloqueie seu veiculo, tudo por aqui!\n\n"
+            "Para acessar, digite seu *CPF*:"
         )
 
     def _reset_session(self, session: ChatSession) -> None:

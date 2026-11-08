@@ -21,6 +21,7 @@ from app.presentation.webhook_routes import api as webhook_ns
 from app.presentation.cep_routes import api as cep_ns
 from app.presentation.pdf_analyzer_routes import api as pdf_analyzer_ns
 from app.presentation.document_routes import api as document_ns
+from app.presentation.stats_routes import api as stats_ns
 from app.domain.models import User, Permission
 from config import Config
 import os
@@ -186,6 +187,7 @@ def create_app():
         api.add_namespace(cep_ns, path='/api/cep')
         api.add_namespace(pdf_analyzer_ns, path='/api/pdf-analyzer')
         api.add_namespace(document_ns, path='/api/documents')
+        api.add_namespace(stats_ns, path='/api/stats')
 
         from app.presentation.chatbot_routes import chatbot_bp
         app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')
@@ -194,7 +196,7 @@ def create_app():
         from app.presentation.chatbot_user_routes import chatbot_user_bp
         app.register_blueprint(chatbot_user_bp, url_prefix='/api/chatbotuser')
 
-
+    
 
 
         logger.info(f"[pid={pid}] create_app() finished successfully — all namespaces registered")

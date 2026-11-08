@@ -156,23 +156,24 @@ class DashboardStats(Resource):
                 for idx, row in daily.iterrows()
             ]
 
-            # --- Top técnicos do mês (clientes + veículos cadastrados por usuário) ---
+            # --- Top do mês: admin = por empresa (nome da empresa), demais = por usuário ---
             month_customers = customers[customers['created_at'] >= month_start]
             month_vehicles = vehicles[vehicles['created_at'] >= month_start]
+            is_admin = current_user.role == 'admin'
+            key = 'company_id' if is_admin else 'created_by'
 
-            regs = pd.concat([
-                month_customers['created_by'],
-                month_vehicles['created_by'],
-            ]).dropna()
+            regs = pd.concat([month_customers[key], month_vehicles[key]]).dropna()
 
             user_stats = []
             if not regs.empty:
                 counts = regs.value_counts().rename_axis('_id').reset_index(name='total')
-                merged = counts.merge(_load_users(base), on='_id', how='inner')
+                names = _load_companies() if is_admin else _load_users(base)
+                merged = counts.merge(names[['_id', 'name']], on='_id', how='inner')
                 top = merged.nlargest(5, 'total')
                 user_stats = [
                     {
-                        'user_name': _first_name(r['name']),
+                        # mantém a chave user_name pro front não precisar mudar
+                        'user_name': str(r['name']) if is_admin else _first_name(r['name']),
                         'total_registrations': int(r['total']),
                     }
                     for _, r in top.iterrows()
@@ -184,6 +185,7 @@ class DashboardStats(Resource):
                 'active_tracking': active_tracking,
                 'today_installs': today_installs,
                 'daily_registrations': daily_registrations,
+                'ranking_by': 'company' if is_admin else 'user',
                 'user_stats': user_stats,
             }, 200
 

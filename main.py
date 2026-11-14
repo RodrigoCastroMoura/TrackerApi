@@ -22,6 +22,7 @@ from app.presentation.cep_routes import api as cep_ns
 from app.presentation.pdf_analyzer_routes import api as pdf_analyzer_ns
 from app.presentation.document_routes import api as document_ns
 from app.presentation.stats_routes import api as stats_ns
+from app.presentation.billing_routes import api as billing_routes
 from app.domain.models import User, Permission
 from config import Config
 import os
@@ -188,6 +189,7 @@ def create_app():
         api.add_namespace(pdf_analyzer_ns, path='/api/pdf-analyzer')
         api.add_namespace(document_ns, path='/api/documents')
         api.add_namespace(stats_ns, path='/api/stats')
+        api.add_namespace(billing_routes, path='/api/billing')
 
         from app.presentation.chatbot_routes import chatbot_bp
         app.register_blueprint(chatbot_bp, url_prefix='/api/chatbot')

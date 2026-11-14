@@ -38,19 +38,38 @@ def _to_utc_naive(ts):
     return ts.tz_convert('UTC').tz_localize(None).to_pydatetime()
 
 
-def _load_created(model, base_query, since_local):
+def _load_created(model, base_query, since_local, until_local=None):
     """
-    Carrega só created_at/created_by dos registros a partir de `since_local`,
-    direto da collection (sem dereferenciar usuário) e devolve um DataFrame
-    com created_at já convertido para America/Sao_Paulo.
+    Carrega só created_at/created_by/company_id dos registros criados em
+    [since_local, until_local) direto da collection (sem dereferenciar) e devolve um
+    DataFrame com created_at já convertido para America/Sao_Paulo.
     """
-    query = {**base_query, 'created_at': {'$gte': _to_utc_naive(since_local)}}
+    window = {'$gte': _to_utc_naive(since_local)}
+    if until_local is not None:
+        window['$lt'] = _to_utc_naive(until_local)
+    query = {**base_query, 'created_at': window}
     docs = model._get_collection().find(
         query, {'created_at': 1, 'created_by': 1, 'company_id': 1})
     df = pd.DataFrame(list(docs)).reindex(
         columns=['_id', 'created_at', 'created_by', 'company_id'])
     df['created_at'] = pd.to_datetime(df['created_at'], utc=True).dt.tz_convert(TZ)
     return df
+
+
+def _parse_month(raw):
+    """'YYYY-MM' -> (início do mês, início do mês seguinte, é o mês atual?). Meses futuros viram o atual."""
+    current = _now_local().normalize().replace(day=1)
+    if not raw:
+        start = current
+    else:
+        try:
+            year, month = (int(x) for x in raw.split('-'))
+            start = pd.Timestamp(year=year, month=month, day=1, tz=TZ)
+        except Exception:
+            raise ValueError('month deve estar no formato YYYY-MM')
+        if start > current:
+            start = current
+    return start, start + pd.DateOffset(months=1), bool(start == current)
 
 
 def _load_users(base_query):
@@ -112,36 +131,42 @@ def _first_name(name):
 @api.route('/dashboard')
 class DashboardStats(Resource):
 
-    @api.doc('get_dashboard_stats')
+    @api.doc('get_dashboard_stats',
+             params={'month': {'type': 'string', 'description': 'Mês de conferência (YYYY-MM). Padrão: mês atual'}})
     @token_required
     @require_permission('vehicle', 'read')
     def get(self, current_user):
-        """Dados do dashboard: totais, cadastros dos últimos 7 dias e top técnicos do mês"""
+        """Dados do dashboard no mês escolhido: totais, instalações, cadastros por dia e ranking de veículos"""
         try:
+            try:
+                month_start, month_end, is_current = _parse_month(request.args.get('month'))
+            except ValueError as e:
+                return {'message': str(e)}, 400
+
             base = _base_query(current_user)
+            is_admin = current_user.role == 'admin'
 
-            # --- Totais (count direto no banco, sem carregar documentos) ---
-            total_customers = Customer._get_collection().count_documents(base)
-            total_vehicles = Vehicle._get_collection().count_documents(base)
-            active_tracking = Vehicle._get_collection().count_documents({
-                **base,
-                'status': {'$ne': 'inactive'},
-                'latitude': {'$nin': [None, '']},
-            })
+            # --- Totais acumulados até o fim do mês consultado (count direto no banco) ---
+            totals_query = dict(base)
+            if not is_current:
+                totals_query['created_at'] = {'$lt': _to_utc_naive(month_end)}
+            total_customers = Customer._get_collection().count_documents(totals_query)
+            total_vehicles = Vehicle._get_collection().count_documents(totals_query)
 
-            # --- Janelas de tempo ---
+            # --- Cadastros do mês ---
+            customers = _load_created(Customer, base, month_start, month_end)
+            vehicles = _load_created(Vehicle, base, month_start, month_end)
+
+            # Instalações = veículos cadastrados
+            month_installs = int(len(vehicles))
             today = _now_local().normalize()
-            days = pd.date_range(end=today, periods=7, freq='D')  # últimos 7 dias
-            month_start = today.replace(day=1)
-            since = min(days[0], month_start)
+            today_installs = (
+                int((vehicles['created_at'].dt.normalize() == today).sum()) if is_current else 0
+            )
 
-            customers = _load_created(Customer, base, since)
-            vehicles = _load_created(Vehicle, base, since)
-
-            # --- Instalações hoje (veículos cadastrados hoje) ---
-            today_installs = int((vehicles['created_at'].dt.normalize() == today).sum())
-
-            # --- Cadastros por dia (7 dias) ---
+            # --- Cadastros por dia (mês inteiro; no mês atual, até hoje) ---
+            last_day = (month_end - pd.Timedelta(days=1)).normalize()
+            days = pd.date_range(month_start, min(last_day, today) if is_current else last_day, freq='D')
             daily = pd.DataFrame({
                 'customers': _daily_counts(customers, days),
                 'vehicles': _daily_counts(vehicles, days),
@@ -156,13 +181,9 @@ class DashboardStats(Resource):
                 for idx, row in daily.iterrows()
             ]
 
-            # --- Top do mês: admin = por empresa (nome da empresa), demais = por usuário ---
-            month_customers = customers[customers['created_at'] >= month_start]
-            month_vehicles = vehicles[vehicles['created_at'] >= month_start]
-            is_admin = current_user.role == 'admin'
+            # --- Ranking do mês: SOMA DE VEÍCULOS cadastrados (admin por empresa, demais por usuário) ---
             key = 'company_id' if is_admin else 'created_by'
-
-            regs = pd.concat([month_customers[key], month_vehicles[key]]).dropna()
+            regs = vehicles[key].dropna()
 
             user_stats = []
             if not regs.empty:
@@ -172,17 +193,19 @@ class DashboardStats(Resource):
                 top = merged.nlargest(5, 'total')
                 user_stats = [
                     {
-                        # mantém a chave user_name pro front não precisar mudar
+                        # mantém a chave user_name pro front: empresa (admin) ou primeiro nome (demais)
                         'user_name': str(r['name']) if is_admin else _first_name(r['name']),
-                        'total_registrations': int(r['total']),
+                        'total_vehicles': int(r['total']),
                     }
                     for _, r in top.iterrows()
                 ]
 
             return {
+                'month': month_start.strftime('%Y-%m'),
+                'is_current_month': is_current,
                 'total_customers': total_customers,
                 'total_vehicles': total_vehicles,
-                'active_tracking': active_tracking,
+                'month_installs': month_installs,
                 'today_installs': today_installs,
                 'daily_registrations': daily_registrations,
                 'ranking_by': 'company' if is_admin else 'user',

@@ -5,6 +5,7 @@ from app.infrastructure.stripe_service import StripeService
 from app.infrastructure.apple_service import AppleService
 from datetime import datetime, timedelta, timezone
 import logging
+from bson import ObjectId
 import hmac
 from config import Config
 
@@ -318,12 +319,82 @@ def _apple_amount(tx, fallback):
     return fallback
 
 
+def _customer_from_account_token(token):
+    """O app manda como appAccountToken um UUID montado a partir do ObjectId do cliente
+    (8 zeros + 24 hex). Aqui desfazemos a montagem e buscamos o cliente."""
+    try:
+        raw = str(token or '').replace('-', '').lower()
+        if len(raw) != 32 or not raw.startswith('0' * 8):
+            return None
+        return Customer.objects(id=ObjectId(raw[8:])).first()
+    except Exception:
+        return None
+
+
+def _apple_billing_cycle(plan):
+    freq, kind = plan.frequency, plan.frequency_type
+    if kind == 'months' and freq == 1:
+        return 'monthly'
+    if kind == 'months' and freq == 3:
+        return 'quarterly'
+    if (kind == 'months' and freq == 12) or (kind == 'years' and freq == 1):
+        return 'annual'
+    return None
+
+
+def _create_apple_subscription(tx, customer, expires, now):
+    """Cria a Subscription local quando a Apple avisa da primeira compra (SUBSCRIBED).
+    Só grava os campos que existem no modelo Subscription; os ignorados vão pro log."""
+    try:
+        from app.domain.models import Plan
+        plan = Plan.objects(id=str(tx.productId)).first()
+    except Exception as e:
+        logger.error(f"Apple: falha ao buscar plano {tx.productId}: {e}")
+        return None
+    if not plan:
+        logger.error(f"Apple: nenhum plano com id {tx.productId}")
+        return None
+
+    period_end = expires or (now + timedelta(days=30))
+    grace_days = getattr(Config, 'APPLE_DAYS_TO_EXPIRE', 0) or 0
+    candidates = {
+        'customer_id': customer,
+        'plan': plan,
+        'plan_id': str(plan.id),
+        'company_id': getattr(plan, 'company_id', None),
+        'name': plan.name,
+        'plan_name': plan.name,
+        'amount': plan.amount,
+        'currency': 'BRL',
+        'frequency': plan.frequency,
+        'frequency_type': plan.frequency_type,
+        'billing_cycle': _apple_billing_cycle(plan),
+        'max_vehicles': plan.max_vehicles,
+        'provider': 'apple',
+        'provider_subscription_id': str(tx.originalTransactionId),
+        'status': 'active',
+        'provider_status': 'succeeded',
+        'current_period_start': now,
+        'current_period_end': period_end,
+        'grace_period_end': period_end + timedelta(days=grace_days),
+        'access_blocked': False,
+        'visible': True,
+    }
+    fields = {k: v for k, v in candidates.items() if k in Subscription._fields and v is not None}
+    ignored = sorted(set(candidates) - set(fields))
+    logger.info(f"Apple: criando Subscription com campos {sorted(fields)}; ignorados (não existem no modelo): {ignored}")
+    subscription = Subscription(**fields)
+    subscription.save()
+    return subscription
+
+
 @api.route('/apple')
 class AppleWebhook(Resource):
 
     @api.doc('apple_webhook', description='App Store Server Notifications V2 (assinaturas via Apple IAP)')
     def post(self):
-        """Processar notificações da Apple """
+        """Processar notificações da Apple (SUBSCRIBED, DID_RENEW, DID_FAIL_TO_RENEW,
+        DID_CHANGE_RENEWAL_STATUS, EXPIRED, GRACE_PERIOD_EXPIRED, REFUND, REVOKE)"""
         try:
             body = request.get_json(silent=True) or {}
             signed_payload = body.get('signedPayload')
@@ -356,20 +427,54 @@ class AppleWebhook(Resource):
             tx = AppleService.decode_transaction(data.signedTransactionInfo, env)
             original_id = str(tx.originalTransactionId)
 
-            # O /apple/verify grava provider_subscription_id = originalTransactionId.
-            subscription = Subscription.objects(provider_subscription_id=original_id, visible=True).first()
-            if not subscription:
-                logger.warning(
-                    f"Apple subscription {original_id} ainda não persistida localmente para evento {kind}; "
-                    f"solicitando reenvio"
-                )
-                return {'message': 'Assinatura ainda não disponível localmente'}, 503
+            # Campos resgatados da transação assinada pela Apple:
+            #   transaction_id -> tx.transactionId        (esta cobrança/renovação)
+            #   original id    -> tx.originalTransactionId (identifica a assinatura)
+            #   product_id     -> tx.productId            (id do plano)
+            #   user_id        -> tx.appAccountToken      (UUID enviado pelo app na compra)
+            transaction_id = str(tx.transactionId)
+            product_id = tx.productId
+            account_customer = _customer_from_account_token(getattr(tx, 'appAccountToken', None))
+            user_id = str(account_customer.id) if account_customer else None
+            logger.info(
+                f"Apple tx - transaction_id={transaction_id} original={original_id} "
+                f"product_id={product_id} user_id={user_id} "
+                f"appAccountToken={getattr(tx, 'appAccountToken', None)}"
+            )
 
-            customer = subscription.customer_id
             now = datetime.now(timezone.utc)
             expires = _ms_to_dt(tx.expiresDate)
+
+            # A assinatura é criada aqui, na primeira notificação da compra.
+            # Depois disso o webhook só renova, troca de plano, cancela ou expira.
+            subscription = Subscription.objects(provider_subscription_id=original_id, visible=True).first()
+            if not subscription:
+                if kind not in ('SUBSCRIBED', 'DID_RENEW', 'OFFER_REDEEMED'):
+                    logger.info(f"Apple {kind}: assinatura {original_id} inexistente localmente; nada a atualizar")
+                    return {'message': 'Webhook recebido'}, 200
+
+                new_customer = account_customer
+                if not new_customer:
+                    logger.error(
+                        f"Apple {kind} {original_id}: appAccountToken ausente ou cliente não encontrado; "
+                        f"não é possível criar a assinatura"
+                    )
+                    return {'message': 'Cliente não identificado'}, 200
+
+                already_active = Subscription.objects(
+                    customer_id=new_customer, visible=True, status='active').first()
+                if already_active:
+                    logger.warning(
+                        f"Apple {kind} {original_id}: cliente {new_customer.id} já tem a assinatura "
+                        f"{already_active.id} ativa; criando a da Apple mesmo assim"
+                    )
+
+                subscription = _create_apple_subscription(tx, new_customer, expires, now)
+                if not subscription:
+                    return {'message': 'Plano não encontrado'}, 200
+
+            customer = subscription.customer_id
             grace_days = getattr(Config, 'APPLE_DAYS_TO_EXPIRE', 0) or 0
-            transaction_id = str(tx.transactionId)
 
             def registered(payment_id):
                 return any(p.provider_payment_id == payment_id for p in subscription.payment_history)

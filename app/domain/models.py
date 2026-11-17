@@ -3,6 +3,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from mongoengine import *
 from enum import Enum
 from config import Config
+import uuid
 
 # Unidades de frequência de cobrança suportadas em toda a aplicação (plano e assinatura).
 # O campo Subscription.billing_cycle só aceita 'days' e 'months' — 'weeks' e 'years' são
@@ -281,6 +282,7 @@ class VehicleData(Document):
         
 class Customer(BaseDocument):
     # Dados básicos
+    uu_id  = UUIDField(default=uuid.uuid4, binary=False)
     name = StringField(required=True)
     email = StringField(required=True, unique=True)
     document = StringField(required=True, unique=True)

@@ -1,64 +1,137 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
+import {
+  initConnection,
+  endConnection,
+  fetchProducts,
+  requestPurchase,
+  purchaseUpdatedListener,
+  purchaseErrorListener,
+  finishTransaction,
+  getAvailablePurchases,
+  type Purchase,
+} from 'react-native-iap';
+import { SubscriptionsService } from '@/api/subscriptions/subscriptions.service';
 
-import logging
-import os
-from pathlib import Path
+export const IS_IOS = Platform.OS === 'ios';
 
-from appstoreserverlibrary.models.Environment import Environment
-from appstoreserverlibrary.signed_data_verifier import (
-    SignedDataVerifier,
-    VerificationException,
-)
-from config import Config
+type Options = {
+  productIds: string[];
+  onVerified: () => void;
+  onError: (message: string) => void;
+};
 
-logger = logging.getLogger(__name__)
+export function useAppleIap({ productIds, onVerified, onError }: Options) {
+  const [ready, setReady] = useState(false);
+  const [products, setProducts] = useState<Record<string, any>>({});
+  const [purchasing, setPurchasing] = useState(false);
+  const cbRef = useRef({ onVerified, onError });
+  cbRef.current = { onVerified, onError };
+  const processing = useRef(new Set<string>());
+  // true só enquanto há uma compra/restauração iniciada pelo usuário nesta tela.
+  // Reentregas e renovações em segundo plano são validadas em silêncio.
+  const userInitiated = useRef(false);
 
+  const verifyAndFinish = useCallback(async (purchase: Purchase) => {
+    const p = purchase as any;
+    const transactionId: string = p.transactionId ?? p.id;
+    if (!transactionId || processing.current.has(transactionId)) return;
+    processing.current.add(transactionId);
+    try {
+      await SubscriptionsService.verifyApplePurchase({
+        transaction_id: transactionId,
+        product_id: p.productId,
+      });
+      await finishTransaction({ purchase, isConsumable: false });
+      if (userInitiated.current) {
+        userInitiated.current = false;
+        cbRef.current.onVerified();
+      }
+    } catch (e: any) {
+      // NÃO finaliza: a Apple reentrega a transação no próximo launch.
+      if (userInitiated.current) {
+        userInitiated.current = false;
+        cbRef.current.onError(
+          e?.response?.data?.message ?? 'Não foi possível validar sua compra. Tente restaurar compras.',
+        );
+      }
+    } finally {
+      processing.current.delete(transactionId);
+      setPurchasing(false);
+    }
+  }, []);
 
-def _cfg(name, default=None):
-    return getattr(Config, name, None) or os.environ.get(name, default)
+  useEffect(() => {
+    // Os planos chegam da API depois do primeiro render; sem IDs não há o que buscar.
+    if (!IS_IOS || productIds.length === 0) return;
+    let alive = true;
 
+    const updateSub = purchaseUpdatedListener(verifyAndFinish);
+    const errorSub = purchaseErrorListener((err: any) => {
+      setPurchasing(false);
+      userInitiated.current = false;
+      if (err?.code === 'user-cancelled' || err?.code === 'E_USER_CANCELLED') return;
+      cbRef.current.onError(err?.message ?? 'Não foi possível concluir a compra.');
+    });
 
-class AppleService:
-    _root_certs = None
+    (async () => {
+      try {
+        await initConnection();
+        const result = await fetchProducts({ skus: productIds, type: 'subs' });
+        const list = (result ?? []) as any[];
+        if (!alive) return;
+        setProducts(Object.fromEntries(list.map(p => [p.id ?? p.productId, p])));
+        setReady(true);
+      } catch {
+        if (alive) cbRef.current.onError('Não foi possível carregar os planos da App Store.');
+      }
+    })();
 
-    @classmethod
-    def _load_root_certs(cls):
-        if cls._root_certs is None:
-            folder = Path(_cfg('APPLE_ROOT_CERTS_DIR', ''))
-            cls._root_certs = [p.read_bytes() for p in sorted(folder.glob('*.cer'))]
-            if not cls._root_certs:
-                logger.error("Nenhum certificado raiz da Apple encontrado em %s", folder)
-        return cls._root_certs
+    return () => {
+      alive = false;
+      updateSub.remove();
+      errorSub.remove();
+      endConnection();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productIds.join('|')]);
 
-    @classmethod
-    def _verifier(cls, environment):
-        app_id = int(_cfg('APPLE_APP_ID', 0) or 0) or None
-        # APPLE_ONLINE_CHECKS=false desliga a checagem online (OCSP) se o servidor não sai pra internet.
-        online_checks = str(_cfg('APPLE_ONLINE_CHECKS', 'true')).lower() != 'false'
-        return SignedDataVerifier(
-            cls._load_root_certs(),
-            online_checks,
-            environment,
-            _cfg('APPLE_BUNDLE_ID'),
-            app_id if environment == Environment.PRODUCTION else None,
-        )
+  const buy = useCallback(async (productId: string) => {
+    setPurchasing(true);
+    userInitiated.current = true;
+    try {
+      await requestPurchase({
+        request: { apple: { sku: productId } },
+        type: 'subs',
+      });
+    } catch (e: any) {
+      setPurchasing(false);
+      userInitiated.current = false;
+      if (e?.code !== 'user-cancelled') {
+        cbRef.current.onError(e?.message ?? 'Não foi possível iniciar a compra.');
+      }
+    }
+  }, []);
 
-    @classmethod
-    def decode_notification(cls, signed_payload):
-        """Valida a assinatura (JWS) e devolve (notificação, ambiente).
-        Tenta produção e depois sandbox. Retorna (None, None) se for inválida."""
-        logger.info(
-            "Apple verify config - bundle_id=%s app_id=%s root_certs=%d",
-            _cfg('APPLE_BUNDLE_ID'), _cfg('APPLE_APP_ID'), len(cls._load_root_certs()),
-        )
-        for env in (Environment.PRODUCTION, Environment.SANDBOX):
-            try:
-                return cls._verifier(env).verify_and_decode_notification(signed_payload), env
-            except VerificationException as e:
-                # O motivo (e.status) diz se é bundle id, certificado, ambiente, etc.
-                logger.warning("Apple verify falhou em %s: status=%s", env.value, getattr(e, 'status', e))
-                continue
-        return None, None
+  // Botão "Restaurar compras" — obrigatório pela Apple.
+  const restore = useCallback(async () => {
+    setPurchasing(true);
+    userInitiated.current = true;
+    try {
+      const purchases = await getAvailablePurchases();
+      if (purchases.length === 0) {
+        userInitiated.current = false;
+        cbRef.current.onError('Nenhuma assinatura encontrada nesta conta da Apple.');
+        return;
+      }
+      await verifyAndFinish(purchases[0]);
+    } catch {
+      userInitiated.current = false;
+      cbRef.current.onError('Não foi possível restaurar suas compras.');
+    } finally {
+      setPurchasing(false);
+    }
+  }, [verifyAndFinish]);
 
-    @classmethod
-    def decode_transaction(cls, signed_transaction, environment):
-        return cls._verifier(environment).verify_and_decode_signed_transaction(signed_transaction)
+  return { ready, products, purchasing, buy, restore };
+}

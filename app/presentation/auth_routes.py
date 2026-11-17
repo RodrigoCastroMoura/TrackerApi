@@ -684,7 +684,7 @@ class LoginCustomer(Resource):
                     'can_change_plan': can_change_plan,
                     'user': {
                         'id': str(customer.id),
-                        'uu_id' : str(customer.uu_id),
+                        'uu_id' : customer.uu_id,
                         'name': customer.name,
                         'email': customer.email,
                         'role': customer.role,

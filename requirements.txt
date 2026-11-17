@@ -27,3 +27,4 @@ Flask-SQLAlchemy
 psycopg2-binary
 redis
 pandas
+app-store-server-library

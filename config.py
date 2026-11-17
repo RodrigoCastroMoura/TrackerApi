@@ -108,3 +108,8 @@ class Config:
 
     QUANT_ACCESS_WHATSAPP =  int(os.environ.get("QUANT_ACCESS_WHATSAPP", 5))
     NUMBER_SERVICE = os.environ.get("NUMBER_SERVICE")
+
+    APPLE_BUNDLE_ID = os.environ.get("APPLE_BUNDLE_ID")
+    APPLE_APP_ID = os.environ.get("APPLE_APP_ID")
+    APPLE_ROOT_CERTS_DIR = os.environ.get("APPLE_ROOT_CERTS_DIR")
+    APPLE_DAYS_TO_EXPIRE= int(os.environ.get("APPLE_DAYS_TO_EXPIRE", 0))

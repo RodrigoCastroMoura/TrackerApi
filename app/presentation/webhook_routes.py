@@ -2,6 +2,7 @@ from flask import request
 from flask_restx import Namespace, Resource
 from app.domain.models import Subscription, SubscriptionPayment, Customer, period_days_for_frequency
 from app.infrastructure.stripe_service import StripeService
+from app.infrastructure.apple_service import AppleService
 from datetime import datetime, timedelta, timezone
 import logging
 import hmac
@@ -9,7 +10,7 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-api = Namespace('webhooks', description='Webhooks de integração - Stripe e Pagar.me')
+api = Namespace('webhooks', description='Webhooks de integração - Stripe, Apple e Pagar.me')
 
 
 def _epoch_to_dt(value):
@@ -289,6 +290,199 @@ class StripeWebhook(Resource):
 
         except Exception as e:
             logger.error(f"Error processing Stripe webhook: {str(e)}")
+            return {'message': 'Erro ao processar webhook'}, 500
+
+
+def _ms_to_dt(value):
+    """Converte epoch em milissegundos (Apple) para datetime UTC, ou None."""
+    if not value:
+        return None
+    try:
+        return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _as_utc(value):
+    """O MongoEngine costuma devolver datetime naive (UTC); normaliza para comparar."""
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+def _apple_amount(tx, fallback):
+    """tx.price vem em milésimos da moeda (29900 = R$ 29,90). Em trial vem 0."""
+    price = getattr(tx, 'price', None)
+    if isinstance(price, (int, float)):
+        return price / 1000.0
+    return fallback
+
+
+@api.route('/apple')
+class AppleWebhook(Resource):
+
+    @api.doc('apple_webhook', description='App Store Server Notifications V2 (assinaturas via Apple IAP)')
+    def post(self):
+        """Processar notificações da Apple """
+        try:
+            body = request.get_json(silent=True) or {}
+            signed_payload = body.get('signedPayload')
+            if not signed_payload:
+                return {'message': 'Invalid webhook data'}, 400
+
+            # A segurança vem da assinatura (JWS) validada com os certificados raiz da Apple.
+            notification, env = AppleService.decode_notification(signed_payload)
+            if not notification:
+                logger.error("Invalid Apple webhook signature - rejecting request")
+                return {'message': 'Invalid signature'}, 401
+
+            kind = notification.rawNotificationType
+            subtype = notification.rawSubtype
+            data = notification.data
+
+            logger.info(f"Received Apple webhook - Type: {kind}, Subtype: {subtype}, UUID: {notification.notificationUUID}")
+
+            if kind == 'TEST' or not data or not data.signedTransactionInfo:
+                return {'message': 'Webhook recebido'}, 200
+
+            handled = (
+                'SUBSCRIBED', 'DID_RENEW', 'OFFER_REDEEMED', 'DID_CHANGE_RENEWAL_STATUS',
+                'DID_FAIL_TO_RENEW', 'EXPIRED', 'GRACE_PERIOD_EXPIRED', 'REFUND', 'REVOKE',
+            )
+            if kind not in handled:
+                logger.info(f"Apple webhook event ignored: {kind}")
+                return {'message': 'Webhook recebido'}, 200
+
+            tx = AppleService.decode_transaction(data.signedTransactionInfo, env)
+            original_id = str(tx.originalTransactionId)
+
+            # O /apple/verify grava provider_subscription_id = originalTransactionId.
+            subscription = Subscription.objects(provider_subscription_id=original_id, visible=True).first()
+            if not subscription:
+                logger.warning(
+                    f"Apple subscription {original_id} ainda não persistida localmente para evento {kind}; "
+                    f"solicitando reenvio"
+                )
+                return {'message': 'Assinatura ainda não disponível localmente'}, 503
+
+            customer = subscription.customer_id
+            now = datetime.now(timezone.utc)
+            expires = _ms_to_dt(tx.expiresDate)
+            grace_days = getattr(Config, 'APPLE_DAYS_TO_EXPIRE', 0) or 0
+            transaction_id = str(tx.transactionId)
+
+            def registered(payment_id):
+                return any(p.provider_payment_id == payment_id for p in subscription.payment_history)
+
+            if kind in ('SUBSCRIBED', 'DID_RENEW', 'OFFER_REDEEMED'):
+                # Notificações podem chegar fora de ordem: nunca encurta o período já gravado.
+                current_end = _as_utc(subscription.current_period_end)
+                next_payment_date = expires or (now + timedelta(days=period_days_for_frequency(
+                    subscription.frequency, subscription.billing_cycle)))
+                if current_end and next_payment_date < current_end:
+                    logger.info(f"Apple {kind} antigo ignorado para subscription {subscription.id}")
+                    return {'message': 'Webhook processado com sucesso'}, 200
+
+                subscription.status = 'active'
+                subscription.provider_status = 'succeeded'
+                subscription.provider_subscription_id = original_id
+                if not subscription.current_period_start:
+                    subscription.current_period_start = now
+                subscription.current_period_end = next_payment_date
+                subscription.grace_period_end = next_payment_date + timedelta(days=grace_days)
+                subscription.access_blocked = False
+                subscription.failure_message = None
+                subscription.canceled_at = None
+
+                if not registered(transaction_id):
+                    subscription.payment_history.append(SubscriptionPayment(
+                        provider_payment_id=transaction_id,
+                        amount=_apple_amount(tx, subscription.amount),
+                        currency=(getattr(tx, 'currency', None) or 'BRL').upper(),
+                        status='approved',
+                        paid_at=now,
+                        period_start=_ms_to_dt(tx.purchaseDate) or now,
+                        period_end=next_payment_date,
+                    ))
+
+                # TODO: se a renovação trouxe outro productId (downgrade agendado ou upgrade),
+                # atualize aqui o plano da Subscription a partir de Plan.id == tx.productId.
+
+                customer.require_payment_method = False
+                customer.can_change_plan = False
+                subscription.save()
+                customer.save()
+                logger.info(
+                    f"Apple {kind} for subscription {subscription.id}. "
+                    f"Next payment: {next_payment_date.date()}"
+                )
+
+            elif kind == 'DID_CHANGE_RENEWAL_STATUS':
+                if subtype == 'AUTO_RENEW_DISABLED':
+                    # Usuário desligou a renovação nos Ajustes do iPhone: acesso segue até o fim do período.
+                    subscription.status = 'canceled'
+                    subscription.provider_status = 'canceled'
+                    subscription.canceled_at = now
+                    if expires:
+                        subscription.current_period_end = expires
+                        subscription.grace_period_end = expires + timedelta(days=grace_days)
+                    if customer.require_payment_method is False:
+                        customer.can_change_plan = True
+                    subscription.save()
+                    customer.save()
+                elif subtype == 'AUTO_RENEW_ENABLED':
+                    if expires and expires > now:
+                        subscription.status = 'active'
+                        subscription.provider_status = 'succeeded'
+                        subscription.canceled_at = None
+                        subscription.access_blocked = False
+                        customer.require_payment_method = False
+                        customer.can_change_plan = False
+                        subscription.save()
+                        customer.save()
+
+            elif kind == 'DID_FAIL_TO_RENEW':
+                # A Apple continua tentando cobrar (billing retry / grace period).
+                failure_id = f"fail-{transaction_id}"
+                subscription.provider_status = 'failed'
+                subscription.status = 'pendingPayment'
+                subscription.failure_message = f'Cobrança recorrente rejeitada (evento: {kind})'
+                if not registered(failure_id):
+                    subscription.payment_history.append(SubscriptionPayment(
+                        provider_payment_id=failure_id,
+                        amount=_apple_amount(tx, subscription.amount),
+                        currency=(getattr(tx, 'currency', None) or 'BRL').upper(),
+                        status='rejected',
+                        paid_at=now,
+                    ))
+                subscription.save()
+                logger.warning(f"Apple renewal failed for subscription {subscription.id}")
+
+            elif kind in ('EXPIRED', 'GRACE_PERIOD_EXPIRED'):
+                subscription.status = 'canceled'
+                subscription.provider_status = 'canceled'
+                subscription.canceled_at = subscription.canceled_at or now
+                if customer.require_payment_method is False:
+                    customer.can_change_plan = True
+                subscription.save()
+                customer.save()
+
+            elif kind in ('REFUND', 'REVOKE'):
+                # A Apple devolveu o valor / revogou o direito: encerra o acesso.
+                subscription.provider_status = 'refunded'
+                subscription.refunded_at = now
+                subscription.status = 'canceled'
+                subscription.canceled_at = subscription.canceled_at or now
+                if customer.require_payment_method is False:
+                    customer.can_change_plan = True
+                subscription.save()
+                customer.save()
+                logger.info(f"Apple {kind} for subscription {subscription.id}")
+
+            return {'message': 'Webhook processado com sucesso'}, 200
+
+        except Exception as e:
+            logger.error(f"Error processing Apple webhook: {str(e)}")
             return {'message': 'Erro ao processar webhook'}, 500
 
 

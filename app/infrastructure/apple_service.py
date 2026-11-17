@@ -1,3 +1,4 @@
+
 import logging
 import os
 from pathlib import Path
@@ -31,9 +32,11 @@ class AppleService:
     @classmethod
     def _verifier(cls, environment):
         app_id = int(_cfg('APPLE_APP_ID', 0) or 0) or None
+        # APPLE_ONLINE_CHECKS=false desliga a checagem online (OCSP) se o servidor não sai pra internet.
+        online_checks = str(_cfg('APPLE_ONLINE_CHECKS', 'true')).lower() != 'false'
         return SignedDataVerifier(
             cls._load_root_certs(),
-            True,
+            online_checks,
             environment,
             _cfg('APPLE_BUNDLE_ID'),
             app_id if environment == Environment.PRODUCTION else None,
@@ -43,10 +46,16 @@ class AppleService:
     def decode_notification(cls, signed_payload):
         """Valida a assinatura (JWS) e devolve (notificação, ambiente).
         Tenta produção e depois sandbox. Retorna (None, None) se for inválida."""
+        logger.info(
+            "Apple verify config - bundle_id=%s app_id=%s root_certs=%d",
+            _cfg('APPLE_BUNDLE_ID'), _cfg('APPLE_APP_ID'), len(cls._load_root_certs()),
+        )
         for env in (Environment.PRODUCTION, Environment.SANDBOX):
             try:
                 return cls._verifier(env).verify_and_decode_notification(signed_payload), env
-            except VerificationException:
+            except VerificationException as e:
+                # O motivo (e.status) diz se é bundle id, certificado, ambiente, etc.
+                logger.warning("Apple verify falhou em %s: status=%s", env.value, getattr(e, 'status', e))
                 continue
         return None, None
 

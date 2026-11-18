@@ -477,6 +477,7 @@ class AppleWebhook(Resource):
                             payment_url=None,
                             created_by=None,
                             updated_by=None,
+                            payment_mrthod='APPLE'
                         )
                         _apple_register_payment(subscription, tx, now, next_payment_date)
                         customer.require_payment_method = False

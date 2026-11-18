@@ -567,6 +567,8 @@ class Subscription(BaseDocument):
     # Historical monthly payments
     payment_history = EmbeddedDocumentListField(SubscriptionPayment, default=list)
 
+    payment_mrthod = StringField()
+
     meta = {
         'collection': 'subscriptions',
         'indexes': [
@@ -604,6 +606,7 @@ class Subscription(BaseDocument):
             'cancel_at_period_end': self.cancel_at_period_end,
             'canceled_at': self.canceled_at.isoformat() if self.canceled_at else None,
             'payment_history': [p.to_dict() for p in (self.payment_history or [])],
+            'payment_mrthod':self.payment_mrthod,
         })
         return base_dict
 

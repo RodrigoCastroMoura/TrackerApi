@@ -192,7 +192,8 @@ class SubscriptionResource(Resource):
                     currency='BRL',
                     payment_url=session['url'],
                     created_by=None,
-                    updated_by=None
+                    updated_by=None,
+                    payment_mrthod='SRIPE'
                 )
                 subscription.save()
             except Exception as db_error:

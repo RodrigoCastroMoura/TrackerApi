@@ -1,6 +1,6 @@
 from flask import request
 from flask_restx import Namespace, Resource
-from app.domain.models import Subscription, SubscriptionPayment, Customer, period_days_for_frequency
+from app.domain.models import Subscription, SubscriptionPayment, Customer, period_days_for_frequency, SubscriptionPlan, to_provider_frequency
 from app.infrastructure.stripe_service import StripeService
 from app.infrastructure.apple_service import AppleService
 from datetime import datetime, timedelta, timezone
@@ -293,6 +293,24 @@ class StripeWebhook(Resource):
             logger.error(f"Error processing Stripe webhook: {str(e)}")
             return {'message': 'Erro ao processar webhook'}, 500
 
+def _resolve_plan(plan_id_input):
+    """Aceita ObjectId de 24 chars ou o provider_plan_id (price_... da Stripe)."""
+    plan = None
+    if plan_id_input and len(plan_id_input) == 24:
+        try:
+            plan = SubscriptionPlan.objects(
+                id=plan_id_input, is_active=True, visible=True
+            ).first()
+        except Exception:
+            plan = None
+    if not plan:
+        plan = SubscriptionPlan.objects(
+            provider_plan_id=plan_id_input,
+            is_active=True,
+            visible=True,
+        ).first()
+    return plan
+
 
 def _ms_to_dt(value):
     """Converte epoch em milissegundos (Apple) para datetime UTC, ou None."""
@@ -427,78 +445,135 @@ class AppleWebhook(Resource):
             tx = AppleService.decode_transaction(data.signedTransactionInfo, env)
             original_id = str(tx.originalTransactionId)
 
-            # Campos resgatados da transação assinada pela Apple:
-            #   transaction_id -> tx.transactionId        (esta cobrança/renovação)
-            #   original id    -> tx.originalTransactionId (identifica a assinatura)
-            #   product_id     -> tx.productId            (id do plano)
-            #   user_id        -> tx.appAccountToken      (UUID enviado pelo app na compra)
             transaction_id = str(tx.transactionId)
             product_id = tx.productId
             account_customer = _customer_from_account_token(getattr(tx, 'appAccountToken', None))
             user_id = str(account_customer.id) if account_customer else None
-            logger.info(
-                f"Apple tx - transaction_id={transaction_id} original={original_id} "
-                f"product_id={product_id} user_id={user_id} "
-                f"appAccountToken={getattr(tx, 'appAccountToken', None)}"
-            )
-
+            
             now = datetime.now(timezone.utc)
             expires = _ms_to_dt(tx.expiresDate)
-
-            # A assinatura é criada aqui, na primeira notificação da compra.
-            # Depois disso o webhook só renova, troca de plano, cancela ou expira.
-            subscription = Subscription.objects(provider_subscription_id=original_id, visible=True).first()
-            if not subscription:
-                if kind not in ('SUBSCRIBED', 'DID_RENEW', 'OFFER_REDEEMED'):
-                    logger.info(f"Apple {kind}: assinatura {original_id} inexistente localmente; nada a atualizar")
-                    return {'message': 'Webhook recebido'}, 200
-
-                new_customer = account_customer
-                if not new_customer:
-                    logger.error(
-                        f"Apple {kind} {original_id}: appAccountToken ausente ou cliente não encontrado; "
-                        f"não é possível criar a assinatura"
-                    )
-                    return {'message': 'Cliente não identificado'}, 200
-
-                already_active = Subscription.objects(
-                    customer_id=new_customer, visible=True, status='active').first()
-                if already_active:
-                    logger.warning(
-                        f"Apple {kind} {original_id}: cliente {new_customer.id} já tem a assinatura "
-                        f"{already_active.id} ativa; criando a da Apple mesmo assim"
-                    )
-
-                subscription = _create_apple_subscription(tx, new_customer, expires, now)
-                if not subscription:
-                    return {'message': 'Plano não encontrado'}, 200
-
-            customer = subscription.customer_id
             grace_days = getattr(Config, 'APPLE_DAYS_TO_EXPIRE', 0) or 0
 
             def registered(payment_id):
                 return any(p.provider_payment_id == payment_id for p in subscription.payment_history)
 
-            if kind in ('SUBSCRIBED', 'DID_RENEW', 'OFFER_REDEEMED'):
-                # Notificações podem chegar fora de ordem: nunca encurta o período já gravado.
-                current_end = _as_utc(subscription.current_period_end)
+            if kind == 'SUBSCRIBED':
                 next_payment_date = expires or (now + timedelta(days=period_days_for_frequency(
-                    subscription.frequency, subscription.billing_cycle)))
-                if current_end and next_payment_date < current_end:
-                    logger.info(f"Apple {kind} antigo ignorado para subscription {subscription.id}")
-                    return {'message': 'Webhook processado com sucesso'}, 200
+                                                            subscription.frequency, subscription.billing_cycle)))
+                if subtype == 'INITIAL_BUY':
+                    if not ObjectId.is_valid(user_id):
+                        logger.error(f"ID do usuário inválido Apple: {user_id}")
+                        return {'message': 'ID do customer inválido'}, 400
+        
+                    query = {'id': user_id}
+                    customer = Customer.objects.get(**query)
 
-                subscription.status = 'active'
-                subscription.provider_status = 'succeeded'
-                subscription.provider_subscription_id = original_id
-                if not subscription.current_period_start:
-                    subscription.current_period_start = now
-                subscription.current_period_end = next_payment_date
+                    if not customer:
+                        logger.error(f"Customer não enconrtrado Apple: {user_id}")
+                        return {'message': 'Usuário inativo'}, 401
+
+                    plan = _resolve_plan(product_id)
+                    if not plan:
+                        logger.error(f"Plano não enconrtrado Apple: {product_id}")
+                        return {'message': 'Plano de assinatura não encontrado ou inativo'}, 404 
+
+                    frequency, billing_cycle = to_provider_frequency(plan.frequency, plan.frequency_type)
+
+                    try:
+                        subscription = Subscription(
+                            id=ObjectId(),
+                            customer_id=customer,
+                            company_id=customer.company_id,
+                            provider_plan_id=None ,
+                            provider_subscription_id=original_id,
+                            plan_name=plan.name,
+                            amount=plan.amount,
+                            status='active',
+                            provider_status='succeeded',
+                            billing_cycle=billing_cycle,
+                            frequency=frequency,
+                            currency='BRL',
+                            current_period_start = now,
+                            current_period_end = next_payment_date,
+                            grace_period_end = next_payment_date + timedelta(days=Config.STRIPE_DAYS_TO_EXPIRE),
+                            access_blocked = False,
+                            failure_message = None,
+                            canceled_at = None,
+                            require_payment_method = False,
+                            can_change_plan = False,
+                            payment_url=None,
+                            created_by=None,
+                            updated_by=None,
+                        )
+                        customer.require_payment_method = False
+                        customer.can_change_plan = False
+                        subscription.save()
+                        customer.save()
+
+                    except Exception as db_error:
+                        logger.error(f"DB save failed for Apple subscription: {db_error}")
+                        return {'message': 'Erro ao salvar assinatura. Tente novamente.'}, 500  
+                
+                elif subtype == 'RESUBSCRIBE':
+                    subscription = Subscription.objects(id=user_id).first()
+                    if not subscription:
+                        subscription = Subscription.objects(provider_subscription_id=original_id).first()
+                        if not subscription:
+                            logger.error(f"subscription não enconrtrado Apple - RESUBSCRIBE: {original_id}")
+                            return {'message': 'Webhook recebido'}, 400
+
+                    query = {'id': subscription.customer_id}
+                    customer = Customer.objects.get(**query)
+
+                    if not customer:
+                        logger.error(f"Customer não enconrtrado Apple - RESUBSCRIBE: {user_id}")
+                        return {'message': 'Usuário inativo'}, 401
+
+                    subscription.status = 'active'
+                    subscription.provider_status = 'succeeded'
+                    subscription.provider_subscription_id = original_id
+                    if not subscription.current_period_start:
+                        subscription.current_period_start = now
+                    subscription.current_period_end = next_payment_date
+                    subscription.grace_period_end = next_payment_date + timedelta(days=grace_days)
+                    subscription.access_blocked = False
+                    subscription.failure_message = None
+                    subscription.canceled_at = None
+
+                    if not registered(transaction_id):
+                        subscription.payment_history.append(SubscriptionPayment(
+                            provider_payment_id=transaction_id,
+                            amount=_apple_amount(tx, subscription.amount),
+                            currency=(getattr(tx, 'currency', None) or 'BRL').upper(),
+                            status='approved',
+                            paid_at=now,
+                            period_start=_ms_to_dt(tx.purchaseDate) or now,
+                            period_end=next_payment_date,
+                        ))
+
+                    # TODO: se a renovação trouxe outro productId (downgrade agendado ou upgrade),
+                    # atualize aqui o plano da Subscription a partir de Plan.id == tx.productId.
+
+                    customer.require_payment_method = False
+                    customer.can_change_plan = False
+                    subscription.save()
+                    customer.save()
+        
+            elif kind == 'DID_RENEW':
+                subscription = Subscription.objects(provider_subscription_id=original_id).first()
+                if not subscription:
+                    logger.error(f"subscription não enconrtrado Apple - DID_RENEW: {original_id}")
+                    return {'message': 'Webhook recebido'}, 400
+
+                query = {'id': subscription.customer_id}
+                customer = Customer.objects.get(**query)
+
+                if not customer:
+                    logger.error(f"Customer não enconrtrado Apple - DID_RENEW: {user_id}")
+                    return {'message': 'Usuário inativo'}, 401
+
                 subscription.grace_period_end = next_payment_date + timedelta(days=grace_days)
-                subscription.access_blocked = False
-                subscription.failure_message = None
-                subscription.canceled_at = None
-
+                
                 if not registered(transaction_id):
                     subscription.payment_history.append(SubscriptionPayment(
                         provider_payment_id=transaction_id,
@@ -517,12 +592,20 @@ class AppleWebhook(Resource):
                 customer.can_change_plan = False
                 subscription.save()
                 customer.save()
-                logger.info(
-                    f"Apple {kind} for subscription {subscription.id}. "
-                    f"Next payment: {next_payment_date.date()}"
-                )
 
             elif kind == 'DID_CHANGE_RENEWAL_STATUS':
+                subscription = Subscription.objects(provider_subscription_id=original_id).first()
+                if not subscription:
+                    logger.error(f"subscription não enconrtrado Apple - DID_CHANGE_RENEWAL_STATUS: {original_id}")
+                    return {'message': 'Webhook recebido'}, 400
+
+                query = {'id': subscription.customer_id}
+                customer = Customer.objects.get(**query)
+
+                if not customer:
+                    logger.error(f"Customer não enconrtrado Apple - DID_CHANGE_RENEWAL_STATUS: {user_id}")
+                    return {'message': 'Usuário inativo'}, 401
+                
                 if subtype == 'AUTO_RENEW_DISABLED':
                     # Usuário desligou a renovação nos Ajustes do iPhone: acesso segue até o fim do período.
                     subscription.status = 'canceled'
@@ -547,6 +630,18 @@ class AppleWebhook(Resource):
                         customer.save()
 
             elif kind == 'DID_FAIL_TO_RENEW':
+                subscription = Subscription.objects(provider_subscription_id=original_id).first()
+                if not subscription:
+                    logger.error(f"subscription não enconrtrado Apple - DID_FAIL_TO_RENEW: {original_id}")
+                    return {'message': 'Webhook recebido'}, 400
+
+                query = {'id': subscription.customer_id}
+                customer = Customer.objects.get(**query)
+
+                if not customer:
+                    logger.error(f"Customer não enconrtrado Apple - DID_FAIL_TO_RENEW: {user_id}")
+                    return {'message': 'Usuário inativo'}, 401
+                
                 # A Apple continua tentando cobrar (billing retry / grace period).
                 failure_id = f"fail-{transaction_id}"
                 subscription.provider_status = 'failed'
@@ -564,6 +659,18 @@ class AppleWebhook(Resource):
                 logger.warning(f"Apple renewal failed for subscription {subscription.id}")
 
             elif kind in ('EXPIRED', 'GRACE_PERIOD_EXPIRED'):
+                subscription = Subscription.objects(provider_subscription_id=original_id).first()
+                if not subscription:
+                    logger.error(f"subscription não enconrtrado Apple - EXPIRED/GRACE_PERIOD_EXPIRED: {original_id}")
+                    return {'message': 'Webhook recebido'}, 400
+
+                query = {'id': subscription.customer_id}
+                customer = Customer.objects.get(**query)
+
+                if not customer:
+                    logger.error(f"Customer não enconrtrado Apple - EXPIRED/GRACE_PERIOD_EXPIRED: {user_id}")
+                    return {'message': 'Usuário inativo'}, 401
+                
                 subscription.status = 'canceled'
                 subscription.provider_status = 'canceled'
                 subscription.canceled_at = subscription.canceled_at or now
@@ -574,6 +681,18 @@ class AppleWebhook(Resource):
 
             elif kind in ('REFUND', 'REVOKE'):
                 # A Apple devolveu o valor / revogou o direito: encerra o acesso.
+                subscription = Subscription.objects(provider_subscription_id=original_id).first()
+                if not subscription:
+                    logger.error(f"subscription não enconrtrado Apple - DID_RENEW: {original_id}")
+                    return {'message': 'Webhook recebido'}, 400
+
+                query = {'id': subscription.customer_id}
+                customer = Customer.objects.get(**query)
+
+                if not customer:
+                    logger.error(f"Customer não enconrtrado Apple - REFUND/REVOKE: {user_id}")
+                    return {'message': 'Usuário inativo'}, 401
+
                 subscription.provider_status = 'refunded'
                 subscription.refunded_at = now
                 subscription.status = 'canceled'

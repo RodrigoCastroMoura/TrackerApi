@@ -709,7 +709,8 @@ class SubscriptionStatement(Resource):
                     'grace_period_end': subscription.grace_period_end.isoformat() if subscription.grace_period_end else None,
                     'is_overdue': is_overdue,
                     'days_overdue': days_overdue,
-                    'days_until_block': days_until_block
+                    'days_until_block': days_until_block,
+                    'payment_method': subscription.payment_mrthod,
                 },
                 'payment_history': {
                     'total_payments': len(payment_history),

@@ -474,8 +474,6 @@ class AppleWebhook(Resource):
                             access_blocked=False,
                             failure_message=None,
                             canceled_at=None,
-                            require_payment_method=False,
-                            can_change_plan=False,
                             payment_url=None,
                             created_by=None,
                             updated_by=None,

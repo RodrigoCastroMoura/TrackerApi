@@ -397,7 +397,7 @@ class CustomerResource(Resource):
             customer = Customer.objects.get(id=id, visible=True)
             customer.visible = False
             customer.status = 'inactive'
-            customer.updated_by = current_user
+            customer.updated_by = current_user.id
             customer.save()
             
             return {'message': 'Cliente deletado com sucesso'}, 200

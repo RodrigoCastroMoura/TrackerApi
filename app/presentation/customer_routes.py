@@ -374,7 +374,7 @@ class CustomerResource(Resource):
             if 'status' in data:
                 customer.status = data['status']
             
-            customer.updated_by = current_user.id
+            customer.updated_by = current_user
             customer.save()
             
             return customer.to_dict(), 200

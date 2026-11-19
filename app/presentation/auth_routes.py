@@ -131,7 +131,7 @@ def require_permission(resource_type, action_type):
                 return {'message': 'Usuário não autenticado'}, 401
 
             if current_user.role == 'customer':
-                current_permissions = ["customer_read", "customer_write", "customer_update"]
+                current_permissions = ["customer_read", "customer_write", "customer_update","customer_delete"]
             # elif current_user.role == 'admin':
             #     return f(*args, **kwargs)
             else:

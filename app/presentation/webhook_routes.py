@@ -533,20 +533,9 @@ class AppleWebhook(Resource):
                         logger.info(f"Apple DID_RENEW antigo ignorado para subscription {subscription.id}")
                         return {'message': 'Webhook processado com sucesso'}, 200
 
-                    subscription.status = 'active'
-                    subscription.provider_status = 'succeeded'
-                    subscription.current_period_start = _ms_to_dt(tx.purchaseDate) or now
-                    subscription.current_period_end = next_payment_date
                     subscription.grace_period_end = next_payment_date + timedelta(days=grace_days)
-                    subscription.access_blocked = False
-                    subscription.failure_message = None
-                    subscription.canceled_at = None
                     _apple_register_payment(subscription, tx, now, next_payment_date)
 
-                    # TODO: se a renovação trouxe outro productId (downgrade agendado), atualize o plano.
-
-                    customer.require_payment_method = False
-                    customer.can_change_plan = False
                     subscription.save()
                     customer.save()
 
@@ -556,11 +545,7 @@ class AppleWebhook(Resource):
                         subscription.status = 'canceled'
                         subscription.provider_status = 'canceled'
                         subscription.canceled_at = now
-                        if expires:
-                            subscription.current_period_end = expires
-                            subscription.grace_period_end = expires + timedelta(days=grace_days)
-                        if customer.require_payment_method is False:
-                            customer.can_change_plan = True
+                        customer.can_change_plan = True
                         subscription.save()
                         customer.save()
                     elif subtype == 'AUTO_RENEW_ENABLED':
@@ -568,8 +553,6 @@ class AppleWebhook(Resource):
                             subscription.status = 'active'
                             subscription.provider_status = 'succeeded'
                             subscription.canceled_at = None
-                            subscription.access_blocked = False
-                            customer.require_payment_method = False
                             customer.can_change_plan = False
                             subscription.save()
                             customer.save()
@@ -588,8 +571,7 @@ class AppleWebhook(Resource):
                     subscription.status = 'canceled'
                     subscription.provider_status = 'canceled'
                     subscription.canceled_at = subscription.canceled_at or now
-                    if customer.require_payment_method is False:
-                        customer.can_change_plan = True
+                    customer.can_change_plan = True
                     subscription.save()
                     customer.save()
 
